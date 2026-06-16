@@ -1,14 +1,14 @@
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 
 use crate::{
     application::{ActivePanel, app_state::AppState, commands::ViewUpdate},
-    archive::{ArchiveService, SevenZipBackend},
+    archive::ArchiveService,
     config::ArchiveConfig,
     domain::{
         Entry, Panel, PanelLocation,
-        operation::{FileOperationKind, FileOperationRequest},
+        operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
         sorting::{SortColumn, SortDirection},
     },
     fs::reader::{read_entries, rename_path},
@@ -21,7 +21,7 @@ pub struct Commander {
 }
 
 impl Commander {
-    pub fn new(initial_path: PathBuf, archive_config: ArchiveConfig) -> Result<Self> {
+    pub fn new(initial_path: PathBuf, _archive_config: ArchiveConfig) -> Result<Self> {
         let left = Panel::new(
             PanelLocation::filesystem(initial_path.clone()),
             read_entries(&initial_path)?,
@@ -31,9 +31,7 @@ impl Commander {
             read_entries(&initial_path)?,
         );
         let roots = platform::available_roots();
-        let archive_service = ArchiveService::new(vec![Arc::new(
-            SevenZipBackend::from_optional_path(archive_config.seven_zip_path),
-        )]);
+        let archive_service = ArchiveService::with_default_backends();
 
         Ok(Self {
             state: AppState::new(left, right, roots),
@@ -50,13 +48,10 @@ impl Commander {
     }
 
     pub fn apply_archive_config(&mut self, archive_config: ArchiveConfig) -> ViewUpdate {
-        self.archive_service = ArchiveService::new(vec![Arc::new(
-            SevenZipBackend::from_optional_path(archive_config.seven_zip_path.clone()),
-        )]);
-        self.state.status = match archive_config.seven_zip_path {
-            Some(path) => format!("Archive settings updated. 7-Zip path: {}", path.display()),
-            None => "Archive settings updated. Using bundled/default 7-Zip path.".into(),
-        };
+        let _ = archive_config;
+        self.archive_service = ArchiveService::with_default_backends();
+        self.state.status =
+            "Archive settings updated. Internal/native archive backends are active.".into();
         ViewUpdate::status()
     }
 
@@ -347,17 +342,16 @@ impl Commander {
         let source_panel = self.state.active_panel();
         let target_panel = self.state.inactive_panel();
 
-        if source_panel.location.filesystem_path().is_none() {
-            bail!("Archive extraction through F5 is prepared in the service layer but not yet wired into the command bar");
+        if source_panel.location.filesystem_path().is_none() && !matches!(kind, FileOperationKind::Copy) {
+            bail!("Archive sources currently support copy only");
         }
 
-        let sources = source_panel
+        let selected_items = source_panel
             .selected_items()
             .into_iter()
-            .map(|item| item.path)
             .collect::<Vec<_>>();
 
-        if sources.is_empty() {
+        if selected_items.is_empty() {
             bail!("No entries selected for this file operation");
         }
 
@@ -368,10 +362,27 @@ impl Commander {
             }
         };
 
+        let archive_source = match &source_panel.location {
+            PanelLocation::Archive(view) => {
+                if target_panel.location.filesystem_path().is_none() {
+                    bail!("Archive items can only be copied to a real filesystem directory");
+                }
+                Some(ArchiveSourceRequest {
+                    session: view.session.clone(),
+                    entry_paths: selected_items
+                        .iter()
+                        .filter_map(|item| item.archive_path.clone())
+                        .collect(),
+                })
+            }
+            PanelLocation::Filesystem(_) => None,
+        };
+
         Ok(FileOperationRequest {
             kind,
-            sources,
+            sources: selected_items.into_iter().map(|item| item.path).collect(),
             target_directory,
+            archive_source,
         })
     }
 

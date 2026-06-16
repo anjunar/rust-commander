@@ -10,8 +10,8 @@ use std::{
 };
 
 use super::{
-    ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveFormatDetector,
-    ArchiveOperation, ArchiveProgress, ArchiveSession,
+    ArchiveBackendRegistry, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveOperation,
+    ArchiveProgress, ArchiveSession,
 };
 use crate::{
     archive::safe_join_extract_path,
@@ -19,9 +19,9 @@ use crate::{
     fs::reader::format_bytes,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ArchiveService {
-    backends: Arc<Vec<Arc<dyn ArchiveBackend>>>,
+    registry: Arc<ArchiveBackendRegistry>,
 }
 
 #[derive(Clone)]
@@ -60,39 +60,22 @@ pub enum ArchiveTaskEvent {
 }
 
 impl ArchiveService {
-    pub fn new(backends: Vec<Arc<dyn ArchiveBackend>>) -> Self {
+    pub fn new(registry: ArchiveBackendRegistry) -> Self {
         Self {
-            backends: Arc::new(backends),
+            registry: Arc::new(registry),
         }
     }
 
-    pub fn empty() -> Self {
-        Self::new(Vec::new())
+    pub fn with_default_backends() -> Self {
+        Self::new(ArchiveBackendRegistry::with_default_backends())
     }
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
-        ArchiveFormatDetector::is_supported_archive(path)
+        self.registry.is_archive_path(path)
     }
 
     pub fn open_archive(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
-        let backend = self
-            .backends
-            .iter()
-            .find(|backend| backend.can_open(path))
-            .ok_or_else(|| {
-                if ArchiveFormatDetector::is_supported_archive(path) {
-                    ArchiveError::BackendNotFound {
-                        backend: "archive backend".into(),
-                        path: Some(path.to_path_buf()),
-                    }
-                } else {
-                    ArchiveError::UnsupportedFormat {
-                        path: path.to_path_buf(),
-                    }
-                }
-            })?;
-
-        backend.open(path)
+        self.registry.resolve_for_path(path)?.open(path)
     }
 
     pub fn entries_for_location(&self, location: &PanelLocation) -> Result<Vec<Entry>, ArchiveError> {
@@ -160,14 +143,11 @@ impl ArchiveService {
         (handle, rx)
     }
 
-    pub fn backend_for_session(&self, session: &ArchiveSession) -> Result<&Arc<dyn ArchiveBackend>, ArchiveError> {
-        self.backends
-            .iter()
-            .find(|backend| backend.id() == session.backend_id())
-            .ok_or_else(|| ArchiveError::BackendNotFound {
-                backend: session.backend_id().into(),
-                path: Some(session.archive_path().to_path_buf()),
-            })
+    pub fn backend_for_session(
+        &self,
+        session: &ArchiveSession,
+    ) -> Result<Arc<dyn super::ArchiveBackend>, ArchiveError> {
+        self.registry.backend_for_session(session)
     }
 
     fn extract_selection(
@@ -186,22 +166,18 @@ impl ArchiveService {
 
         let backend = self.backend_for_session(session)?;
         let total_entries = entry_paths.len() as u64;
+        let _ = tx.send(ArchiveTaskEvent::Progress(ArchiveProgress {
+            operation: Some(ArchiveOperation::ExtractEntries {
+                entry_paths: entry_paths.to_vec(),
+                target_dir: target_dir.to_path_buf(),
+            }),
+            processed_entries: Some(0),
+            total_entries: Some(total_entries),
+            percent: Some(0.0),
+            ..ArchiveProgress::default()
+        }));
 
-        for (index, entry_path) in entry_paths.iter().enumerate() {
-            let _ = tx.send(ArchiveTaskEvent::Progress(ArchiveProgress {
-                operation: Some(ArchiveOperation::ExtractEntry {
-                    entry_path: entry_path.clone(),
-                    target_dir: target_dir.to_path_buf(),
-                }),
-                current_path: Some(entry_path.clone()),
-                processed_entries: Some(index as u64),
-                total_entries: Some(total_entries),
-                percent: Some(index as f64 / total_entries.max(1) as f64),
-                ..ArchiveProgress::default()
-            }));
-            backend.extract_entry(session, entry_path, target_dir)?;
-        }
-
+        backend.extract_entries(session, entry_paths, target_dir)?;
         let _ = tx.send(ArchiveTaskEvent::Finished(format!(
             "Extracted {} item(s) to {}",
             entry_paths.len(),
@@ -292,7 +268,7 @@ impl ArchiveService {
 
 impl Default for ArchiveService {
     fn default() -> Self {
-        Self::empty()
+        Self::with_default_backends()
     }
 }
 

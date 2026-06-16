@@ -1,34 +1,46 @@
 mod detector;
 mod error;
+mod libarchive;
 mod path;
+mod plugin;
+mod registry;
 mod service;
-mod sevenzip;
+mod unrar;
+mod zip_backend;
 
 use std::{
     fmt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::SystemTime,
 };
 
 pub use detector::{ArchiveFormat, ArchiveFormatDetector};
-pub use error::{ArchiveError, map_seven_zip_exit_code};
+pub use error::ArchiveError;
+pub use libarchive::LibArchiveBackend;
 pub use path::safe_join_extract_path;
-pub use service::{ArchiveService, ArchiveTaskHandle, ArchiveTaskEvent, ArchiveTaskRequest};
-pub use sevenzip::{SevenZipBackend, parse_technical_listing};
+pub use plugin::PluginArchiveBackend;
+pub use registry::ArchiveBackendRegistry;
+pub use service::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest};
+pub use unrar::UnrarBackend;
+pub use zip_backend::ZipBackend;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ArchiveCapabilities {
     pub list: bool,
     pub extract_single: bool,
+    pub extract_multiple: bool,
     pub extract_all: bool,
     pub test: bool,
     pub password: bool,
     pub progress: bool,
     pub cancel: bool,
-    pub write_archive: bool,
+    pub create_archive: bool,
+    pub update_archive: bool,
     pub delete_entry: bool,
     pub rename_entry: bool,
+    pub solid_archive: bool,
+    pub multi_volume: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +70,7 @@ pub enum ArchiveOperation {
     OpenArchive,
     List,
     ExtractEntry { entry_path: String, target_dir: PathBuf },
+    ExtractEntries { entry_paths: Vec<String>, target_dir: PathBuf },
     ExtractAll { target_dir: PathBuf },
     Test,
 }
@@ -92,16 +105,11 @@ struct ArchiveSessionInner {
     detected_format: Option<ArchiveFormat>,
     cached_entries: Vec<ArchiveEntry>,
     capabilities: ArchiveCapabilities,
-    session_kind: ArchiveSessionKind,
-}
-
-#[derive(Debug)]
-pub(crate) enum ArchiveSessionKind {
-    SevenZip,
 }
 
 impl ArchiveSession {
-    pub(crate) fn seven_zip(
+    pub fn new(
+        backend_id: &'static str,
         archive_path: PathBuf,
         detected_format: Option<ArchiveFormat>,
         cached_entries: Vec<ArchiveEntry>,
@@ -109,17 +117,16 @@ impl ArchiveSession {
     ) -> Self {
         Self {
             inner: Arc::new(ArchiveSessionInner {
-                backend_id: "seven_zip",
+                backend_id,
                 archive_path,
                 detected_format,
                 cached_entries,
                 capabilities,
-                session_kind: ArchiveSessionKind::SevenZip,
             }),
         }
     }
 
-    pub fn archive_path(&self) -> &std::path::Path {
+    pub fn archive_path(&self) -> &Path {
         &self.inner.archive_path
     }
 
@@ -138,29 +145,38 @@ impl ArchiveSession {
     pub(crate) fn backend_id(&self) -> &'static str {
         self.inner.backend_id
     }
-
-    pub(crate) fn session_kind(&self) -> &ArchiveSessionKind {
-        &self.inner.session_kind
-    }
 }
 
 pub trait ArchiveBackend: Send + Sync {
     fn id(&self) -> &'static str;
-    fn display_name(&self) -> &'static str;
+    fn name(&self) -> &'static str;
+    fn priority(&self) -> u32;
+    fn supported_extensions(&self) -> &'static [&'static str];
     fn capabilities(&self) -> ArchiveCapabilities;
-    fn can_open(&self, path: &std::path::Path) -> bool;
-    fn open(&self, path: &std::path::Path) -> Result<ArchiveSession, ArchiveError>;
+    fn can_open(&self, path: &Path) -> bool;
+    fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError>;
     fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError>;
     fn extract_entry(
         &self,
         session: &ArchiveSession,
         entry_path: &str,
-        target_dir: &std::path::Path,
+        target_dir: &Path,
     ) -> Result<(), ArchiveError>;
+    fn extract_entries(
+        &self,
+        session: &ArchiveSession,
+        entry_paths: &[String],
+        target_dir: &Path,
+    ) -> Result<(), ArchiveError> {
+        for entry_path in entry_paths {
+            self.extract_entry(session, entry_path, target_dir)?;
+        }
+        Ok(())
+    }
     fn extract_all(
         &self,
         session: &ArchiveSession,
-        target_dir: &std::path::Path,
+        target_dir: &Path,
     ) -> Result<(), ArchiveError>;
     fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError>;
 }
@@ -169,6 +185,8 @@ impl fmt::Debug for dyn ArchiveBackend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ArchiveBackend")
             .field("id", &self.id())
+            .field("name", &self.name())
+            .field("priority", &self.priority())
             .finish()
     }
 }

@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::{Path, PathBuf}};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -45,9 +42,7 @@ impl Default for WindowConfig {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ArchiveConfig {
-    pub seven_zip_path: Option<PathBuf>,
-}
+pub struct ArchiveConfig {}
 
 pub fn load() -> Result<AppConfig> {
     let path = config_file_path().context("Could not determine config file path")?;

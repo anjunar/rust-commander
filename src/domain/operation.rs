@@ -3,6 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::archive::ArchiveSession;
+
 #[derive(Clone, Debug)]
 pub enum FileOperationKind {
     Copy,
@@ -33,6 +35,13 @@ pub struct FileOperationRequest {
     pub kind: FileOperationKind,
     pub sources: Vec<PathBuf>,
     pub target_directory: Option<PathBuf>,
+    pub archive_source: Option<ArchiveSourceRequest>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ArchiveSourceRequest {
+    pub session: ArchiveSession,
+    pub entry_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug)]

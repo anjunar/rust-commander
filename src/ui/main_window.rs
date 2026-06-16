@@ -11,6 +11,7 @@ use gtk::{glib, prelude::*};
 
 use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
+    archive::{ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
     config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
         PanelLocation,
@@ -38,7 +39,7 @@ pub struct MainWindow {
     busy_spinner: gtk::Spinner,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
-    active_operation: Rc<RefCell<Option<OperationHandle>>>,
+    active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
@@ -49,6 +50,27 @@ struct DirectoryLoadResult {
     next_location: PanelLocation,
     entries: Vec<crate::domain::Entry>,
     status: String,
+}
+
+#[derive(Clone)]
+enum ActiveOperationHandle {
+    File(OperationHandle),
+    Archive(ArchiveTaskHandle),
+}
+
+impl ActiveOperationHandle {
+    fn cancel(&self) {
+        match self {
+            Self::File(handle) => handle.cancel(),
+            Self::Archive(handle) => handle.cancel(),
+        }
+    }
+
+    fn resolve_conflict(&self, resolution: crate::domain::operation::ConflictResolution) {
+        if let Self::File(handle) = self {
+            handle.resolve_conflict(resolution);
+        }
+    }
 }
 
 impl MainWindow {
@@ -680,8 +702,15 @@ impl MainWindow {
     }
 
     fn start_file_operation(self: &Rc<Self>, request: FileOperationRequest) {
+        if request.archive_source.is_some() {
+            self.start_archive_extract_operation(request);
+            return;
+        }
+
         let (handle, receiver) = start_operation(request.clone());
-        self.active_operation.borrow_mut().replace(handle.clone());
+        self.active_operation
+            .borrow_mut()
+            .replace(ActiveOperationHandle::File(handle.clone()));
 
         let active_operation = Rc::clone(&self.active_operation);
         let progress_dialog = dialogs::ProgressDialog::new(
@@ -765,6 +794,100 @@ impl MainWindow {
                         };
                         this.apply_update(update);
                         dialogs::show_error(&this.window, "File operation failed", &error);
+                        keep_running = false;
+                    }
+                }
+            }
+
+            if keep_running {
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+    }
+
+    fn start_archive_extract_operation(self: &Rc<Self>, request: FileOperationRequest) {
+        let Some(archive_source) = request.archive_source.clone() else {
+            return;
+        };
+        let Some(target_dir) = request.target_directory.clone() else {
+            dialogs::show_error(
+                &self.window,
+                "Archive copy is not available",
+                "No filesystem target directory is available.",
+            );
+            return;
+        };
+
+        let archive_service = self.commander.borrow().archive_service();
+        let (handle, receiver) = archive_service.start_task(ArchiveTaskRequest::ExtractSelection {
+            session: archive_source.session,
+            entry_paths: archive_source.entry_paths,
+            target_dir,
+        });
+        self.active_operation
+            .borrow_mut()
+            .replace(ActiveOperationHandle::Archive(handle.clone()));
+
+        let active_operation = Rc::clone(&self.active_operation);
+        let progress_dialog = dialogs::ProgressDialog::new(&self.window, "Archive copy", move || {
+            if let Some(handle) = active_operation.borrow().as_ref() {
+                handle.cancel();
+            }
+        });
+
+        let this = Rc::clone(self);
+        glib::timeout_add_local(Duration::from_millis(80), move || {
+            let mut keep_running = true;
+
+            while let Ok(event) = receiver.try_recv() {
+                match event {
+                    ArchiveTaskEvent::Progress(progress) => {
+                        progress_dialog.update_archive_progress(&progress);
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(format!(
+                                "Copy: {}",
+                                progress
+                                    .current_path
+                                    .clone()
+                                    .unwrap_or_else(|| "Archive extraction in progress".into())
+                            ))
+                        };
+                        this.apply_update(update);
+                    }
+                    ArchiveTaskEvent::Finished(message) => {
+                        progress_dialog.close();
+                        this.active_operation.borrow_mut().take();
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.refresh_with_status(message)
+                        };
+                        this.apply_update(update);
+                        this.sync_watched_paths();
+                        keep_running = false;
+                    }
+                    ArchiveTaskEvent::Cancelled => {
+                        progress_dialog.close();
+                        this.active_operation.borrow_mut().take();
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.refresh_with_status("Archive copy cancelled.".into())
+                        };
+                        this.apply_update(update);
+                        this.sync_watched_paths();
+                        keep_running = false;
+                    }
+                    ArchiveTaskEvent::Failed(error) => {
+                        progress_dialog.close();
+                        this.active_operation.borrow_mut().take();
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(format!("Archive copy failed: {error}"))
+                        };
+                        this.apply_update(update);
+                        dialogs::show_error(&this.window, "Archive copy failed", &error.to_string());
                         keep_running = false;
                     }
                 }

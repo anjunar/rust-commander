@@ -3,7 +3,6 @@ use std::path::Path;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArchiveFormat {
     Zip,
-    SevenZip,
     Rar,
     Tar,
     TarGz,
@@ -37,7 +36,6 @@ impl ArchiveFormatDetector {
             (".tar.xz", ArchiveFormat::TarXz),
             (".txz", ArchiveFormat::TarXz),
             (".zip", ArchiveFormat::Zip),
-            (".7z", ArchiveFormat::SevenZip),
             (".rar", ArchiveFormat::Rar),
             (".tar", ArchiveFormat::Tar),
             (".gz", ArchiveFormat::Gz),
@@ -80,6 +78,10 @@ mod tests {
         assert_eq!(
             ArchiveFormatDetector::detect(std::path::Path::new("docs.ZIP")),
             Some(ArchiveFormat::Zip)
+        );
+        assert_eq!(
+            ArchiveFormatDetector::detect(std::path::Path::new("movie.rar")),
+            Some(ArchiveFormat::Rar)
         );
         assert_eq!(
             ArchiveFormatDetector::detect(std::path::Path::new("image.iso")),

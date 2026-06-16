@@ -1,4 +1,4 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{glib, prelude::*};
 
@@ -235,41 +235,19 @@ where
     content.append(&title);
 
     let description = gtk::Label::new(Some(
-        "Configure external tools used by RCommander.",
+        "Archive support is prepared around internal and native backends. No external archive tool is configured in this stage.",
     ));
     description.set_xalign(0.0);
     description.set_wrap(true);
     content.append(&description);
 
-    let field_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    content.append(&field_box);
-
-    let field_label = gtk::Label::new(Some("7-Zip executable"));
-    field_label.set_xalign(0.0);
-    field_box.append(&field_label);
-
-    let input_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    field_box.append(&input_row);
-
-    let seven_zip_entry = gtk::Entry::new();
-    seven_zip_entry.set_hexpand(true);
-    seven_zip_entry.set_placeholder_text(Some(
-        "Leave empty to use the bundled/default 7-Zip location",
+    let info = gtk::Label::new(Some(
+        "Current stage: built-in ZIP backend plus native-backend placeholders for libarchive, UnRAR and plugins.",
     ));
-    if let Some(path) = &current_config.archive.seven_zip_path {
-        seven_zip_entry.set_text(&path.display().to_string());
-    }
-    input_row.append(&seven_zip_entry);
-
-    let browse_button = gtk::Button::with_label("Browse...");
-    input_row.append(&browse_button);
-
-    let hint = gtk::Label::new(Some(
-        "Example on Windows: C:\\Program Files\\7-Zip\\7z.exe",
-    ));
-    hint.set_xalign(0.0);
-    hint.add_css_class("dim-label");
-    field_box.append(&hint);
+    info.set_xalign(0.0);
+    info.set_wrap(true);
+    info.add_css_class("dim-label");
+    content.append(&info);
 
     let cancel_button = gtk::Button::with_label("Cancel");
     let save_button = gtk::Button::with_label("Save");
@@ -285,43 +263,14 @@ where
         });
     }
 
-    {
-        let parent = parent.clone();
-        let entry = seven_zip_entry.clone();
-        browse_button.connect_clicked(move |_| {
-            let chooser = gtk::FileDialog::builder()
-                .title("Select 7-Zip executable")
-                .modal(true)
-                .build();
-            let entry = entry.clone();
-            chooser.open(
-                Some(&parent),
-                None::<&gtk::gio::Cancellable>,
-                move |result| {
-                    if let Ok(file) = result
-                        && let Some(path) = file.path()
-                    {
-                    entry.set_text(&path.display().to_string());
-                }
-                },
-            );
-        });
-    }
-
     let callback = Rc::new(RefCell::new(Some(on_save)));
     {
         let window = window.clone();
-        let entry = seven_zip_entry.clone();
         let callback = Rc::clone(&callback);
         let current_config = current_config.clone();
         save_button.connect_clicked(move |_| {
             let mut next_config = current_config.clone();
-            let value = entry.text().trim().to_string();
-            next_config.archive.seven_zip_path = if value.is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(value))
-            };
+            next_config.archive = current_config.archive.clone();
 
             if let Some(on_save) = callback.borrow_mut().take() {
                 on_save(next_config);
@@ -332,7 +281,7 @@ where
 
     glib::idle_add_local_once(move || {
         window.present();
-        seven_zip_entry.grab_focus();
+        save_button.grab_focus();
     });
 }
 
@@ -449,6 +398,45 @@ impl ProgressDialog {
             .set_label(&crate::fs::operations::format_eta(snapshot));
     }
 
+    pub fn update_archive_progress(&self, progress: &crate::archive::ArchiveProgress) {
+        self.title.set_label("Archive copy in progress");
+
+        let detail = progress.current_path.clone().unwrap_or_else(|| {
+            progress
+                .operation
+                .as_ref()
+                .map(|operation| match operation {
+                    crate::archive::ArchiveOperation::ExtractEntry { entry_path, .. } => entry_path.clone(),
+                    crate::archive::ArchiveOperation::ExtractEntries { entry_paths, .. } => {
+                        format!("{} selected archive items", entry_paths.len())
+                    }
+                    crate::archive::ArchiveOperation::ExtractAll { .. } => {
+                        "Extracting complete archive".into()
+                    }
+                    crate::archive::ArchiveOperation::OpenArchive => "Opening archive".into(),
+                    crate::archive::ArchiveOperation::List => "Listing archive".into(),
+                    crate::archive::ArchiveOperation::Test => "Testing archive".into(),
+                })
+                .unwrap_or_else(|| "Preparing archive operation...".into())
+        });
+        self.detail.set_label(&detail);
+
+        if let Some(percent) = progress.percent {
+            let clamped = percent.clamp(0.0, 1.0);
+            self.progress.set_fraction(clamped);
+            self.progress
+                .set_text(Some(&format!("{:.0}%", clamped * 100.0)));
+        } else {
+            self.progress.pulse();
+            self.progress.set_text(Some("Working..."));
+        }
+
+        let processed_entries = progress.processed_entries.unwrap_or(0);
+        let total_entries = progress.total_entries.unwrap_or(0);
+        self.eta
+            .set_label(&format!("Items {processed_entries}/{total_entries}"));
+    }
+
     pub fn set_waiting_for_conflict(&self) {
         self.detail.set_label("Waiting for conflict resolution...");
         self.progress.pulse();
@@ -460,6 +448,14 @@ impl ProgressDialog {
 }
 
 fn source_label(request: &FileOperationRequest) -> String {
+    if let Some(archive_source) = &request.archive_source {
+        return if archive_source.entry_paths.len() == 1 {
+            archive_source.entry_paths[0].clone()
+        } else {
+            format!("{} archive items", archive_source.entry_paths.len())
+        };
+    }
+
     if request.sources.len() == 1 {
         request
             .sources
