@@ -1,11 +1,14 @@
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::SystemTime,
 };
+
+use crate::domain::panel_location::PanelLocation;
 
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub name: String,
+    pub archive_path: Option<String>,
     pub is_dir: bool,
     pub size_bytes: u64,
     pub size_label: String,
@@ -20,6 +23,7 @@ impl Entry {
     pub fn parent_link() -> Self {
         Self {
             name: "..".into(),
+            archive_path: None,
             is_dir: true,
             size_bytes: 0,
             size_label: "-".into(),
@@ -31,11 +35,7 @@ impl Entry {
         }
     }
 
-    pub fn full_path(&self, base_path: &Path) -> PathBuf {
-        if self.is_parent_link {
-            base_path.parent().unwrap_or(base_path).to_path_buf()
-        } else {
-            base_path.join(&self.name)
-        }
+    pub fn full_path(&self, location: &PanelLocation) -> PathBuf {
+        location.entry_display_path(self)
     }
 }

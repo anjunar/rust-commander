@@ -68,11 +68,15 @@ impl AppState {
     }
 
     pub fn visible_paths(&self) -> Vec<PathBuf> {
-        vec![self.left.path.clone(), self.right.path.clone()]
+        [self.left.location.filesystem_path(), self.right.location.filesystem_path()]
+            .into_iter()
+            .flatten()
+            .map(PathBuf::from)
+            .collect()
     }
 
     pub fn selected_root_index(&self, panel: ActivePanel) -> Option<usize> {
-        let path = &self.panel(panel).path;
+        let path = self.panel(panel).location.filesystem_path()?;
         self.roots
             .iter()
             .position(|root| path.starts_with(&root.path))

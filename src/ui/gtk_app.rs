@@ -30,7 +30,7 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let commander = match Commander::new(initial_path) {
+        let commander = match Commander::new(initial_path, app_config.archive.clone()) {
             Ok(commander) => commander,
             Err(error) => {
                 eprintln!("Could not initialize RCommander: {error}");

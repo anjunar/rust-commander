@@ -8,7 +8,7 @@ use std::{
 
 use gtk::gdk;
 
-use crate::domain::entry::Entry;
+use crate::domain::{entry::Entry, panel_location::PanelLocation};
 
 #[derive(Clone)]
 pub struct FileIcon {
@@ -37,8 +37,8 @@ enum IconKey {
     File,
 }
 
-pub fn icon_for_entry(base_path: &Path, entry: &Entry) -> FileIcon {
-    let key = icon_key_for_entry(base_path, entry);
+pub fn icon_for_entry(location: &PanelLocation, entry: &Entry) -> FileIcon {
+    let key = icon_key_for_entry(location, entry);
     let stamp = cache_stamp_for_key(&key);
 
     ICON_CACHE.with(|cache| {
@@ -64,14 +64,16 @@ pub fn icon_for_entry(base_path: &Path, entry: &Entry) -> FileIcon {
     })
 }
 
-fn icon_key_for_entry(base_path: &Path, entry: &Entry) -> IconKey {
+fn icon_key_for_entry(location: &PanelLocation, entry: &Entry) -> IconKey {
     if entry.is_parent_link {
         return IconKey::ParentDirectory;
     }
 
-    let full_path = base_path.join(&entry.name);
-    if full_path.exists() {
-        return IconKey::ExistingPath(full_path);
+    if let Some(base_path) = location.filesystem_path() {
+        let full_path = base_path.join(&entry.name);
+        if full_path.exists() {
+            return IconKey::ExistingPath(full_path);
+        }
     }
 
     if entry.is_dir {

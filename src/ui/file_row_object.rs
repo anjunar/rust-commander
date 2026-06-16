@@ -1,9 +1,12 @@
-use std::{cell::RefCell, path::Path};
+use std::cell::RefCell;
 
 use gtk::gdk;
 use gtk::glib::{self, subclass::prelude::*};
 
-use crate::{domain::entry::Entry, platform};
+use crate::{
+    domain::{entry::Entry, panel_location::PanelLocation},
+    platform,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct FileRowData {
@@ -42,19 +45,19 @@ glib::wrapper! {
 }
 
 impl FileRowObject {
-    pub fn new(base_path: &Path, entry: &Entry) -> Self {
+    pub fn new(location: &PanelLocation, entry: &Entry) -> Self {
         let object: Self = glib::Object::new();
-        object.update(base_path, entry);
+        object.update(location, entry);
         object
     }
 
-    pub fn update(&self, base_path: &Path, entry: &Entry) {
-        self.imp().data.replace(Self::build_data(base_path, entry));
+    pub fn update(&self, location: &PanelLocation, entry: &Entry) {
+        self.imp().data.replace(Self::build_data(location, entry));
     }
 
-    pub fn matches_entry(&self, base_path: &Path, entry: &Entry) -> bool {
+    pub fn matches_entry(&self, location: &PanelLocation, entry: &Entry) -> bool {
         let data = self.imp().data.borrow();
-        let path = entry.full_path(base_path).display().to_string();
+        let path = entry.full_path(location).display().to_string();
 
         data.name == entry.name
             && data.path == path
@@ -67,11 +70,11 @@ impl FileRowObject {
             && data.is_parent_link == entry.is_parent_link
     }
 
-    fn build_data(base_path: &Path, entry: &Entry) -> FileRowData {
-        let icon = platform::icon_for_entry(base_path, entry);
+    fn build_data(location: &PanelLocation, entry: &Entry) -> FileRowData {
+        let icon = platform::icon_for_entry(location, entry);
         FileRowData {
             name: entry.name.clone(),
-            path: entry.full_path(base_path).display().to_string(),
+            path: entry.full_path(location).display().to_string(),
             size: entry.size_label.clone(),
             type_label: entry.type_label.clone(),
             modified: entry.modified_label.clone(),

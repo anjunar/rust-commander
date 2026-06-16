@@ -1,7 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeSet,
-    path::{Path, PathBuf},
+    path::PathBuf,
     rc::Rc,
 };
 
@@ -9,7 +9,7 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     application::ActivePanel,
-    domain::{Entry, RootLocation, sorting::SortColumn},
+    domain::{Entry, PanelLocation, RootLocation, sorting::SortColumn},
     ui::{
         columns::{FileColumnBinding, append_file_columns},
         file_row_object::FileRowObject,
@@ -104,15 +104,20 @@ impl FilePanelView {
         }
     }
 
-    pub fn set_path(&self, path: &Path) {
-        self.path_label.set_label(&path.display().to_string());
+    pub fn set_path(&self, label: &str) {
+        self.path_label.set_label(label);
     }
 
-    pub fn set_entries(&self, base_path: &Path, entries: &[Entry], selected: BTreeSet<usize>) {
+    pub fn set_entries(
+        &self,
+        location: &PanelLocation,
+        entries: &[Entry],
+        selected: BTreeSet<usize>,
+    ) {
         let was_ignoring_sort = self.ignore_sort.replace(true);
         self.ignore_selection.set(true);
         let primary_selected = selected.iter().next().copied();
-        self.sync_store(base_path, entries);
+        self.sync_store(location, entries);
 
         self.selection.unselect_all();
         for index in selected {
@@ -136,14 +141,15 @@ impl FilePanelView {
         }
     }
 
-    fn sync_store(&self, base_path: &Path, entries: &[Entry]) {
+    fn sync_store(&self, location: &PanelLocation, entries: &[Entry]) {
         let mut current_entries_path = self.current_entries_path.borrow_mut();
-        if current_entries_path.as_deref() != Some(base_path) {
+        let location_label = location.display_label();
+        if current_entries_path.as_deref() != Some(std::path::Path::new(&location_label)) {
             self.store.remove_all();
             for entry in entries {
-                self.store.append(&FileRowObject::new(base_path, entry));
+                self.store.append(&FileRowObject::new(location, entry));
             }
-            *current_entries_path = Some(base_path.to_path_buf());
+            *current_entries_path = Some(PathBuf::from(location_label));
             return;
         }
 
@@ -153,24 +159,24 @@ impl FilePanelView {
             let entry = &entries[index];
             let Some(row) = self.row_at(index) else {
                 self.store
-                    .insert(index as u32, &FileRowObject::new(base_path, entry));
+                    .insert(index as u32, &FileRowObject::new(location, entry));
                 index += 1;
                 continue;
             };
 
-            if row.matches_entry(base_path, entry) {
+            if row.matches_entry(location, entry) {
                 index += 1;
                 continue;
             }
 
-            if let Some(existing_index) = self.find_matching_row(index + 1, base_path, entry) {
+            if let Some(existing_index) = self.find_matching_row(index + 1, location, entry) {
                 for _ in index..existing_index {
                     self.store.remove(index as u32);
                 }
                 continue;
             }
 
-            row.update(base_path, entry);
+            row.update(location, entry);
             index += 1;
         }
 
@@ -188,12 +194,12 @@ impl FilePanelView {
     fn find_matching_row(
         &self,
         start_index: usize,
-        base_path: &Path,
+        location: &PanelLocation,
         entry: &Entry,
     ) -> Option<usize> {
         (start_index..self.store.n_items() as usize).find(|index| {
             self.row_at(*index)
-                .map(|row| row.matches_entry(base_path, entry))
+                .map(|row| row.matches_entry(location, entry))
                 .unwrap_or(false)
         })
     }

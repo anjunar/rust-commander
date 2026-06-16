@@ -15,6 +15,7 @@ pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
 
             Some(Entry {
                 name: file_name.clone(),
+                archive_path: None,
                 is_dir: metadata.is_dir(),
                 size_bytes: metadata.len(),
                 size_label: format_size(&metadata, metadata.is_dir()),

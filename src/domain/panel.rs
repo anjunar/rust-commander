@@ -1,12 +1,13 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use anyhow::{Result, bail};
 
 use crate::domain::{
     entry::Entry,
+    panel_location::PanelLocation,
     selection::SelectionModel,
     sorting::{SortColumn, SortDirection, SortState, sort_entries},
 };
@@ -14,6 +15,7 @@ use crate::domain::{
 #[derive(Clone, Debug)]
 pub struct SelectedEntry {
     pub path: PathBuf,
+    pub archive_path: Option<String>,
     pub is_dir: bool,
     pub is_parent_link: bool,
     pub display_name: String,
@@ -27,21 +29,21 @@ struct SelectedPosition {
 
 #[derive(Clone, Debug)]
 pub struct Panel {
-    pub path: PathBuf,
+    pub location: PanelLocation,
     pub entries: Vec<Entry>,
     pub selection: SelectionModel,
     pub sort_state: SortState,
-    selected_history: HashMap<PathBuf, SelectedPosition>,
+    selected_history: HashMap<String, SelectedPosition>,
 }
 
 impl Panel {
-    pub fn new(path: PathBuf, mut entries: Vec<Entry>) -> Self {
+    pub fn new(location: PanelLocation, mut entries: Vec<Entry>) -> Self {
         let sort_state = SortState::default();
         sort_entries(&mut entries, sort_state);
         let selected = (!entries.is_empty()).then_some(0);
 
         Self {
-            path,
+            location,
             entries,
             selection: SelectionModel::single(selected),
             sort_state,
@@ -56,9 +58,9 @@ impl Panel {
         self.selection = self.restore_selection(preserved_selection);
     }
 
-    pub fn navigate_to(&mut self, next_path: PathBuf, mut entries: Vec<Entry>) {
+    pub fn navigate_to(&mut self, next_location: PanelLocation, mut entries: Vec<Entry>) {
         self.save_selection_for_current_path();
-        self.path = next_path;
+        self.location = next_location;
         sort_entries(&mut entries, self.sort_state);
         self.entries = entries;
         self.selection = self.restore_selection(PreservedSelection::default());
@@ -72,13 +74,14 @@ impl Panel {
 
     pub fn selected_path(&self) -> Option<PathBuf> {
         self.selected_entry()
-            .map(|entry| entry.full_path(&self.path))
+            .map(|entry| entry.full_path(&self.location))
     }
 
     pub fn selected_item(&self) -> Option<SelectedEntry> {
         let entry = self.selected_entry()?;
         Some(SelectedEntry {
-            path: entry.full_path(&self.path),
+            path: entry.full_path(&self.location),
+            archive_path: entry.archive_path.clone(),
             is_dir: entry.is_dir,
             is_parent_link: entry.is_parent_link,
             display_name: entry.name.clone(),
@@ -91,7 +94,8 @@ impl Panel {
             .filter_map(|index| self.entries.get(index))
             .filter(|entry| !entry.is_parent_link)
             .map(|entry| SelectedEntry {
-                path: self.path.join(&entry.name),
+                path: entry.full_path(&self.location),
+                archive_path: entry.archive_path.clone(),
                 is_dir: entry.is_dir,
                 is_parent_link: false,
                 display_name: entry.name.clone(),
@@ -154,13 +158,19 @@ impl Panel {
             bail!("The new name must not contain path separators");
         }
 
-        let source = self.path.join(&entry.name);
-        let target = self.path.join(new_name);
+        let Some(base_path) = self.location.filesystem_path() else {
+            bail!("Rename is only available in the real filesystem");
+        };
+
+        let source = base_path.join(&entry.name);
+        let target = base_path.join(new_name);
         Ok((source, target))
     }
 
     pub fn update_history_after_rename(&mut self, old_name: &str, new_name: &str) {
-        if let Some(saved) = self.selected_history.get_mut(&self.path)
+        if let Some(saved) = self
+            .selected_history
+            .get_mut(&self.location.history_key())
             && !saved.is_parent_link
             && saved.name == old_name
         {
@@ -177,7 +187,7 @@ impl Panel {
         };
 
         self.selected_history.insert(
-            self.path.clone(),
+            self.location.history_key(),
             SelectedPosition {
                 name: entry.name.clone(),
                 is_parent_link: entry.is_parent_link,
@@ -190,7 +200,7 @@ impl Panel {
             return None;
         }
 
-        if let Some(saved) = self.selected_history.get(&self.path)
+        if let Some(saved) = self.selected_history.get(&self.location.history_key())
             && let Some(index) = self.entries.iter().position(|entry| {
                 entry.name == saved.name && entry.is_parent_link == saved.is_parent_link
             })
@@ -278,28 +288,20 @@ struct PreservedSelection {
     selected: HashSet<String>,
 }
 
-pub fn parent_path(path: &Path) -> PathBuf {
-    path.parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| path.to_path_buf())
-}
-
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeSet, time::SystemTime};
 
     use super::Panel;
     use crate::domain::{
-        entry::Entry,
-        selection::SelectionModel,
+        PanelLocation, entry::Entry, selection::SelectionModel,
         sorting::{SortColumn, SortDirection},
     };
 
     #[test]
     fn replace_entries_restores_focus_anchor_and_selection_by_name() {
-        let path = std::path::PathBuf::from("/tmp");
         let mut panel = Panel::new(
-            path,
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
             vec![
                 entry("alpha"),
                 entry("beta"),
@@ -335,9 +337,8 @@ mod tests {
 
     #[test]
     fn sort_keeps_selected_entry_by_name() {
-        let path = std::path::PathBuf::from("/tmp");
         let mut panel = Panel::new(
-            path,
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
             vec![
                 sized_entry("b.txt", 30),
                 sized_entry("a.txt", 10),
@@ -358,6 +359,7 @@ mod tests {
     fn sized_entry(name: &str, size_bytes: u64) -> Entry {
         Entry {
             name: name.into(),
+            archive_path: None,
             is_dir: false,
             size_bytes,
             size_label: format!("{size_bytes} B"),

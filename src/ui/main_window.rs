@@ -13,6 +13,7 @@ use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
     config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
+        PanelLocation,
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
         sorting::SortDirection,
     },
@@ -45,7 +46,7 @@ pub struct MainWindow {
 
 struct DirectoryLoadResult {
     panel: ActivePanel,
-    next_path: PathBuf,
+    next_location: PanelLocation,
     entries: Vec<crate::domain::Entry>,
     status: String,
 }
@@ -88,7 +89,7 @@ impl MainWindow {
         shell.set_margin_end(8);
 
         let commander_view = CommanderView::new();
-        let initial_dir = commander.state().active_panel().path.clone();
+        let initial_dir = commander.state().active_panel().location.host_directory();
         let terminal_dock = TerminalDock::new(initial_dir);
 
         let content_paned = gtk::Paned::new(gtk::Orientation::Vertical);
@@ -265,6 +266,15 @@ impl MainWindow {
             return;
         }
 
+        if selected.archive_path.is_some() {
+            dialogs::show_error(
+                &self.window,
+                "View is not available",
+                "Viewing files directly inside archives is prepared architecturally, but not wired yet.",
+            );
+            return;
+        }
+
         if let Err(error) = file_viewer_dialog::open(&self.window, selected.path.clone()) {
             dialogs::show_error(&self.window, "Could not open viewer", &error.to_string());
         }
@@ -303,7 +313,13 @@ impl MainWindow {
     }
 
     pub fn handle_open_console(self: &Rc<Self>) {
-        let path = self.commander.borrow().state().active_panel().path.clone();
+        let path = self
+            .commander
+            .borrow()
+            .state()
+            .active_panel()
+            .location
+            .host_directory();
 
         if let Err(error) = crate::platform::open_console(&path) {
             dialogs::show_error(&self.window, "Could not open console", &error.to_string());
@@ -393,6 +409,15 @@ impl MainWindow {
             return;
         }
 
+        if selected.archive_path.is_some() {
+            dialogs::show_error(
+                &self.window,
+                "Edit is not available",
+                "Editing files directly inside archives is not supported in this stage.",
+            );
+            return;
+        }
+
         let this = Rc::clone(self);
         if let Err(error) =
             editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
@@ -440,14 +465,54 @@ impl MainWindow {
         };
 
         if selected.is_parent_link {
-            let status = format!("Up one level: {}", selected.path.display());
-            self.start_directory_load(panel, selected.path, status, "Loading parent directory...");
+            let next_location = {
+                let commander = self.commander.borrow();
+                commander.state().panel(panel).location.parent()
+            };
+            if let Some(next_location) = next_location {
+                let status = format!("Up one level: {}", next_location.display_label());
+                self.start_directory_load(
+                    panel,
+                    next_location,
+                    status,
+                    "Loading parent directory...",
+                );
+            }
             return;
         }
 
         if selected.is_dir {
             let status = format!("Opened: {}", selected.path.display());
-            self.start_directory_load(panel, selected.path, status, "Loading directory...");
+            let next_location = {
+                let commander = self.commander.borrow();
+                match commander.state().panel(panel).location.clone() {
+                    PanelLocation::Filesystem(_) => PanelLocation::filesystem(selected.path),
+                    PanelLocation::Archive(view) => {
+                        let Some(archive_path) = selected.archive_path else {
+                            return;
+                        };
+                        PanelLocation::archive(view.session, archive_path)
+                    }
+                }
+            };
+            self.start_directory_load(panel, next_location, status, "Loading directory...");
+            return;
+        }
+
+        if selected.archive_path.is_none()
+            && self
+                .commander
+                .borrow()
+                .archive_service()
+                .is_archive_path(&selected.path)
+        {
+            let status = format!("Opened archive: {}", selected.path.display());
+            self.start_directory_load(
+                panel,
+                PanelLocation::filesystem(selected.path),
+                status,
+                "Opening archive...",
+            );
             return;
         }
 
@@ -473,13 +538,18 @@ impl MainWindow {
             panel.label(),
             target_path.display()
         );
-        self.start_directory_load(panel, target_path, status, "Loading drive...");
+        self.start_directory_load(
+            panel,
+            PanelLocation::filesystem(target_path),
+            status,
+            "Loading drive...",
+        );
     }
 
     fn start_directory_load(
         self: &Rc<Self>,
         panel: ActivePanel,
-        next_path: PathBuf,
+        next_location: PanelLocation,
         status: String,
         busy_message: &'static str,
     ) {
@@ -490,17 +560,29 @@ impl MainWindow {
         self.set_navigation_busy(true, busy_message);
 
         let (tx, rx) = mpsc::channel();
-        let worker_path = next_path.clone();
+        let worker_location = next_location.clone();
         let worker_status = status.clone();
+        let archive_service = self.commander.borrow().archive_service();
         thread::spawn(move || {
-            let result = crate::fs::reader::read_entries(&worker_path)
-                .map(|entries| DirectoryLoadResult {
-                    panel,
-                    next_path: worker_path,
-                    entries,
-                    status: worker_status,
-                })
-                .map_err(|error| error.to_string());
+            let actual_location = match &worker_location {
+                PanelLocation::Filesystem(path)
+                    if archive_service.is_archive_path(path) && path.is_file() =>
+                {
+                    archive_service.archive_location_for_path(path)
+                }
+                _ => Ok(worker_location.clone()),
+            };
+            let result = actual_location.and_then(|location| {
+                archive_service
+                    .entries_for_location(&location)
+                    .map(|entries| DirectoryLoadResult {
+                        panel,
+                        next_location: location,
+                        entries,
+                        status: worker_status,
+                    })
+            })
+            .map_err(|error| error.to_string());
             let _ = tx.send(result);
         });
 
@@ -514,7 +596,7 @@ impl MainWindow {
                             let mut commander = this.commander.borrow_mut();
                             commander.navigate_to_loaded(
                                 load.panel,
-                                load.next_path,
+                                load.next_location,
                                 load.entries,
                                 load.status,
                             )
@@ -858,7 +940,7 @@ impl MainWindow {
         }
 
         self.terminal_dock
-            .set_panel_dir(state.active_panel().path.clone());
+            .set_panel_dir(state.active_panel().location.host_directory());
         self.terminal_dock.refresh_toolbar();
     }
 
@@ -868,7 +950,12 @@ impl MainWindow {
     }
 
     fn active_panel_path(&self) -> std::path::PathBuf {
-        self.commander.borrow().state().active_panel().path.clone()
+        self.commander
+            .borrow()
+            .state()
+            .active_panel()
+            .location
+            .host_directory()
     }
 
     fn focus_active_panel(&self) {
@@ -899,10 +986,12 @@ impl MainWindow {
         let mut affected = Vec::new();
 
         for panel in [ActivePanel::Left, ActivePanel::Right] {
-            let panel_path = &state.panel(panel).path;
+            let Some(panel_path) = state.panel(panel).location.filesystem_path() else {
+                continue;
+            };
             if changed_paths
                 .iter()
-                .any(|path| path == panel_path || path.parent() == Some(panel_path.as_path()))
+                .any(|path| path == panel_path || path.parent() == Some(panel_path))
             {
                 affected.push(panel);
             }
@@ -930,6 +1019,7 @@ impl MainWindow {
         self.window.connect_close_request(move |_| {
             if let Err(error) = config::save(&AppConfig {
                 window: window_config_cache.borrow().clone(),
+                archive: config::ArchiveConfig::default(),
             }) {
                 eprintln!("Could not save config: {error}");
             }

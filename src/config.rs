@@ -13,6 +13,8 @@ const CONFIG_FILE_NAME: &str = "config.toml";
 pub struct AppConfig {
     #[serde(default)]
     pub window: WindowConfig,
+    #[serde(default)]
+    pub archive: ArchiveConfig,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -39,6 +41,12 @@ impl Default for WindowConfig {
             maximized: false,
         }
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ArchiveConfig {
+    pub seven_zip_path: Option<PathBuf>,
 }
 
 pub fn load() -> Result<AppConfig> {
@@ -105,7 +113,7 @@ fn config_base_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, WindowConfig, WindowPosition, load_from_path, save_to_path};
+    use super::{AppConfig, ArchiveConfig, WindowConfig, WindowPosition, load_from_path, save_to_path};
 
     #[test]
     fn config_roundtrip_preserves_window_state() {
@@ -120,6 +128,7 @@ mod tests {
                 position: Some(WindowPosition { x: 120, y: 80 }),
                 maximized: true,
             },
+            archive: ArchiveConfig::default(),
         };
 
         save_to_path(&config, &temp_path).unwrap();

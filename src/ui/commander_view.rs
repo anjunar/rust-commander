@@ -48,9 +48,9 @@ impl CommanderView {
     pub fn apply_entries(&self, state: &AppState, panel: ActivePanel) {
         let panel_state = state.panel(panel);
         let panel_view = self.panel(panel);
-        panel_view.set_path(&panel_state.path);
+        panel_view.set_path(&panel_state.location.display_label());
         panel_view.set_entries(
-            &panel_state.path,
+            &panel_state.location,
             &panel_state.entries,
             panel_state.selection_indices(),
         );
