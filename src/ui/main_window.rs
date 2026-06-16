@@ -12,6 +12,7 @@ use crate::{
         operations::{OperationHandle, start_operation},
         watcher::{WatchCommand, start_file_watcher},
     },
+    platform::assets::asset_path,
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, shortcuts,
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
@@ -40,18 +41,15 @@ impl MainWindow {
             .default_height(760)
             .build();
 
-        // Use project-local assets/icons folder for the application icon
-        let asset_icon_dir = std::path::PathBuf::from(r"C:\Users\Patrick\IdeaProjects\rust-commander\assets\icons");
+        let asset_icon_dir = asset_path("assets/icons");
         let icon_basename = "0acc2ce6-257e-4031-9332-b5c73960f871";
         if asset_icon_dir.exists() {
             if let Some(dir_str) = asset_icon_dir.to_str() {
                 let icon_theme = gtk::IconTheme::default();
-                // add the repo assets/icons directory to the icon search path and set the window icon name
                 let _ = icon_theme.add_search_path(dir_str);
                 window.set_icon_name(Some(icon_basename));
             }
         }
-
 
         let header = gtk::HeaderBar::new();
         let title = gtk::Label::new(Some("RCommander"));
@@ -125,23 +123,50 @@ impl MainWindow {
             // Defer to idle so the window is realized
             glib::idle_add_local_once(move || {
                 unsafe {
-                    use std::os::windows::ffi::OsStrExt;
                     use std::ffi::OsStr;
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SendMessageW, WM_SETICON, ICON_SMALL, ICON_BIG, LoadImageW, IMAGE_ICON, LR_LOADFROMFILE};
+                    use std::os::windows::ffi::OsStrExt;
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        FindWindowW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_LOADFROMFILE, LoadImageW,
+                        SendMessageW, WM_SETICON,
+                    };
 
                     // find top-level window by title
                     let title = "RCommander";
-                    let title_w: Vec<u16> = OsStr::new(title).encode_wide().chain(std::iter::once(0)).collect();
+                    let title_w: Vec<u16> = OsStr::new(title)
+                        .encode_wide()
+                        .chain(std::iter::once(0))
+                        .collect();
                     let hwnd = FindWindowW(std::ptr::null(), title_w.as_ptr());
                     if !hwnd.is_null() {
-                        let ico_path = std::path::Path::new("assets\\icons\\app_icon.ico");
+                        let ico_path = asset_path("assets/icons/app_icon.ico");
                         if ico_path.exists() {
-                            let wide: Vec<u16> = ico_path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-                            let hicon = LoadImageW(std::ptr::null_mut(), wide.as_ptr(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+                            let wide: Vec<u16> = ico_path
+                                .as_os_str()
+                                .encode_wide()
+                                .chain(std::iter::once(0))
+                                .collect();
+                            let hicon = LoadImageW(
+                                std::ptr::null_mut(),
+                                wide.as_ptr(),
+                                IMAGE_ICON,
+                                0,
+                                0,
+                                LR_LOADFROMFILE,
+                            );
                             if !hicon.is_null() {
                                 // SendMessageW expects msg: u32, wparam: usize, lparam: isize
-                                let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_BIG as usize, hicon as isize);
-                                let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_SMALL as usize, hicon as isize);
+                                let _ = SendMessageW(
+                                    hwnd,
+                                    WM_SETICON as u32,
+                                    ICON_BIG as usize,
+                                    hicon as isize,
+                                );
+                                let _ = SendMessageW(
+                                    hwnd,
+                                    WM_SETICON as u32,
+                                    ICON_SMALL as usize,
+                                    hicon as isize,
+                                );
                             }
                         }
                     }

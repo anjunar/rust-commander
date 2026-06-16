@@ -7,6 +7,7 @@ use crate::ui::{
     terminal_state::TerminalState,
 };
 
+#[derive(Clone)]
 pub struct TerminalDock {
     pub root: gtk::Box,
     title_label: gtk::Label,
@@ -134,7 +135,7 @@ impl TerminalDock {
         F: Fn(TerminalAction) + Clone + 'static,
     {
         {
-            let dock = self.clone_ref();
+            let dock = self.clone();
             let on_action = on_action.clone();
             self.restart_button.connect_clicked(move |_| {
                 on_action(dock.restart_in_panel_dir());
@@ -142,14 +143,14 @@ impl TerminalDock {
         }
 
         {
-            let dock = self.clone_ref();
+            let dock = self.clone();
             self.clear_button.connect_clicked(move |_| {
                 dock.clear();
             });
         }
 
         {
-            let dock = self.clone_ref();
+            let dock = self.clone();
             let on_action = on_action.clone();
             self.close_button.connect_clicked(move |_| {
                 on_action(dock.close());
@@ -175,18 +176,6 @@ impl TerminalDock {
             let cwd = self.state().borrow().last_panel_dir.clone();
             self.cwd_label
                 .set_label(&format!("Panel path: {}", cwd.display()));
-        }
-    }
-
-    fn clone_ref(&self) -> Self {
-        Self {
-            root: self.root.clone(),
-            title_label: self.title_label.clone(),
-            cwd_label: self.cwd_label.clone(),
-            restart_button: self.restart_button.clone(),
-            clear_button: self.clear_button.clone(),
-            close_button: self.close_button.clone(),
-            controller: Rc::clone(&self.controller),
         }
     }
 }

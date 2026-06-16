@@ -8,6 +8,11 @@ pub fn run() -> Result<()> {
         .application_id("dev.rcommander.Gtk")
         .build();
 
+    #[cfg(target_os = "windows")]
+    app.connect_shutdown(|_| {
+        crate::platform::tray::remove_tray_icon();
+    });
+
     app.connect_activate(|app| {
         let initial_path = match std::env::current_dir() {
             Ok(path) => path,

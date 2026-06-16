@@ -16,7 +16,10 @@ fn try_set_win_icon() -> Result<(), Box<dyn std::error::Error>> {
         res.set_icon(icon_path);
         res.compile()?;
     } else {
-        println!("cargo:warning=Icon file {} not found, skipping resource embed", icon_path);
+        println!(
+            "cargo:warning=Icon file {} not found, skipping resource embed",
+            icon_path
+        );
     }
     Ok(())
 }

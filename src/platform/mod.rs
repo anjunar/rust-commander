@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod icons;
 pub mod open;
 pub mod terminal;

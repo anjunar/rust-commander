@@ -1,33 +1,53 @@
 #[cfg(target_os = "windows")]
 mod windows_tray {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path};
-    use windows_sys::Win32::UI::Shell::{Shell_NotifyIconW, NOTIFYICONDATAW, NIM_ADD, NIM_DELETE, NIF_ICON, NIF_TIP};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{LoadImageW, IMAGE_ICON, LR_LOADFROMFILE};
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt};
+    use windows_sys::Win32::UI::Shell::{
+        NIF_ICON, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IMAGE_ICON, LR_LOADFROMFILE, LoadImageW};
+
+    use crate::platform::assets::asset_path;
 
     pub fn create_tray_icon() -> Result<(), String> {
-        let ico_path = Path::new("assets\\icons\\app_icon.ico");
+        let ico_path = asset_path("assets/icons/app_icon.ico");
         if !ico_path.exists() {
             return Err(format!("ICO not found: {}", ico_path.display()));
         }
 
         let path_str = ico_path.to_str().ok_or("Invalid path string")?;
-        let wide: Vec<u16> = OsStr::new(path_str).encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = OsStr::new(path_str)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         unsafe {
             // hinst = null, name = path, returns HICON as isize
-            let hicon = LoadImageW(std::ptr::null_mut(), wide.as_ptr(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE) as *mut core::ffi::c_void;
+            let hicon = LoadImageW(
+                std::ptr::null_mut(),
+                wide.as_ptr(),
+                IMAGE_ICON,
+                0,
+                0,
+                LR_LOADFROMFILE,
+            ) as *mut core::ffi::c_void;
             if hicon.is_null() {
                 return Err("LoadImageW failed".into());
             }
 
             let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
             nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-            nid.hIcon = hicon;            nid.uFlags = NIF_ICON | NIF_TIP;
+            nid.hIcon = hicon;
+            nid.uFlags = NIF_ICON | NIF_TIP;
             // message id and tip
             let tip = "RCommander";
-            let tip_w: Vec<u16> = OsStr::new(tip).encode_wide().chain(std::iter::once(0)).collect();
+            let tip_w: Vec<u16> = OsStr::new(tip)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
             for (i, c) in tip_w.iter().enumerate() {
-                if i >= nid.szTip.len() { break; }
+                if i >= nid.szTip.len() {
+                    break;
+                }
                 nid.szTip[i] = *c;
             }
 
@@ -56,7 +76,9 @@ mod windows_tray {}
 pub use windows_tray::{create_tray_icon, remove_tray_icon};
 
 #[cfg(not(target_os = "windows"))]
-pub fn create_tray_icon() -> Result<(), String> { Ok(()) }
+pub fn create_tray_icon() -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(not(target_os = "windows"))]
 pub fn remove_tray_icon() {}

@@ -59,8 +59,9 @@ pub fn start_operation(
 
     thread::spawn(move || {
         let result = match request.kind {
-            FileOperationKind::Copy => run_copy(request.clone(), &tx, &cancelled, &resolution_rx),
-            FileOperationKind::Move => run_move(request.clone(), &tx, &cancelled, &resolution_rx),
+            FileOperationKind::Copy | FileOperationKind::Move => {
+                run_transfer(request.clone(), &tx, &cancelled, &resolution_rx)
+            }
             FileOperationKind::Delete => run_delete(request.clone(), &tx, &cancelled),
         };
 
@@ -72,7 +73,7 @@ pub fn start_operation(
     (handle, rx)
 }
 
-fn run_copy(
+fn run_transfer(
     request: FileOperationRequest,
     tx: &mpsc::Sender<OperationEvent>,
     cancelled: &Arc<AtomicBool>,
@@ -81,19 +82,20 @@ fn run_copy(
     let target_directory = request
         .target_directory
         .clone()
-        .context("No target directory set for copy")?;
+        .context("No target directory set for file operation")?;
     let plan = build_plan_for_paths(&request.sources)?;
     let started_at = Instant::now();
     let mut progress = CopyProgress {
         processed_bytes: 0,
         processed_entries: 0,
     };
+    let delete_source = matches!(request.kind, FileOperationKind::Move);
 
-    let mut copied_targets: Vec<PathBuf> = Vec::new();
+    let mut completed_targets: Vec<PathBuf> = Vec::new();
     for source in &request.sources {
         let source_name = source.file_name().context("Source path has no file name")?;
         let target_path = target_directory.join(source_name);
-        let copy_result = copy_path(
+        let transfer_result = copy_path(
             source,
             &target_path,
             &plan,
@@ -106,7 +108,8 @@ fn run_copy(
         );
 
         if cancelled.load(Ordering::Relaxed) {
-            for target in &copied_targets {
+            let _ = cleanup_path(&target_path);
+            for target in &completed_targets {
                 let _ = cleanup_path(target);
             }
             let _ = tx.send(OperationEvent::Cancelled(summary(
@@ -120,74 +123,14 @@ fn run_copy(
             return Ok(());
         }
 
-        copy_result?;
-        copied_targets.push(target_path);
-    }
+        transfer_result?;
 
-    let _ = tx.send(OperationEvent::Finished(summary(
-        request.kind,
-        request.sources,
-        Some(target_directory),
-        plan.total_bytes,
-        plan.total_entries,
-        started_at,
-    )));
-
-    Ok(())
-}
-
-fn run_move(
-    request: FileOperationRequest,
-    tx: &mpsc::Sender<OperationEvent>,
-    cancelled: &Arc<AtomicBool>,
-    resolution_rx: &Receiver<ConflictResolution>,
-) -> Result<()> {
-    let target_directory = request
-        .target_directory
-        .clone()
-        .context("No target directory set for move")?;
-    let plan = build_plan_for_paths(&request.sources)?;
-    let started_at = Instant::now();
-    let mut progress = CopyProgress {
-        processed_bytes: 0,
-        processed_entries: 0,
-    };
-
-    let mut moved_targets: Vec<PathBuf> = Vec::new();
-    for source in &request.sources {
-        let source_name = source.file_name().context("Source path has no file name")?;
-        let target_path = target_directory.join(source_name);
-        let move_result = copy_path(
-            source,
-            &target_path,
-            &plan,
-            &mut progress,
-            started_at,
-            tx,
-            &request.kind,
-            cancelled,
-            resolution_rx,
-        );
-
-        if cancelled.load(Ordering::Relaxed) {
-            for target in &moved_targets {
-                let _ = cleanup_path(target);
-            }
-            let _ = tx.send(OperationEvent::Cancelled(summary(
-                request.kind,
-                request.sources,
-                Some(target_directory),
-                progress.processed_bytes,
-                progress.processed_entries,
-                started_at,
-            )));
-            return Ok(());
+        if delete_source {
+            cleanup_path(source).with_context(|| {
+                format!("Could not remove source {} after move", source.display())
+            })?;
         }
-
-        move_result?;
-        cleanup_path(source)
-            .with_context(|| format!("Could not remove source {} after move", source.display()))?;
-        moved_targets.push(target_path);
+        completed_targets.push(target_path);
     }
 
     let _ = tx.send(OperationEvent::Finished(summary(
@@ -351,6 +294,7 @@ fn copy_path(
                 resolution_rx,
             )?;
             if cancelled.load(Ordering::Relaxed) {
+                let _ = cleanup_path(&target);
                 return Ok(());
             }
         }
@@ -647,4 +591,78 @@ pub fn progress_percent(snapshot: &OperationSnapshot) -> f64 {
     }
 
     (snapshot.processed_bytes as f64 / snapshot.total_bytes as f64).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        sync::{Arc, atomic::AtomicBool, mpsc},
+        thread,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
+
+    use super::{CopyProgress, FileOperationKind, OperationEvent, OperationPlan, copy_path};
+
+    #[test]
+    fn cancelled_directory_copy_cleans_partially_created_target() {
+        let test_root = unique_test_dir("copy_cancel_cleanup");
+        let source_root = test_root.join("source");
+        let nested = source_root.join("nested");
+        let target_root = test_root.join("target").join("source");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("large.bin"), vec![7_u8; 64 * 1024 * 1024]).unwrap();
+
+        let plan = OperationPlan {
+            total_bytes: 64 * 1024 * 1024,
+            total_entries: 3,
+        };
+        let mut progress = CopyProgress {
+            processed_bytes: 0,
+            processed_entries: 0,
+        };
+        let (tx, _rx) = mpsc::channel::<OperationEvent>();
+        let (_resolution_tx, resolution_rx) = mpsc::channel();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancel_flag = Arc::clone(&cancelled);
+        let target_watch = target_root.clone();
+
+        let watcher = thread::spawn(move || {
+            let child_file = target_watch.join("nested").join("large.bin");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                if child_file.exists() {
+                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            panic!("Timed out waiting for partial target file creation");
+        });
+
+        copy_path(
+            &source_root,
+            &target_root,
+            &plan,
+            &mut progress,
+            Instant::now(),
+            &tx,
+            &FileOperationKind::Copy,
+            &cancelled,
+            &resolution_rx,
+        )
+        .unwrap();
+        watcher.join().unwrap();
+
+        assert!(!target_root.exists());
+        let _ = fs::remove_dir_all(&test_root);
+    }
+
+    fn unique_test_dir(label: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("rust_commander_{label}_{suffix}"))
+    }
 }

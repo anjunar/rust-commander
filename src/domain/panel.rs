@@ -283,3 +283,89 @@ pub fn parent_path(path: &Path) -> PathBuf {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| path.to_path_buf())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, time::SystemTime};
+
+    use super::Panel;
+    use crate::domain::{
+        entry::Entry,
+        selection::SelectionModel,
+        sorting::{SortColumn, SortDirection},
+    };
+
+    #[test]
+    fn replace_entries_restores_focus_anchor_and_selection_by_name() {
+        let path = std::path::PathBuf::from("/tmp");
+        let mut panel = Panel::new(
+            path,
+            vec![
+                entry("alpha"),
+                entry("beta"),
+                entry("gamma"),
+                entry("delta"),
+            ],
+        );
+
+        panel.selection = SelectionModel::new(BTreeSet::from([1, 2]), Some(2), Some(1));
+
+        panel.replace_entries(vec![
+            entry("delta"),
+            entry("gamma"),
+            entry("beta"),
+            entry("alpha"),
+        ]);
+
+        let selected = panel
+            .selection_indices()
+            .into_iter()
+            .map(|index| panel.entries[index].name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(selected, vec!["beta".to_string(), "delta".to_string()]);
+        assert_eq!(panel.selected_entry().unwrap().name, "delta");
+        assert_eq!(
+            panel
+                .selection
+                .anchor_index()
+                .map(|index| panel.entries[index].name.clone()),
+            Some("beta".to_string())
+        );
+    }
+
+    #[test]
+    fn sort_keeps_selected_entry_by_name() {
+        let path = std::path::PathBuf::from("/tmp");
+        let mut panel = Panel::new(
+            path,
+            vec![
+                sized_entry("b.txt", 30),
+                sized_entry("a.txt", 10),
+                sized_entry("c.txt", 20),
+            ],
+        );
+
+        panel.select_single(1);
+        panel.set_sort_state(SortColumn::Size, SortDirection::Ascending);
+
+        assert_eq!(panel.selected_entry().unwrap().name, "b.txt");
+    }
+
+    fn entry(name: &str) -> Entry {
+        sized_entry(name, 1)
+    }
+
+    fn sized_entry(name: &str, size_bytes: u64) -> Entry {
+        Entry {
+            name: name.into(),
+            is_dir: false,
+            size_bytes,
+            size_label: format!("{size_bytes} B"),
+            type_label: "File".into(),
+            modified_at: Some(SystemTime::now()),
+            modified_label: String::new(),
+            attributes_label: String::new(),
+            is_parent_link: false,
+        }
+    }
+}
