@@ -84,7 +84,10 @@ impl MainWindow {
     }
 
     pub fn handle_switch_panel(self: &Rc<Self>) {
-        let update = self.commander.borrow_mut().switch_panel();
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.switch_panel()
+        };
         self.apply_update(update);
     }
 
@@ -188,11 +191,14 @@ impl MainWindow {
                 match event {
                     OperationEvent::Progress(snapshot) => {
                         progress_dialog.update_progress(&snapshot);
-                        let update = this.commander.borrow_mut().set_status(format!(
-                            "{}: {}",
-                            snapshot.kind.label(),
-                            snapshot.current_item
-                        ));
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(format!(
+                                "{}: {}",
+                                snapshot.kind.label(),
+                                snapshot.current_item
+                            ))
+                        };
                         this.apply_update(update);
                     }
                     OperationEvent::Conflict(conflict) => {
@@ -214,7 +220,10 @@ impl MainWindow {
                             crate::fs::reader::format_bytes(summary.total_bytes),
                             summary.elapsed.as_secs_f64()
                         );
-                        let update = this.commander.borrow_mut().refresh_after_operation(status);
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.refresh_after_operation(status)
+                        };
                         this.apply_update(update);
                         this.sync_watched_paths();
                         keep_running = false;
@@ -228,7 +237,10 @@ impl MainWindow {
                             summary.total_entries,
                             crate::fs::reader::format_bytes(summary.total_bytes)
                         );
-                        let update = this.commander.borrow_mut().refresh_after_operation(status);
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.refresh_after_operation(status)
+                        };
                         this.apply_update(update);
                         this.sync_watched_paths();
                         keep_running = false;
@@ -236,10 +248,10 @@ impl MainWindow {
                     OperationEvent::Failed(error) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        let update = this
-                            .commander
-                            .borrow_mut()
-                            .set_status(format!("File operation failed: {error}"));
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(format!("File operation failed: {error}"))
+                        };
                         this.apply_update(update);
                         dialogs::show_error(&this.window, "File operation failed", &error);
                         keep_running = false;
@@ -262,7 +274,10 @@ impl MainWindow {
             {
                 let this = Rc::clone(self);
                 panel_view.connect_selection_changed(move |indices| {
-                    let update = this.commander.borrow_mut().select_indices(panel, indices);
+                    let update = {
+                        let mut commander = this.commander.borrow_mut();
+                        commander.select_indices(panel, indices)
+                    };
                     this.apply_update(update);
                 });
             }
@@ -298,10 +313,10 @@ impl MainWindow {
                             gtk::SortType::Descending => SortDirection::Descending,
                             _ => SortDirection::Ascending,
                         };
-                        let update = this
-                            .commander
-                            .borrow_mut()
-                            .sort_panel(panel, column, direction);
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.sort_panel(panel, column, direction)
+                        };
                         this.apply_update(update);
                     });
                 });
@@ -355,13 +370,18 @@ impl MainWindow {
     where
         F: FnOnce(&mut Commander) -> anyhow::Result<ViewUpdate>,
     {
-        match command(&mut self.commander.borrow_mut()) {
+        let result = {
+            let mut commander = self.commander.borrow_mut();
+            command(&mut commander)
+        };
+
+        match result {
             Ok(update) => self.apply_update(update),
             Err(error) => {
-                let update = self
-                    .commander
-                    .borrow_mut()
-                    .set_status(format!("Command failed: {error}"));
+                let update = {
+                    let mut commander = self.commander.borrow_mut();
+                    commander.set_status(format!("Command failed: {error}"))
+                };
                 self.apply_update(update);
                 dialogs::show_error(&self.window, "Command failed", &error.to_string());
             }
@@ -385,7 +405,7 @@ impl MainWindow {
             self.commander_view.apply_active_panel(state.active_panel);
         }
         if update.status || update.selection || update.active_panel {
-            self.status_label.set_label(&state.selection_summary());
+            self.status_label.set_label(&state.status_line());
         }
     }
 
@@ -417,12 +437,32 @@ fn build_command_bar() -> gtk::Box {
 }
 
 fn install_css() {
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(true);
+    }
+
     let provider = gtk::CssProvider::new();
     provider.load_from_data(
         "
-        window {
+        window,
+        dialog,
+        popover,
+        menupopover,
+        .background {
             background: #111820;
             color: #e6edf3;
+        }
+
+        headerbar {
+            background: #16212b;
+            color: #e6edf3;
+            border-bottom: 1px solid #314050;
+            box-shadow: none;
+        }
+
+        headerbar:backdrop {
+            background: #16212b;
+            color: #9eb0c1;
         }
 
         .app-title {
@@ -435,7 +475,7 @@ fn install_css() {
         }
 
         .file-panel {
-            padding: 8px;
+            padding: 10px;
             border: 1px solid #314050;
             border-radius: 10px;
             background: #16212b;
@@ -447,26 +487,121 @@ fn install_css() {
         }
 
         .path-row {
-            padding-bottom: 4px;
+            padding: 2px 0 6px 0;
+        }
+
+        dropdown,
+        dropdown button,
+        entry,
+        dialog entry,
+        button,
+        menubutton button {
+            background: #0f1720;
+            color: #e6edf3;
+            border-color: #314050;
+        }
+
+        dropdown button:hover,
+        button:hover,
+        menubutton button:hover {
+            background: #162434;
+        }
+
+        .root-selector,
+        .root-selector button {
+            border-radius: 8px;
+        }
+
+        dropdown button:focus,
+        button:focus,
+        entry:focus {
+            box-shadow: 0 0 0 1px rgba(224, 169, 59, 0.38);
+            border-color: #e0a93b;
         }
 
         .path-label {
             font-family: 'Cascadia Code', 'Consolas', monospace;
             font-size: 0.95em;
             color: #c8d6e5;
+            padding: 7px 10px;
+            border-radius: 8px;
+            background: #0f1720;
+            border: 1px solid #263342;
         }
 
-        .file-table {
+        scrolledwindow,
+        scrolledwindow > viewport,
+        .file-table,
+        columnview,
+        listview,
+        listview.view,
+        widget.view {
             background: #101820;
+            color: #e6edf3;
         }
 
-        columnview row:selected {
+        columnview header,
+        columnview header button,
+        columnview columnheader,
+        columnview columnheader button {
+            background: #16212b;
+            color: #c8d6e5;
+            border-color: #314050;
+            box-shadow: none;
+            font-weight: 700;
+        }
+
+        columnview row {
+            color: #e6edf3;
+        }
+
+        columnview row:nth-child(even) {
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        columnview row:hover {
+            background: rgba(49, 93, 127, 0.22);
+        }
+
+        columnview row:selected,
+        listview row:selected,
+        treeexpander row:selected {
             background: #315d7f;
+            color: #f4f8fb;
         }
 
         .parent-link {
             color: #8fc7ff;
             font-style: italic;
+        }
+
+        separator {
+            background: #314050;
+        }
+
+        .panel-scroller {
+            border: 1px solid #263342;
+            border-radius: 8px;
+            background: #101820;
+        }
+
+        .panel-scroller > viewport {
+            border-radius: 8px;
+        }
+
+        scrollbar slider {
+            background: #2a3948;
+            border-radius: 999px;
+            min-width: 10px;
+            min-height: 10px;
+        }
+
+        popover contents,
+        dialog > box,
+        messagedialog box,
+        .dialog-action-area {
+            background: #111820;
+            color: #e6edf3;
         }
 
         .status-line {
@@ -475,6 +610,7 @@ fn install_css() {
             background: #0d131a;
             color: #d8e4ee;
             font-family: 'Cascadia Code', 'Consolas', monospace;
+            border: 1px solid #202d3a;
         }
 
         .command-bar {
@@ -484,6 +620,11 @@ fn install_css() {
         .command-button {
             font-family: 'Cascadia Code', 'Consolas', monospace;
             font-weight: 700;
+            background: #16212b;
+            color: #e6edf3;
+            border: 1px solid #314050;
+            border-radius: 8px;
+            padding: 10px 14px;
         }
 
         .dialog-title {

@@ -51,6 +51,8 @@ fn name_factory() -> gtk::SignalListItemFactory {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.set_margin_start(6);
         row.set_margin_end(6);
+        row.set_margin_top(4);
+        row.set_margin_bottom(4);
 
         let image = gtk::Image::new();
         image.set_pixel_size(16);
@@ -83,7 +85,13 @@ fn name_factory() -> gtk::SignalListItemFactory {
             .first_child()
             .and_then(|child| child.downcast::<gtk::Image>().ok())
         {
-            image.set_icon_name(Some(&row_object.icon_name()));
+            if let Some(paintable) = row_object.icon_paintable() {
+                image.set_icon_name(None);
+                image.set_paintable(Some(&paintable));
+            } else {
+                image.set_paintable(Option::<&gtk::gdk::Paintable>::None);
+                image.set_icon_name(Some(&row_object.icon_name()));
+            }
         }
 
         if let Some(label) = container
@@ -112,6 +120,8 @@ fn text_factory(column: SortColumn) -> gtk::SignalListItemFactory {
         let label = gtk::Label::new(None);
         label.set_margin_start(6);
         label.set_margin_end(6);
+        label.set_margin_top(6);
+        label.set_margin_bottom(6);
         label.set_xalign(match column {
             SortColumn::Size => 1.0,
             _ => 0.5,

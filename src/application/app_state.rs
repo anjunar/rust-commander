@@ -77,7 +77,7 @@ impl AppState {
             .position(|root| path.starts_with(&root.path))
     }
 
-    pub fn selection_summary(&self) -> String {
+    pub fn status_line(&self) -> String {
         let active = self.active_panel();
         let inactive = self.inactive_panel();
         let active_selected = active.selected_count();
@@ -85,10 +85,17 @@ impl AppState {
 
         match (active_selected, inactive_selected) {
             (0, 0) => self.status.clone(),
-            (active_count, 0) => format!("{active_count} selected in the active panel"),
-            (0, inactive_count) => format!("{inactive_count} selected in the inactive panel"),
+            (active_count, 0) => {
+                format!("{} | {active_count} selected in the active panel", self.status)
+            }
+            (0, inactive_count) => {
+                format!("{} | {inactive_count} selected in the inactive panel", self.status)
+            }
             (active_count, inactive_count) => {
-                format!("{active_count} selected active | {inactive_count} selected inactive")
+                format!(
+                    "{} | {active_count} selected active | {inactive_count} selected inactive",
+                    self.status
+                )
             }
         }
     }

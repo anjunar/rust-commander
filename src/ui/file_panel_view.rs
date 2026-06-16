@@ -46,6 +46,7 @@ impl FilePanelView {
         let root_dropdown = gtk::DropDown::new(Some(root_model.clone()), gtk::Expression::NONE);
         root_dropdown.set_width_request(110);
         root_dropdown.set_enable_search(true);
+        root_dropdown.add_css_class("root-selector");
         path_row.append(&root_dropdown);
 
         let path_label = gtk::Label::new(None);
@@ -61,8 +62,8 @@ impl FilePanelView {
         let column_view = gtk::ColumnView::new(Some(selection.clone()));
         column_view.set_hexpand(true);
         column_view.set_vexpand(true);
-        column_view.set_show_row_separators(true);
-        column_view.set_show_column_separators(true);
+        column_view.set_show_row_separators(false);
+        column_view.set_show_column_separators(false);
         column_view.set_single_click_activate(false);
         column_view.add_css_class("file-table");
 
@@ -73,6 +74,7 @@ impl FilePanelView {
             .vexpand(true)
             .child(&column_view)
             .build();
+        scrolled.add_css_class("panel-scroller");
         root.append(&scrolled);
 
         Self {

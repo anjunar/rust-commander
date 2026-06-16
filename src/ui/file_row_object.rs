@@ -1,6 +1,7 @@
 use std::{cell::RefCell, path::Path};
 
 use glib::subclass::prelude::*;
+use gtk::gdk;
 
 use crate::{domain::entry::Entry, platform};
 
@@ -13,6 +14,7 @@ pub struct FileRowData {
     pub modified: String,
     pub attributes: String,
     pub icon_name: String,
+    pub icon_paintable: Option<gdk::Paintable>,
     pub size_bytes: u64,
     pub is_dir: bool,
     pub is_parent_link: bool,
@@ -42,6 +44,7 @@ glib::wrapper! {
 impl FileRowObject {
     pub fn new(base_path: &Path, entry: &Entry) -> Self {
         let object: Self = glib::Object::new();
+        let icon = platform::icon_for_entry(base_path, entry);
         let data = FileRowData {
             name: entry.name.clone(),
             path: entry.full_path(base_path).display().to_string(),
@@ -49,7 +52,8 @@ impl FileRowObject {
             type_label: entry.type_label.clone(),
             modified: entry.modified_label.clone(),
             attributes: entry.attributes_label.clone(),
-            icon_name: platform::icon_name_for_entry(base_path, entry).to_string(),
+            icon_name: icon.icon_name.to_string(),
+            icon_paintable: icon.paintable,
             size_bytes: entry.size_bytes,
             is_dir: entry.is_dir,
             is_parent_link: entry.is_parent_link,
@@ -84,6 +88,10 @@ impl FileRowObject {
 
     pub fn icon_name(&self) -> String {
         self.imp().data.borrow().icon_name.clone()
+    }
+
+    pub fn icon_paintable(&self) -> Option<gdk::Paintable> {
+        self.imp().data.borrow().icon_paintable.clone()
     }
 
     pub fn size_bytes(&self) -> u64 {
