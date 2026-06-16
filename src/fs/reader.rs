@@ -5,7 +5,7 @@ use rust_i18n::t;
 
 use crate::domain::entry::Entry;
 
-pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
+pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
 
     for entry in fs::read_dir(path)
@@ -18,6 +18,9 @@ pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
             .metadata()
             .with_context(|| format!("Could not read metadata for {}", entry_path.display()))?;
         let file_name = entry.file_name().to_string_lossy().into_owned();
+        if !show_hidden_files && is_hidden(&metadata, &file_name) {
+            continue;
+        }
         let modified_at = metadata.modified().ok();
 
         entries.push(Entry {
@@ -126,5 +129,70 @@ fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
         "-".into()
     } else {
         flags.join("")
+    }
+}
+
+fn is_hidden(metadata: &fs::Metadata, name: &str) -> bool {
+    if name == "." || name == ".." {
+        return false;
+    }
+
+    if name.starts_with('.') {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x2 != 0
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = metadata;
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_entries;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_dir_path(name: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("rcommander_{name}_{unique}"))
+    }
+
+    #[test]
+    fn hides_dotfiles_when_disabled() {
+        let path = temp_dir_path("hidden_listing");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("visible.txt"), b"visible").unwrap();
+        fs::write(path.join(".hidden.txt"), b"hidden").unwrap();
+
+        let entries = read_entries(&path, false).unwrap();
+        let _ = fs::remove_dir_all(&path);
+
+        assert!(entries.iter().any(|entry| entry.name == "visible.txt"));
+        assert!(!entries.iter().any(|entry| entry.name == ".hidden.txt"));
+    }
+
+    #[test]
+    fn includes_dotfiles_when_enabled() {
+        let path = temp_dir_path("show_hidden_listing");
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join(".hidden.txt"), b"hidden").unwrap();
+
+        let entries = read_entries(&path, true).unwrap();
+        let _ = fs::remove_dir_all(&path);
+
+        assert!(entries.iter().any(|entry| entry.name == ".hidden.txt"));
     }
 }

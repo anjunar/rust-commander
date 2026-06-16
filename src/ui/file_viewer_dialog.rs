@@ -4,10 +4,10 @@ use anyhow::Result;
 use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 
-use crate::{ui::dialogs::build_modal_window, viewer::ViewerState};
+use crate::{config::ViewerConfig, ui::dialogs::build_modal_window, viewer::ViewerState};
 
-pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
-    let state = Rc::new(RefCell::new(ViewerState::open(&path)?));
+pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig) -> Result<()> {
+    let state = Rc::new(RefCell::new(ViewerState::open(&path, &config)?));
     let syncing_adjustments = Rc::new(std::cell::Cell::new(false));
     let vertical_adjustment = gtk::Adjustment::new(0.0, 0.0, 1.0, 1.0, 1.0, 1.0);
     let horizontal_adjustment = gtk::Adjustment::new(0.0, 0.0, 4096.0, 8.0, 64.0, 120.0);
@@ -27,7 +27,11 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     view.set_editable(false);
     view.set_cursor_visible(false);
     view.set_monospace(true);
-    view.set_wrap_mode(gtk::WrapMode::None);
+    view.set_wrap_mode(if config.line_wrap {
+        gtk::WrapMode::WordChar
+    } else {
+        gtk::WrapMode::None
+    });
     view.set_hexpand(true);
     view.set_vexpand(true);
     view.add_css_class("editor-view");

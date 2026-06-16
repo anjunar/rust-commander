@@ -49,9 +49,28 @@ command:
 
 settings:
   title: Anwendungseinstellungen
-  description: Die Archivunterstuetzung ist fuer interne und native Backends vorbereitet. In diesem Stadium ist kein externes Archivwerkzeug konfiguriert.
+  description: Minimale Einstellungen fuer Sprache, Ansicht, Dateioperationen und Viewer.
   archive_info: "Aktueller Stand: eingebautes ZIP-Backend plus Platzhalter fuer native Backends wie libarchive, UnRAR und Plugins."
   language: Sprache
+  theme: Theme
+  theme_system: System
+  theme_light: Hell
+  theme_dark: Dunkel
+  section_general: Allgemein
+  section_view: Ansicht
+  section_file_operations: Dateioperationen
+  section_viewer: Viewer
+  show_hidden_files: Versteckte Dateien anzeigen
+  folders_first: Ordner immer oben anzeigen
+  use_recycle_bin: Papierkorb verwenden
+  confirm_delete: Vor Loeschen bestaetigen
+  confirm_overwrite: Vor Ueberschreiben bestaetigen
+  streaming_threshold_mb: Streaming ab Dateigroesse in MB
+  line_wrap: Zeilenumbruch
+  show_line_numbers: Zeilennummern anzeigen
+  reset_defaults: Auf Standard zuruecksetzen
+  restart_hint: Einige Aenderungen werden erst nach dem erneuten Oeffnen betroffener Ansichten sichtbar.
+  restart_notice: Einige Aenderungen werden erst nach Neustart wirksam.
 
 dialog:
   copy_confirmation_title: Kopieren bestaetigen

@@ -49,9 +49,28 @@ command:
 
 settings:
   title: Parametres de l'application
-  description: La prise en charge des archives est preparee autour de backends internes et natifs. Aucun outil d'archive externe n'est configure a ce stade.
+  description: Parametres minimaux pour la langue, l'affichage, les operations de fichiers et la visionneuse.
   archive_info: "Etat actuel : backend ZIP integre plus emplacements reserves pour libarchive, UnRAR et les plugins."
   language: Langue
+  theme: Theme
+  theme_system: Systeme
+  theme_light: Clair
+  theme_dark: Sombre
+  section_general: General
+  section_view: Affichage
+  section_file_operations: Operations de fichiers
+  section_viewer: Visionneuse
+  show_hidden_files: Afficher les fichiers caches
+  folders_first: Garder les dossiers en haut
+  use_recycle_bin: Utiliser la corbeille
+  confirm_delete: Confirmer avant suppression
+  confirm_overwrite: Confirmer avant ecrasement
+  streaming_threshold_mb: Streaming a partir de la taille du fichier en Mo
+  line_wrap: Retour a la ligne
+  show_line_numbers: Afficher les numeros de ligne
+  reset_defaults: Reinitialiser
+  restart_hint: Certains changements ne deviennent visibles qu'apres la reouverture des vues concernees.
+  restart_notice: Certains changements ne prennent effet qu'apres le redemarrage de l'application.
 
 dialog:
   copy_confirmation_title: Confirmer la copie

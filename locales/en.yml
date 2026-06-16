@@ -49,9 +49,28 @@ command:
 
 settings:
   title: Application settings
-  description: Archive support is prepared around internal and native backends. No external archive tool is configured in this stage.
+  description: Minimal settings for language, view, file operations, and the viewer.
   archive_info: "Current stage: built-in ZIP backend plus native-backend placeholders for libarchive, UnRAR and plugins."
   language: Language
+  theme: Theme
+  theme_system: System
+  theme_light: Light
+  theme_dark: Dark
+  section_general: General
+  section_view: View
+  section_file_operations: File operations
+  section_viewer: Viewer
+  show_hidden_files: Show hidden files
+  folders_first: Keep folders on top
+  use_recycle_bin: Use recycle bin
+  confirm_delete: Confirm before delete
+  confirm_overwrite: Confirm before overwrite
+  streaming_threshold_mb: Stream from file size in MB
+  line_wrap: Wrap lines
+  show_line_numbers: Show line numbers
+  reset_defaults: Reset to defaults
+  restart_hint: Some changes only become visible after reopening affected views.
+  restart_notice: Some changes only take effect after restarting the application.
 
 dialog:
   copy_confirmation_title: Copy confirmation

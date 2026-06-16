@@ -57,6 +57,20 @@ struct DirectoryLoadResult {
     status: String,
 }
 
+fn load_entries_for_location(
+    archive_service: &crate::archive::ArchiveService,
+    location: &PanelLocation,
+    show_hidden_files: bool,
+) -> Result<Vec<crate::domain::Entry>, crate::archive::ArchiveError> {
+    match location {
+        PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path, show_hidden_files)
+            .map_err(|error| crate::archive::ArchiveError::IoError {
+                detail: error.to_string(),
+            }),
+        PanelLocation::Archive(_) => archive_service.entries_for_location(location),
+    }
+}
+
 #[derive(Clone)]
 enum ActiveOperationHandle {
     File(OperationHandle),
@@ -312,7 +326,11 @@ impl MainWindow {
             return;
         }
 
-        if let Err(error) = file_viewer_dialog::open(&self.window, selected.path.clone()) {
+        if let Err(error) = file_viewer_dialog::open(
+            &self.window,
+            selected.path.clone(),
+            self.app_config_cache.borrow().viewer.clone(),
+        ) {
             dialogs::show_error(
                 &self.window,
                 &t!("error.could_not_open_viewer"),
@@ -388,9 +406,6 @@ impl MainWindow {
         let current_config = self.app_config_cache.borrow().clone();
         let this = Rc::clone(self);
         dialogs::show_settings(&self.window, current_config, move |next_config| {
-            this.app_config_cache.replace(next_config.clone());
-            let selected_locale = crate::i18n::apply_locale(next_config.locale.language.as_deref());
-
             if let Err(error) = config::save(&next_config) {
                 dialogs::show_error(
                     &this.window,
@@ -400,19 +415,43 @@ impl MainWindow {
                 return;
             }
 
+            let previous_config = this.app_config_cache.borrow().clone();
+            this.app_config_cache.replace(next_config.clone());
+            let selected_locale = crate::i18n::apply_locale(next_config.locale.language.as_deref());
+
             let update = {
                 let mut commander = this.commander.borrow_mut();
                 commander.apply_archive_config(next_config.archive.clone());
+                let mut update = match commander.apply_panel_settings(next_config.panels.clone()) {
+                    Ok(update) => update,
+                    Err(error) => {
+                        dialogs::show_error(
+                            &this.window,
+                            &t!("error.could_not_save_settings"),
+                            &error.to_string(),
+                        );
+                        return;
+                    }
+                };
                 commander.set_status(
                     t!(
                         "status.language_changed",
                         language = crate::i18n::locale_display_name(selected_locale)
                     )
                     .into_owned(),
-                )
+                );
+                update.status = true;
+                update
             };
             this.apply_update(update);
             this.refresh_localized_labels();
+            if previous_config.general.theme != next_config.general.theme {
+                dialogs::show_error(
+                    &this.window,
+                    &t!("settings.title"),
+                    &t!("settings.restart_notice"),
+                );
+            }
         });
     }
 
@@ -653,6 +692,7 @@ impl MainWindow {
         let worker_location = next_location.clone();
         let worker_status = status.clone();
         let archive_service = self.commander.borrow().archive_service();
+        let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
         thread::spawn(move || {
             let actual_location = match &worker_location {
                 PanelLocation::Filesystem(path)
@@ -664,14 +704,14 @@ impl MainWindow {
             };
             let result = actual_location
                 .and_then(|location| {
-                    archive_service
-                        .entries_for_location(&location)
-                        .map(|entries| DirectoryLoadResult {
+                    load_entries_for_location(&archive_service, &location, show_hidden_files).map(
+                        |entries| DirectoryLoadResult {
                             panel,
                             next_location: location,
                             entries,
                             status: worker_status,
-                        })
+                        },
+                    )
                 })
                 .map_err(|error| error.to_string());
             let _ = tx.send(result);
@@ -744,6 +784,7 @@ impl MainWindow {
             return;
         }
 
+        let is_delete = matches!(kind, FileOperationKind::Delete);
         let request = match self.commander.borrow().operation_request(kind) {
             Ok(request) => request,
             Err(error) => {
@@ -755,6 +796,17 @@ impl MainWindow {
                 return;
             }
         };
+
+        if is_delete
+            && !self
+                .app_config_cache
+                .borrow()
+                .file_operations
+                .confirm_delete
+        {
+            self.start_file_operation(request);
+            return;
+        }
 
         let this = Rc::clone(self);
         dialogs::confirm_operation(&self.window, request, move |request| {
@@ -807,6 +859,19 @@ impl MainWindow {
                     }
                     OperationEvent::Conflict(conflict) => {
                         progress_dialog.set_waiting_for_conflict();
+                        if !this
+                            .app_config_cache
+                            .borrow()
+                            .file_operations
+                            .confirm_overwrite
+                        {
+                            if let Some(handle) = this.active_operation.borrow().as_ref() {
+                                handle.resolve_conflict(
+                                    crate::domain::operation::ConflictResolution::Overwrite,
+                                );
+                            }
+                            continue;
+                        }
                         let handle = this.active_operation.borrow().clone();
                         dialogs::show_conflict(&this.window, conflict, move |resolution| {
                             if let Some(handle) = handle.as_ref() {

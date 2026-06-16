@@ -85,11 +85,10 @@ impl ArchiveService {
         location: &PanelLocation,
     ) -> Result<Vec<Entry>, ArchiveError> {
         match location {
-            PanelLocation::Filesystem(path) => {
-                crate::fs::reader::read_entries(path).map_err(|error| ArchiveError::IoError {
+            PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path, false)
+                .map_err(|error| ArchiveError::IoError {
                     detail: error.to_string(),
-                })
-            }
+                }),
             PanelLocation::Archive(view) => {
                 Ok(self.entries_for_archive_path(&view.session, &view.current_path))
             }

@@ -6,7 +6,7 @@ use rust_i18n::t;
 use crate::{
     application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
     archive::ArchiveService,
-    config::ArchiveConfig,
+    config::{ArchiveConfig, PanelSettings},
     domain::{
         operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
         sorting::{SortColumn, SortDirection},
@@ -19,6 +19,7 @@ use crate::{
 pub struct Commander {
     state: AppState,
     archive_service: ArchiveService,
+    panel_settings: PanelSettings,
 }
 
 impl Commander {
@@ -26,14 +27,17 @@ impl Commander {
         left_initial_path: PathBuf,
         right_initial_path: PathBuf,
         _archive_config: ArchiveConfig,
+        panel_settings: PanelSettings,
     ) -> Result<Self> {
         let left = Panel::new(
             PanelLocation::filesystem(left_initial_path.clone()),
-            read_entries(&left_initial_path)?,
+            read_entries(&left_initial_path, panel_settings.show_hidden_files)?,
+            panel_settings.folders_first,
         );
         let right = Panel::new(
             PanelLocation::filesystem(right_initial_path.clone()),
-            read_entries(&right_initial_path)?,
+            read_entries(&right_initial_path, panel_settings.show_hidden_files)?,
+            panel_settings.folders_first,
         );
         let roots = platform::available_roots();
         let archive_service = ArchiveService::with_default_backends();
@@ -41,6 +45,7 @@ impl Commander {
         Ok(Self {
             state: AppState::new(left, right, roots),
             archive_service,
+            panel_settings,
         })
     }
 
@@ -61,6 +66,17 @@ impl Commander {
         self.archive_service = ArchiveService::with_default_backends();
         self.state.status = t!("status.archive_settings_updated").into_owned();
         ViewUpdate::status()
+    }
+
+    pub fn apply_panel_settings(&mut self, panel_settings: PanelSettings) -> Result<ViewUpdate> {
+        self.panel_settings = panel_settings.clone();
+        self.state
+            .left
+            .set_folders_first(self.panel_settings.folders_first);
+        self.state
+            .right
+            .set_folders_first(self.panel_settings.folders_first);
+        Ok(self.refresh_with_status(t!("status.view_refreshed").into_owned()))
     }
 
     pub fn set_active_panel(&mut self, panel: ActivePanel) -> ViewUpdate {
@@ -120,7 +136,7 @@ impl Commander {
 
         match current_location {
             PanelLocation::Filesystem(_) if selected.is_dir => {
-                let entries = read_entries(&selected.path)?;
+                let entries = read_entries(&selected.path, self.panel_settings.show_hidden_files)?;
                 self.state
                     .panel_mut(panel)
                     .navigate_to(PanelLocation::filesystem(selected.path.clone()), entries);
@@ -187,7 +203,7 @@ impl Commander {
         };
 
         self.state.active_panel = panel;
-        let entries = read_entries(&root.path)?;
+        let entries = read_entries(&root.path, self.panel_settings.show_hidden_files)?;
         self.state
             .panel_mut(panel)
             .navigate_to(PanelLocation::filesystem(root.path.clone()), entries);
@@ -217,12 +233,8 @@ impl Commander {
 
     pub fn refresh_visible_panels(&mut self) -> Result<ViewUpdate> {
         self.state.roots = platform::available_roots();
-        let left_entries = self
-            .archive_service
-            .entries_for_location(&self.state.left.location)?;
-        let right_entries = self
-            .archive_service
-            .entries_for_location(&self.state.right.location)?;
+        let left_entries = self.load_entries_for_location(&self.state.left.location)?;
+        let right_entries = self.load_entries_for_location(&self.state.right.location)?;
         self.state.left.replace_entries(left_entries);
         self.state.right.replace_entries(right_entries);
         self.state.status = t!("status.view_refreshed").into_owned();
@@ -242,10 +254,7 @@ impl Commander {
         let mut failures = Vec::new();
 
         for panel in panels {
-            match self
-                .archive_service
-                .entries_for_location(&self.state.panel(*panel).location)
-            {
+            match self.load_entries_for_location(&self.state.panel(*panel).location) {
                 Ok(entries) => {
                     self.state.panel_mut(*panel).replace_entries(entries);
                     match panel {
@@ -280,10 +289,7 @@ impl Commander {
         self.state.roots = platform::available_roots();
         let mut failures = Vec::new();
 
-        match self
-            .archive_service
-            .entries_for_location(&self.state.left.location)
-        {
+        match self.load_entries_for_location(&self.state.left.location) {
             Ok(entries) => self.state.left.replace_entries(entries),
             Err(error) => failures.push(
                 t!(
@@ -295,10 +301,7 @@ impl Commander {
             ),
         }
 
-        match self
-            .archive_service
-            .entries_for_location(&self.state.right.location)
-        {
+        match self.load_entries_for_location(&self.state.right.location) {
             Ok(entries) => self.state.right.replace_entries(entries),
             Err(error) => failures.push(
                 t!(
@@ -359,9 +362,7 @@ impl Commander {
         self.state
             .panel_mut(panel)
             .update_history_after_rename(&old_name, new_name.trim());
-        let entries = self
-            .archive_service
-            .entries_for_location(&self.state.panel(panel).location)?;
+        let entries = self.load_entries_for_location(&self.state.panel(panel).location)?;
         self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = t!("status.renamed", path = target.display().to_string()).into_owned();
 
@@ -391,9 +392,7 @@ impl Commander {
         fs::create_dir(&target)
             .with_context(|| format!("Could not create directory {}", target.display()))?;
 
-        let entries = self
-            .archive_service
-            .entries_for_location(&self.state.panel(panel).location)?;
+        let entries = self.load_entries_for_location(&self.state.panel(panel).location)?;
         self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = t!(
             "status.created_directory",
@@ -457,6 +456,15 @@ impl Commander {
     pub fn set_status(&mut self, status: impl Into<String>) -> ViewUpdate {
         self.state.status = status.into();
         ViewUpdate::status()
+    }
+
+    fn load_entries_for_location(&self, location: &PanelLocation) -> Result<Vec<Entry>> {
+        match location {
+            PanelLocation::Filesystem(path) => {
+                Ok(read_entries(path, self.panel_settings.show_hidden_files)?)
+            }
+            PanelLocation::Archive(_) => Ok(self.archive_service.entries_for_location(location)?),
+        }
     }
 }
 

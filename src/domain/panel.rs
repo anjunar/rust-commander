@@ -33,13 +33,14 @@ pub struct Panel {
     pub entries: Vec<Entry>,
     pub selection: SelectionModel,
     pub sort_state: SortState,
+    folders_first: bool,
     selected_history: HashMap<String, SelectedPosition>,
 }
 
 impl Panel {
-    pub fn new(location: PanelLocation, mut entries: Vec<Entry>) -> Self {
+    pub fn new(location: PanelLocation, mut entries: Vec<Entry>, folders_first: bool) -> Self {
         let sort_state = SortState::default();
-        sort_entries(&mut entries, sort_state);
+        sort_entries(&mut entries, sort_state, folders_first);
         let selected = (!entries.is_empty()).then_some(0);
 
         Self {
@@ -47,13 +48,14 @@ impl Panel {
             entries,
             selection: SelectionModel::single(selected),
             sort_state,
+            folders_first,
             selected_history: HashMap::new(),
         }
     }
 
     pub fn replace_entries(&mut self, mut entries: Vec<Entry>) {
         let preserved_selection = self.preserved_selection();
-        sort_entries(&mut entries, self.sort_state);
+        sort_entries(&mut entries, self.sort_state, self.folders_first);
         self.entries = entries;
         self.selection = self.restore_selection(preserved_selection);
     }
@@ -61,7 +63,7 @@ impl Panel {
     pub fn navigate_to(&mut self, next_location: PanelLocation, mut entries: Vec<Entry>) {
         self.save_selection_for_current_path();
         self.location = next_location;
-        sort_entries(&mut entries, self.sort_state);
+        sort_entries(&mut entries, self.sort_state, self.folders_first);
         self.entries = entries;
         self.selection = self.restore_selection(PreservedSelection::default());
     }
@@ -130,14 +132,25 @@ impl Panel {
     pub fn set_sort_column(&mut self, column: SortColumn) {
         let preserved_selection = self.preserved_selection();
         self.sort_state = self.sort_state.toggled_for(column);
-        sort_entries(&mut self.entries, self.sort_state);
+        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
         self.selection = self.restore_selection(preserved_selection);
     }
 
     pub fn set_sort_state(&mut self, column: SortColumn, direction: SortDirection) {
         let preserved_selection = self.preserved_selection();
         self.sort_state = SortState { column, direction };
-        sort_entries(&mut self.entries, self.sort_state);
+        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
+        self.selection = self.restore_selection(preserved_selection);
+    }
+
+    pub fn set_folders_first(&mut self, folders_first: bool) {
+        if self.folders_first == folders_first {
+            return;
+        }
+
+        let preserved_selection = self.preserved_selection();
+        self.folders_first = folders_first;
+        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
         self.selection = self.restore_selection(preserved_selection);
     }
 
@@ -307,6 +320,7 @@ mod tests {
                 entry("gamma"),
                 entry("delta"),
             ],
+            true,
         );
 
         panel.selection = SelectionModel::new(BTreeSet::from([1, 2]), Some(2), Some(1));
@@ -343,6 +357,7 @@ mod tests {
                 sized_entry("a.txt", 10),
                 sized_entry("c.txt", 20),
             ],
+            true,
         );
 
         panel.select_single(1);

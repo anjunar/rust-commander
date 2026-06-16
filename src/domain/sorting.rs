@@ -51,11 +51,11 @@ impl SortState {
     }
 }
 
-pub fn sort_entries(entries: &mut [Entry], sort_state: SortState) {
-    entries.sort_by(|a, b| compare_entries(a, b, sort_state));
+pub fn sort_entries(entries: &mut [Entry], sort_state: SortState, folders_first: bool) {
+    entries.sort_by(|a, b| compare_entries(a, b, sort_state, folders_first));
 }
 
-fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState) -> Ordering {
+fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState, folders_first: bool) -> Ordering {
     if a.is_parent_link || b.is_parent_link {
         return match (a.is_parent_link, b.is_parent_link) {
             (true, false) => Ordering::Less,
@@ -64,10 +64,12 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState) -> Ordering {
         };
     }
 
-    match (a.is_dir, b.is_dir) {
-        (true, false) => return Ordering::Less,
-        (false, true) => return Ordering::Greater,
-        _ => {}
+    if folders_first {
+        match (a.is_dir, b.is_dir) {
+            (true, false) => return Ordering::Less,
+            (false, true) => return Ordering::Greater,
+            _ => {}
+        }
     }
 
     let ordering = match sort_state.column {
@@ -97,4 +99,59 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState) -> Ordering {
 
 fn compare_text(a: &str, b: &str) -> Ordering {
     a.to_lowercase().cmp(&b.to_lowercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sort_entries, SortColumn, SortDirection, SortState};
+    use crate::domain::Entry;
+
+    fn file(name: &str, is_dir: bool) -> Entry {
+        Entry {
+            name: name.into(),
+            archive_path: None,
+            is_dir,
+            size_bytes: 0,
+            size_label: "-".into(),
+            type_label: if is_dir { "Folder" } else { "File" }.into(),
+            modified_at: None,
+            modified_label: "-".into(),
+            attributes_label: "-".into(),
+            is_parent_link: false,
+        }
+    }
+
+    #[test]
+    fn folders_first_keeps_directories_above_files() {
+        let mut entries = vec![file("zeta.txt", false), file("alpha", true)];
+
+        sort_entries(
+            &mut entries,
+            SortState {
+                column: SortColumn::Name,
+                direction: SortDirection::Ascending,
+            },
+            true,
+        );
+
+        assert!(entries[0].is_dir);
+        assert!(!entries[1].is_dir);
+    }
+
+    #[test]
+    fn disabling_folders_first_uses_plain_sort_order() {
+        let mut entries = vec![file("zeta", true), file("alpha.txt", false)];
+
+        sort_entries(
+            &mut entries,
+            SortState {
+                column: SortColumn::Name,
+                direction: SortDirection::Ascending,
+            },
+            false,
+        );
+
+        assert_eq!(entries[0].name, "alpha.txt");
+        assert_eq!(entries[1].name, "zeta");
+    }
 }

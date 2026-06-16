@@ -2,6 +2,7 @@ use std::{io, path::Path};
 
 use rust_i18n::t;
 
+use crate::config::ViewerConfig;
 use crate::viewer::{
     file_source::FileSource,
     hex_view::{render_hex_lines, total_hex_lines},
@@ -37,7 +38,7 @@ pub struct ViewerState {
 }
 
 impl ViewerState {
-    pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn open(path: impl AsRef<Path>, config: &ViewerConfig) -> io::Result<Self> {
         let source = FileSource::open(path)?;
         let detection_bytes = source.read_at(0, BINARY_DETECTION_BYTES)?;
         let mode = if detection_bytes.contains(&0) {
@@ -47,7 +48,11 @@ impl ViewerState {
         };
 
         let line_index = if mode == ViewerMode::Text {
-            LineIndex::build_initial(&source, INITIAL_INDEX_BYTES, INDEX_SCAN_CHUNK_BYTES)?
+            let initial_bytes = source
+                .len()
+                .min(config.streaming_threshold_bytes())
+                .max(INITIAL_INDEX_BYTES as u64) as usize;
+            LineIndex::build_initial(&source, initial_bytes, INDEX_SCAN_CHUNK_BYTES)?
         } else {
             LineIndex::new()
         };
@@ -317,6 +322,7 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{ViewerMode, ViewerState};
+    use crate::config::ViewerConfig;
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -335,7 +341,7 @@ mod tests {
         let path = temp_file_path("viewer_scroll");
         fs::write(&path, b"one\ntwo\n").unwrap();
 
-        let mut state = ViewerState::open(&path).unwrap();
+        let mut state = ViewerState::open(&path, &ViewerConfig::default()).unwrap();
         state.scroll_line_up();
         assert_eq!(state.first_visible_line(), 0);
 
@@ -359,7 +365,7 @@ mod tests {
         let content = "line\n".repeat(2_000);
         fs::write(&path, content).unwrap();
 
-        let state = ViewerState::open(&path).unwrap();
+        let state = ViewerState::open(&path, &ViewerConfig::default()).unwrap();
 
         assert!(state.estimated_total_lines() > 100);
 
