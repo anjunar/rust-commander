@@ -673,25 +673,26 @@ fn install_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "
+        /* Darker IntelliJ Darcula variant */
         window,
         dialog,
         popover,
         menupopover,
         .background {
-            background: #111820;
-            color: #e6edf3;
+            background: #181818; /* darker main window */
+            color: #a9b7c6; /* main text */
         }
 
         headerbar {
-            background: #16212b;
-            color: #e6edf3;
-            border-bottom: 1px solid #314050;
+            background: #262626; /* darker header */
+            color: #a9b7c6;
+            border-bottom: 1px solid #2c2c2c;
             box-shadow: none;
         }
 
         headerbar:backdrop {
-            background: #16212b;
-            color: #9eb0c1;
+            background: #262626;
+            color: #a9b7c6;
         }
 
         .app-title {
@@ -700,19 +701,19 @@ fn install_css() {
         }
 
         .commander-view {
-            background: linear-gradient(135deg, #111820, #1b2733);
+            background: linear-gradient(135deg, #181818, #121212);
         }
 
         .file-panel {
             padding: 10px;
-            border: 1px solid #314050;
+            border: 1px solid #2b2b2b;
             border-radius: 10px;
-            background: #16212b;
+            background: #1f1f20;
         }
 
         .active-panel {
-            border-color: #e0a93b;
-            box-shadow: 0 0 0 1px rgba(224, 169, 59, 0.38);
+            border-color: #2a7fd1; /* keep selection accent */
+            box-shadow: 0 0 0 1px rgba(42,127,209,0.24);
         }
 
         .path-row {
@@ -725,15 +726,15 @@ fn install_css() {
         dialog entry,
         button,
         menubutton button {
-            background: #0f1720;
-            color: #e6edf3;
-            border-color: #314050;
+            background: #141414;
+            color: #a9b7c6;
+            border-color: #2b2b2b;
         }
 
         dropdown button:hover,
         button:hover,
         menubutton button:hover {
-            background: #162434;
+            background: #1f1f1f;
         }
 
         .root-selector,
@@ -744,18 +745,18 @@ fn install_css() {
         dropdown button:focus,
         button:focus,
         entry:focus {
-            box-shadow: 0 0 0 1px rgba(224, 169, 59, 0.38);
-            border-color: #e0a93b;
+            box-shadow: 0 0 0 1px rgba(42,127,209,0.24);
+            border-color: #2a7fd1;
         }
 
         .path-label {
             font-family: 'Cascadia Code', 'Consolas', monospace;
             font-size: 0.95em;
-            color: #c8d6e5;
+            color: #bdbdbd;
             padding: 7px 10px;
             border-radius: 8px;
-            background: #0f1720;
-            border: 1px solid #263342;
+            background: #141414;
+            border: 1px solid #232323;
         }
 
         scrolledwindow,
@@ -765,53 +766,53 @@ fn install_css() {
         listview,
         listview.view,
         widget.view {
-            background: #101820;
-            color: #e6edf3;
+            background: #141414;
+            color: #a9b7c6;
         }
 
         columnview header,
         columnview header button,
         columnview columnheader,
         columnview columnheader button {
-            background: #16212b;
+            background: #1d1d1d;
             color: #c8d6e5;
-            border-color: #314050;
+            border-color: #252525;
             box-shadow: none;
             font-weight: 700;
         }
 
         columnview row {
-            color: #e6edf3;
+            color: #a9b7c6;
         }
 
         columnview row:nth-child(even) {
-            background: rgba(255, 255, 255, 0.015);
+            background: rgba(255,255,255,0.01);
         }
 
         columnview row:hover {
-            background: rgba(49, 93, 127, 0.22);
+            background: rgba(255,255,255,0.02);
         }
 
         columnview row:selected,
         listview row:selected,
         treeexpander row:selected {
-            background: #315d7f;
-            color: #f4f8fb;
+            background: #214283; /* keep selection */
+            color: #ffffff;
         }
 
         .parent-link {
-            color: #8fc7ff;
+            color: #6296c9;
             font-style: italic;
         }
 
         separator {
-            background: #314050;
+            background: #232323;
         }
 
         .panel-scroller {
-            border: 1px solid #263342;
+            border: 1px solid #232323;
             border-radius: 8px;
-            background: #101820;
+            background: #141414;
         }
 
         .panel-scroller > viewport {
@@ -822,24 +823,24 @@ fn install_css() {
         .editor-view text,
         .editor-view border,
         .editor-view gutter {
-            background: #101820;
-            color: #e6edf3;
+            background: #141414;
+            color: #a9b7c6;
         }
 
         .editor-status {
-            color: #9eb0c1;
+            color: #9fb1c3;
             font-family: 'Cascadia Code', 'Consolas', monospace;
         }
 
         .terminal-dock {
-            border: 1px solid #314050;
+            border: 1px solid #1f1f1f;
             border-radius: 10px;
-            background: #0d131a;
+            background: #0f0f0f;
         }
 
         .terminal-toolbar {
-            border-bottom: 1px solid #223242;
-            background: rgba(22, 33, 43, 0.92);
+            border-bottom: 1px solid #1a1a1a;
+            background: rgba(20,20,20,0.95);
         }
 
         .terminal-title {
@@ -849,7 +850,7 @@ fn install_css() {
 
         .terminal-cwd {
             font-family: 'Cascadia Code', 'Consolas', monospace;
-            color: #9eb0c1;
+            color: #9fb1c3;
         }
 
         .terminal-button {
@@ -857,7 +858,7 @@ fn install_css() {
         }
 
         .terminal-placeholder {
-            background: #101820;
+            background: #141414;
         }
 
         .terminal-placeholder-title {
@@ -865,11 +866,11 @@ fn install_css() {
         }
 
         .terminal-placeholder-copy {
-            color: #b6c6d6;
+            color: #9eaec0;
         }
 
         scrollbar slider {
-            background: #2a3948;
+            background: #2b2b2b;
             border-radius: 999px;
             min-width: 10px;
             min-height: 10px;
@@ -879,17 +880,17 @@ fn install_css() {
         dialog > box,
         messagedialog box,
         .dialog-action-area {
-            background: #111820;
-            color: #e6edf3;
+            background: #141414;
+            color: #a9b7c6;
         }
 
         .status-line {
             padding: 6px 10px;
             border-radius: 8px;
-            background: #0d131a;
-            color: #d8e4ee;
+            background: #131313;
+            color: #d0d6db;
             font-family: 'Cascadia Code', 'Consolas', monospace;
-            border: 1px solid #202d3a;
+            border: 1px solid #1f1f1f;
         }
 
         .command-bar {
@@ -899,9 +900,9 @@ fn install_css() {
         .command-button {
             font-family: 'Cascadia Code', 'Consolas', monospace;
             font-weight: 700;
-            background: #16212b;
-            color: #e6edf3;
-            border: 1px solid #314050;
+            background: #1d1d1d;
+            color: #a9b7c6;
+            border: 1px solid #232323;
             border-radius: 8px;
             padding: 10px 14px;
         }
