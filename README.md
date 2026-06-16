@@ -28,7 +28,8 @@ The selected Windows direction is documented in [WINDOWS_TERMINAL_STRATEGY.md](.
 ## Keyboard Workflow
 
 - `F2`: Rename
-- `F3`: Open a console in the active panel path
+- `F3`: View the selected file, including binary files as hex
+- `F4`: Edit UTF-8 text files
 - `F5`: Copy to the opposite panel
 - `F6`: Move to the opposite panel
 - `F8`: Delete

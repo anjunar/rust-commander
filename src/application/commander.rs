@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 
@@ -202,6 +202,33 @@ impl Commander {
         let entries = read_entries(&self.state.panel(panel).path)?;
         self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = format!("Renamed: {}", target.display());
+
+        Ok(ViewUpdate::panel_entries(panel))
+    }
+
+    pub fn create_directory_in_active(&mut self, name: &str) -> Result<ViewUpdate> {
+        let panel = self.state.active_panel;
+        let trimmed = name.trim();
+
+        if trimmed.is_empty() {
+            bail!("The directory name must not be empty");
+        }
+
+        if trimmed.contains('/') || trimmed.contains('\\') {
+            bail!("The directory name must not contain path separators");
+        }
+
+        let target = self.state.panel(panel).path.join(trimmed);
+        if target.exists() {
+            bail!("An entry with this name already exists");
+        }
+
+        fs::create_dir(&target)
+            .with_context(|| format!("Could not create directory {}", target.display()))?;
+
+        let entries = read_entries(&self.state.panel(panel).path)?;
+        self.state.panel_mut(panel).replace_entries(entries);
+        self.state.status = format!("Created directory: {}", target.display());
 
         Ok(ViewUpdate::panel_entries(panel))
     }

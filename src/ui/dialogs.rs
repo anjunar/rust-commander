@@ -123,6 +123,49 @@ where
     });
 }
 
+pub fn prompt_new_directory<F>(parent: &gtk::ApplicationWindow, on_confirm: F)
+where
+    F: FnOnce(String) + 'static,
+{
+    let dialog = gtk::Dialog::with_buttons(
+        Some("Create directory"),
+        Some(parent),
+        gtk::DialogFlags::MODAL,
+        &[
+            ("Cancel", gtk::ResponseType::Cancel),
+            ("Create", gtk::ResponseType::Accept),
+        ],
+    );
+    dialog.set_default_response(gtk::ResponseType::Accept);
+
+    let content = dialog.content_area();
+    content.set_spacing(12);
+    content.set_margin_top(12);
+    content.set_margin_bottom(12);
+    content.set_margin_start(12);
+    content.set_margin_end(12);
+
+    let label = gtk::Label::new(Some("Enter a name for the new directory:"));
+    label.set_xalign(0.0);
+    content.append(&label);
+
+    let entry = gtk::Entry::new();
+    entry.set_activates_default(true);
+    entry.set_hexpand(true);
+    content.append(&entry);
+
+    glib::MainContext::default().spawn_local(async move {
+        dialog.present();
+        entry.grab_focus();
+        let response = dialog.run_future().await;
+        let value = entry.text().to_string();
+        dialog.close();
+        if response == gtk::ResponseType::Accept {
+            on_confirm(value);
+        }
+    });
+}
+
 pub fn show_conflict<F>(
     parent: &gtk::ApplicationWindow,
     conflict: OperationConflict,

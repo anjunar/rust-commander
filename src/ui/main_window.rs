@@ -117,6 +117,46 @@ impl MainWindow {
         self.run_command(|commander| commander.activate_selected(active_panel));
     }
 
+    pub fn handle_view(self: &Rc<Self>) {
+        let selected = self
+            .commander
+            .borrow()
+            .state()
+            .active_panel()
+            .selected_item();
+
+        let Some(selected) = selected else {
+            dialogs::show_error(
+                &self.window,
+                "View is not available",
+                "No entry is selected.",
+            );
+            return;
+        };
+
+        if selected.is_parent_link {
+            dialogs::show_error(
+                &self.window,
+                "View is not available",
+                "The parent directory entry cannot be viewed.",
+            );
+            return;
+        }
+
+        if selected.is_dir {
+            dialogs::show_error(
+                &self.window,
+                "View is not available",
+                "Directories cannot be viewed in the file viewer.",
+            );
+            return;
+        }
+
+        if let Err(error) = editor_dialog::view_file(&self.window, selected.path.clone()) {
+            dialogs::show_error(&self.window, "Could not open viewer", &error.to_string());
+        }
+    }
+
     pub fn handle_rename(self: &Rc<Self>) {
         let selected = self
             .commander
@@ -160,6 +200,16 @@ impl MainWindow {
         let update = {
             let mut commander = self.commander.borrow_mut();
             commander.set_status(format!("Console opened at {}", path.display()))
+        };
+        self.apply_update(update);
+    }
+
+    pub fn handle_help(self: &Rc<Self>) {
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.set_status(
+                "F2 Rename, F3 View, F4 Edit, F5 Copy, F6 Move, F7 MkDir, F8 Delete, F9 Terminal, Tab Switch, Enter Open. F1 Help is a placeholder for an upcoming action.",
+            )
         };
         self.apply_update(update);
     }
@@ -251,6 +301,18 @@ impl MainWindow {
 
     pub fn handle_delete(self: &Rc<Self>) {
         self.handle_operation(FileOperationKind::Delete);
+    }
+
+    pub fn handle_make_directory(self: &Rc<Self>) {
+        let this = Rc::clone(self);
+        dialogs::prompt_new_directory(&self.window, move |name| {
+            this.run_command(|commander| commander.create_directory_in_active(&name));
+            this.sync_watched_paths();
+        });
+    }
+
+    pub fn handle_quit(self: &Rc<Self>) {
+        self.window.close();
     }
 
     fn handle_operation(self: &Rc<Self>, kind: FileOperationKind) {
@@ -438,15 +500,17 @@ impl MainWindow {
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 8] = [
+        let callbacks: [fn(&Rc<Self>); 10] = [
+            Self::handle_help,
             Self::handle_rename,
-            Self::handle_open_console,
+            Self::handle_view,
             Self::handle_edit,
             Self::handle_copy,
             Self::handle_move,
+            Self::handle_make_directory,
             Self::handle_delete,
-            Self::handle_switch_panel,
-            Self::handle_open_active,
+            Self::handle_toggle_terminal,
+            Self::handle_quit,
         ];
 
         let mut callback_index = 0usize;
@@ -582,14 +646,16 @@ fn build_command_bar() -> gtk::Box {
     command_bar.set_homogeneous(true);
 
     for label in [
+        "F1 Help",
         "F2 Rename",
-        "F3 Console",
+        "F3 View",
         "F4 Edit",
         "F5 Copy",
         "F6 Move",
+        "F7 MkDir",
         "F8 Delete",
-        "Tab Switch",
-        "Enter Open",
+        "F9 Terminal",
+        "F10 Quit",
     ] {
         let button = gtk::Button::with_label(label);
         button.add_css_class("command-button");
