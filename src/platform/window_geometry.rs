@@ -5,7 +5,7 @@ mod imp {
     use windows_sys::Win32::{
         Foundation::RECT,
         UI::WindowsAndMessaging::{
-            FindWindowW, GetWindowPlacement, SW_SHOWMAXIMIZED, SW_SHOWNORMAL, SetWindowPlacement,
+            FindWindowW, GetWindowPlacement, SetWindowPlacement, SW_SHOWMAXIMIZED, SW_SHOWNORMAL,
             WINDOWPLACEMENT,
         },
     };
@@ -114,4 +114,4 @@ mod imp {
     }
 }
 
-pub use imp::{WindowPlacementState, current_window_placement, restore_window_placement};
+pub use imp::{current_window_placement, restore_window_placement, WindowPlacementState};

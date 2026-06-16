@@ -7,6 +7,8 @@ pub mod window_geometry;
 
 #[cfg(not(target_os = "windows"))]
 pub mod unix;
+#[cfg(all(unix, not(target_os = "macos")))]
+pub mod x11_window_icon;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
@@ -15,7 +17,7 @@ pub use icons::icon_for_entry;
 pub use open::open_path;
 pub use terminal::open_console;
 pub use window_geometry::{
-    WindowPlacementState, current_window_placement, restore_window_placement,
+    current_window_placement, restore_window_placement, WindowPlacementState,
 };
 
 #[cfg(target_os = "windows")]

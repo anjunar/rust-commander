@@ -1,4 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -120,8 +123,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        AppConfig, ArchiveConfig, PaneConfig, WindowConfig, WindowPosition, load_from_path,
-        save_to_path,
+        load_from_path, save_to_path, AppConfig, ArchiveConfig, PaneConfig, WindowConfig,
+        WindowPosition,
     };
 
     #[test]
@@ -153,7 +156,13 @@ mod tests {
         assert_eq!(loaded.window.position.as_ref().unwrap().x, 120);
         assert_eq!(loaded.window.position.as_ref().unwrap().y, 80);
         assert!(loaded.window.maximized);
-        assert_eq!(loaded.panes.left_directory, Some(PathBuf::from("/tmp/left")));
-        assert_eq!(loaded.panes.right_directory, Some(PathBuf::from("/tmp/right")));
+        assert_eq!(
+            loaded.panes.left_directory,
+            Some(PathBuf::from("/tmp/left"))
+        );
+        assert_eq!(
+            loaded.panes.right_directory,
+            Some(PathBuf::from("/tmp/right"))
+        );
     }
 }

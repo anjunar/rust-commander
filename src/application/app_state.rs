@@ -68,11 +68,14 @@ impl AppState {
     }
 
     pub fn visible_paths(&self) -> Vec<PathBuf> {
-        [self.left.location.filesystem_path(), self.right.location.filesystem_path()]
-            .into_iter()
-            .flatten()
-            .map(PathBuf::from)
-            .collect()
+        [
+            self.left.location.filesystem_path(),
+            self.right.location.filesystem_path(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(PathBuf::from)
+        .collect()
     }
 
     pub fn selected_root_index(&self, panel: ActivePanel) -> Option<usize> {

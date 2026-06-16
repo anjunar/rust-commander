@@ -1,8 +1,6 @@
 use std::path::Path;
 
-use super::{
-    ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveError, ArchiveSession,
-};
+use super::{ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveError, ArchiveSession};
 
 #[derive(Clone, Debug, Default)]
 pub struct PluginArchiveBackend;

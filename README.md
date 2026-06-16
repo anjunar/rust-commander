@@ -116,6 +116,35 @@ More details are documented in [WINDOWS_TERMINAL_STRATEGY.md](./WINDOWS_TERMINAL
 
 On Linux, the terminal dock can use `vte4`, giving RCommander a real terminal widget instead of a custom terminal renderer.
 
+### Ubuntu 24.04 Setup
+
+On Ubuntu 24.04, install the native development packages before building:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential \
+  pkg-config \
+  libgtk-4-dev \
+  libgraphene-1.0-dev \
+  libgtksourceview-5-dev \
+  libvte-2.91-gtk4-dev \
+  libunrar-dev
+```
+
+Or use the helper script in this repository:
+
+```bash
+./packaging/linux/setup-ubuntu.sh
+```
+
+Then build and run normally:
+
+```bash
+cargo check
+cargo run
+```
+
 ## Archive Support
 
 RCommander currently includes initial archive support for:

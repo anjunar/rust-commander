@@ -18,6 +18,8 @@ serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.8.23"
 unrar = "0.5.8"
 zip = { version = "0.6.6", default-features = true }
+x11rb = { version = "0.13.2", features = ["image"] }
+gdk_x11 = { version = "0.11.0", package = "gdk4-x11" }
 
 [build-dependencies]
 winres = "0.1.11"

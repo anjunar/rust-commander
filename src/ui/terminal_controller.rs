@@ -8,6 +8,8 @@ use gtk::{gdk, glib, prelude::*};
 
 #[cfg(not(target_os = "windows"))]
 use gtk::{gio, pango};
+#[cfg(not(target_os = "windows"))]
+use vte4::prelude::*;
 
 use crate::ui::terminal_state::TerminalState;
 
@@ -54,6 +56,10 @@ impl TerminalController {
 
     pub fn is_supported(&self) -> bool {
         self.backend.is_supported()
+    }
+
+    pub fn has_focus(&self) -> bool {
+        self.backend.has_focus()
     }
 
     pub fn set_panel_dir(&self, path: &Path) {
@@ -119,6 +125,7 @@ impl TerminalController {
 enum TerminalBackend {
     #[cfg(not(target_os = "windows"))]
     Vte(LinuxTerminalBackend),
+    #[cfg(target_os = "windows")]
     Unsupported(UnsupportedTerminalBackend),
 }
 
@@ -139,6 +146,7 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(backend) => backend.widget.clone().upcast(),
+            #[cfg(target_os = "windows")]
             Self::Unsupported(backend) => backend.widget.clone().upcast(),
         }
     }
@@ -147,6 +155,7 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(_) => true,
+            #[cfg(target_os = "windows")]
             Self::Unsupported(_) => false,
         }
     }
@@ -155,6 +164,7 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(backend) => backend.spawn(working_dir),
+            #[cfg(target_os = "windows")]
             Self::Unsupported(backend) => backend.spawn(working_dir),
         }
     }
@@ -163,6 +173,7 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(backend) => backend.clear(),
+            #[cfg(target_os = "windows")]
             Self::Unsupported(backend) => backend.clear(),
         }
     }
@@ -171,6 +182,7 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(backend) => backend.grab_focus(),
+            #[cfg(target_os = "windows")]
             Self::Unsupported(backend) => backend.grab_focus(),
         }
     }
@@ -182,7 +194,17 @@ impl TerminalBackend {
         match self {
             #[cfg(not(target_os = "windows"))]
             Self::Vte(backend) => backend.connect_escape(f),
+            #[cfg(target_os = "windows")]
             Self::Unsupported(backend) => backend.connect_escape(f),
+        }
+    }
+
+    fn has_focus(&self) -> bool {
+        match self {
+            #[cfg(not(target_os = "windows"))]
+            Self::Vte(backend) => backend.has_focus(),
+            #[cfg(target_os = "windows")]
+            Self::Unsupported(backend) => backend.has_focus(),
         }
     }
 }
@@ -207,12 +229,39 @@ impl LinuxTerminalBackend {
         widget.set_cursor_shape(vte4::CursorShape::Block);
         widget.set_clear_background(false);
 
-        let font = pango::FontDescription::from_string("Cascadia Code 11");
+        let font = pango::FontDescription::from_string("Monospace 12");
         widget.set_font(Some(&font));
+        widget.set_bold_is_bright(false);
+        widget.set_cell_width_scale(1.0);
+        widget.set_cell_height_scale(1.0);
 
-        let foreground = gdk::RGBA::new(0.902, 0.929, 0.953, 1.0);
-        let background = gdk::RGBA::new(0.063, 0.094, 0.125, 1.0);
-        widget.set_colors(Some(&foreground), Some(&background), &[]);
+        let foreground = gdk::RGBA::new(0.839, 0.867, 0.894, 1.0);
+        let background = gdk::RGBA::new(0.086, 0.102, 0.122, 1.0);
+        let cursor = gdk::RGBA::new(0.839, 0.867, 0.894, 1.0);
+        let cursor_foreground = gdk::RGBA::new(0.086, 0.102, 0.122, 1.0);
+        let palette = [
+            gdk::RGBA::new(0.176, 0.196, 0.231, 1.0),
+            gdk::RGBA::new(0.749, 0.380, 0.416, 1.0),
+            gdk::RGBA::new(0.639, 0.745, 0.549, 1.0),
+            gdk::RGBA::new(0.922, 0.796, 0.545, 1.0),
+            gdk::RGBA::new(0.506, 0.631, 0.757, 1.0),
+            gdk::RGBA::new(0.706, 0.557, 0.678, 1.0),
+            gdk::RGBA::new(0.561, 0.737, 0.733, 1.0),
+            gdk::RGBA::new(0.839, 0.867, 0.894, 1.0),
+            gdk::RGBA::new(0.302, 0.337, 0.396, 1.0),
+            gdk::RGBA::new(0.843, 0.529, 0.561, 1.0),
+            gdk::RGBA::new(0.722, 0.808, 0.631, 1.0),
+            gdk::RGBA::new(0.945, 0.835, 0.620, 1.0),
+            gdk::RGBA::new(0.592, 0.714, 0.835, 1.0),
+            gdk::RGBA::new(0.769, 0.647, 0.745, 1.0),
+            gdk::RGBA::new(0.635, 0.792, 0.788, 1.0),
+            gdk::RGBA::new(0.925, 0.937, 0.953, 1.0),
+        ];
+        let palette_refs: Vec<&gdk::RGBA> = palette.iter().collect();
+        widget.set_colors(Some(&foreground), Some(&background), &palette_refs);
+        widget.set_color_bold(Some(&foreground));
+        widget.set_color_cursor(Some(&cursor));
+        widget.set_color_cursor_foreground(Some(&cursor_foreground));
 
         let state_for_notify = Rc::clone(&state);
         widget.connect_current_directory_uri_notify(move |terminal| {
@@ -237,6 +286,8 @@ impl LinuxTerminalBackend {
                 working_dir.display()
             ));
         };
+        let working_directory = working_directory.to_string();
+        let working_directory_path = PathBuf::from(&working_directory);
 
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
         let argv = [shell.as_str()];
@@ -244,7 +295,7 @@ impl LinuxTerminalBackend {
         let state = Rc::clone(&self.state);
         self.widget.spawn_async(
             vte4::PtyFlags::DEFAULT,
-            Some(working_directory),
+            Some(&working_directory),
             &argv,
             &[],
             glib::SpawnFlags::DEFAULT,
@@ -254,8 +305,8 @@ impl LinuxTerminalBackend {
             move |result| {
                 if let Ok(pid) = result {
                     state.borrow_mut().has_spawned = true;
-                    state.borrow_mut().working_dir = PathBuf::from(working_directory);
-                    state.borrow_mut().last_panel_dir = PathBuf::from(working_directory);
+                    state.borrow_mut().working_dir = working_directory_path.clone();
+                    state.borrow_mut().last_panel_dir = working_directory_path.clone();
                     #[allow(deprecated)]
                     {
                         let _ = pid;
@@ -275,6 +326,10 @@ impl LinuxTerminalBackend {
         self.widget.grab_focus();
     }
 
+    fn has_focus(&self) -> bool {
+        self.widget.has_focus()
+    }
+
     fn connect_escape<F>(&self, f: F)
     where
         F: Fn() + 'static,
@@ -292,12 +347,14 @@ impl LinuxTerminalBackend {
     }
 }
 
+#[cfg(target_os = "windows")]
 struct UnsupportedTerminalBackend {
     widget: gtk::Box,
     description: gtk::Label,
     state: Rc<RefCell<TerminalState>>,
 }
 
+#[cfg(target_os = "windows")]
 impl UnsupportedTerminalBackend {
     fn new(state: Rc<RefCell<TerminalState>>) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 12);
@@ -350,6 +407,10 @@ impl UnsupportedTerminalBackend {
 
     fn grab_focus(&self) {
         self.widget.grab_focus();
+    }
+
+    fn has_focus(&self) -> bool {
+        self.widget.has_focus()
     }
 
     fn connect_escape<F>(&self, f: F)

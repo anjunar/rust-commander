@@ -82,6 +82,10 @@ impl TerminalDock {
         self.controller.is_supported()
     }
 
+    pub fn has_focus(&self) -> bool {
+        self.controller.has_focus()
+    }
+
     pub fn set_panel_dir(&self, path: PathBuf) {
         self.controller.set_panel_dir(&path);
         let state = self.state();

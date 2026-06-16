@@ -1,16 +1,13 @@
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use unrar::{
-    Archive, CursorBeforeHeader, OpenArchive, Process,
     error::{Code, UnrarError, When},
+    Archive, CursorBeforeHeader, OpenArchive, Process,
 };
 
 use super::{
-    ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind, ArchiveError,
-    ArchiveFormat, ArchiveFormatDetector, ArchiveSession, safe_join_extract_path,
+    safe_join_extract_path, ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind,
+    ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -21,9 +18,9 @@ impl UnrarBackend {
         Self
     }
 
-    fn processing_archive<'a>(
+    fn processing_archive(
         &self,
-        path: &'a Path,
+        path: &Path,
     ) -> Result<OpenArchive<Process, CursorBeforeHeader>, ArchiveError> {
         Archive::new(path)
             .as_first_part()
@@ -32,7 +29,10 @@ impl UnrarBackend {
     }
 
     fn normalized_path(path: &Path) -> String {
-        path.to_string_lossy().replace('\\', "/").trim_matches('/').to_string()
+        path.to_string_lossy()
+            .replace('\\', "/")
+            .trim_matches('/')
+            .to_string()
     }
 
     fn entry_from_header(header: &unrar::FileHeader) -> Option<ArchiveEntry> {
@@ -95,9 +95,11 @@ impl UnrarBackend {
 
             let destination = safe_join_extract_path(target_dir, &archive_path)?;
             if entry.is_directory() {
-                fs::create_dir_all(&destination).map_err(|error| ArchiveError::ExtractionFailed {
-                    path: session.archive_path().to_path_buf(),
-                    detail: format!("Could not create {}: {error}", destination.display()),
+                fs::create_dir_all(&destination).map_err(|error| {
+                    ArchiveError::ExtractionFailed {
+                        path: session.archive_path().to_path_buf(),
+                        detail: format!("Could not create {}: {error}", destination.display()),
+                    }
                 })?;
                 archive = header
                     .skip()
@@ -153,7 +155,10 @@ impl ArchiveBackend for UnrarBackend {
     }
 
     fn can_open(&self, path: &Path) -> bool {
-        matches!(ArchiveFormatDetector::detect(path), Some(ArchiveFormat::Rar))
+        matches!(
+            ArchiveFormatDetector::detect(path),
+            Some(ArchiveFormat::Rar)
+        )
     }
 
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
@@ -219,11 +224,7 @@ impl ArchiveBackend for UnrarBackend {
         })
     }
 
-    fn extract_all(
-        &self,
-        session: &ArchiveSession,
-        target_dir: &Path,
-    ) -> Result<(), ArchiveError> {
+    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError> {
         self.extract_matching(session, target_dir, |_| true)
     }
 
@@ -262,18 +263,21 @@ fn map_unrar_error(path: &Path, error: UnrarError) -> ArchiveError {
             path: path.to_path_buf(),
             detail: error.to_string(),
         },
-        Code::NoMemory | Code::SmallBuf | Code::Unknown | Code::EReference | Code::EndArchive | Code::Success => {
-            match error.when {
-                When::Open | When::Read => ArchiveError::LibraryError {
-                    library: "unrar".into(),
-                    detail: error.to_string(),
-                },
-                When::Process => ArchiveError::ExtractionFailed {
-                    path: path.to_path_buf(),
-                    detail: error.to_string(),
-                },
-            }
-        }
+        Code::NoMemory
+        | Code::SmallBuf
+        | Code::Unknown
+        | Code::EReference
+        | Code::EndArchive
+        | Code::Success => match error.when {
+            When::Open | When::Read => ArchiveError::LibraryError {
+                library: "unrar".into(),
+                detail: error.to_string(),
+            },
+            When::Process => ArchiveError::ExtractionFailed {
+                path: path.to_path_buf(),
+                detail: error.to_string(),
+            },
+        },
     }
 }
 

@@ -5,13 +5,14 @@ use std::{
     rc::Rc,
 };
 
+use gtk::{gdk, EventControllerKey};
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
     application::ActivePanel,
-    domain::{Entry, PanelLocation, RootLocation, sorting::SortColumn},
+    domain::{sorting::SortColumn, Entry, PanelLocation, RootLocation},
     ui::{
-        columns::{FileColumnBinding, append_file_columns},
+        columns::{append_file_columns, FileColumnBinding},
         file_row_object::FileRowObject,
     },
 };
@@ -261,6 +262,22 @@ impl FilePanelView {
         self.column_view.connect_activate(move |_, position| {
             f(position as usize);
         });
+    }
+
+    pub fn connect_open_key<F>(&self, f: F)
+    where
+        F: Fn() + 'static,
+    {
+        let controller = EventControllerKey::new();
+        controller.connect_key_pressed(move |_, key, _, _| {
+            if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+                f();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        self.column_view.add_controller(controller);
     }
 
     pub fn connect_root_changed<F>(&self, f: F)

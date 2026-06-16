@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=RCommander
+Comment=Two-pane file commander written in Rust and GTK4
+Exec=@EXEC@
+Icon=rust-commander
+Terminal=false
+Categories=System;FileTools;FileManager;
+StartupNotify=true
+StartupWMClass=rust-commander

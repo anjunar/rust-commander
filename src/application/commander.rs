@@ -1,15 +1,15 @@
 use std::{fs, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::{
-    application::{ActivePanel, app_state::AppState, commands::ViewUpdate},
+    application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
     archive::ArchiveService,
     config::ArchiveConfig,
     domain::{
-        Entry, Panel, PanelLocation,
         operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
         sorting::{SortColumn, SortDirection},
+        Entry, Panel, PanelLocation,
     },
     fs::reader::{read_entries, rename_path},
     platform,
@@ -121,16 +121,21 @@ impl Commander {
         match current_location {
             PanelLocation::Filesystem(_) if selected.is_dir => {
                 let entries = read_entries(&selected.path)?;
-                self.state.panel_mut(panel).navigate_to(
-                    PanelLocation::filesystem(selected.path.clone()),
-                    entries,
-                );
+                self.state
+                    .panel_mut(panel)
+                    .navigate_to(PanelLocation::filesystem(selected.path.clone()), entries);
                 self.state.status = format!("Opened: {}", selected.path.display());
                 Ok(ViewUpdate::panel_entries(panel))
             }
-            PanelLocation::Filesystem(_) if self.archive_service.is_archive_path(&selected.path) => {
-                let archive_location = self.archive_service.archive_location_for_path(&selected.path)?;
-                let entries = self.archive_service.entries_for_location(&archive_location)?;
+            PanelLocation::Filesystem(_)
+                if self.archive_service.is_archive_path(&selected.path) =>
+            {
+                let archive_location = self
+                    .archive_service
+                    .archive_location_for_path(&selected.path)?;
+                let entries = self
+                    .archive_service
+                    .entries_for_location(&archive_location)?;
                 self.state
                     .panel_mut(panel)
                     .navigate_to(archive_location, entries);
@@ -154,8 +159,7 @@ impl Commander {
             }
             PanelLocation::Filesystem(_) => {
                 platform::open_path(&selected.path)?;
-                self.state.status =
-                    format!("Opened with default app: {}", selected.path.display());
+                self.state.status = format!("Opened with default app: {}", selected.path.display());
                 Ok(ViewUpdate::status())
             }
         }
@@ -203,15 +207,21 @@ impl Commander {
         status: String,
     ) -> ViewUpdate {
         self.state.active_panel = panel;
-        self.state.panel_mut(panel).navigate_to(next_location, entries);
+        self.state
+            .panel_mut(panel)
+            .navigate_to(next_location, entries);
         self.state.status = status;
         ViewUpdate::panel_entries(panel)
     }
 
     pub fn refresh_visible_panels(&mut self) -> Result<ViewUpdate> {
         self.state.roots = platform::available_roots();
-        let left_entries = self.archive_service.entries_for_location(&self.state.left.location)?;
-        let right_entries = self.archive_service.entries_for_location(&self.state.right.location)?;
+        let left_entries = self
+            .archive_service
+            .entries_for_location(&self.state.left.location)?;
+        let right_entries = self
+            .archive_service
+            .entries_for_location(&self.state.right.location)?;
         self.state.left.replace_entries(left_entries);
         self.state.right.replace_entries(right_entries);
         self.state.status = "File changes detected. View refreshed.".into();
@@ -262,12 +272,18 @@ impl Commander {
         self.state.roots = platform::available_roots();
         let mut failures = Vec::new();
 
-        match self.archive_service.entries_for_location(&self.state.left.location) {
+        match self
+            .archive_service
+            .entries_for_location(&self.state.left.location)
+        {
             Ok(entries) => self.state.left.replace_entries(entries),
             Err(error) => failures.push(format!("Left refresh failed: {error}")),
         }
 
-        match self.archive_service.entries_for_location(&self.state.right.location) {
+        match self
+            .archive_service
+            .entries_for_location(&self.state.right.location)
+        {
             Ok(entries) => self.state.right.replace_entries(entries),
             Err(error) => failures.push(format!("Right refresh failed: {error}")),
         }
@@ -361,7 +377,9 @@ impl Commander {
         let source_panel = self.state.active_panel();
         let target_panel = self.state.inactive_panel();
 
-        if source_panel.location.filesystem_path().is_none() && !matches!(kind, FileOperationKind::Copy) {
+        if source_panel.location.filesystem_path().is_none()
+            && !matches!(kind, FileOperationKind::Copy)
+        {
             bail!("Archive sources currently support copy only");
         }
 

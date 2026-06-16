@@ -36,8 +36,8 @@ impl ArchiveBackend for LibArchiveBackend {
 
     fn supported_extensions(&self) -> &'static [&'static str] {
         &[
-            "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "gz", "bz2", "xz",
-            "cab", "iso", "wim", "cpio",
+            "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "gz", "bz2", "xz", "cab",
+            "iso", "wim", "cpio",
         ]
     }
 
@@ -57,8 +57,7 @@ impl ArchiveBackend for LibArchiveBackend {
     }
 
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
-        let detected = ArchiveFormatDetector::detect(path)
-            .or(Some(ArchiveFormat::Tar));
+        let detected = ArchiveFormatDetector::detect(path).or(Some(ArchiveFormat::Tar));
         Err(match detected {
             Some(_) => Self::unsupported(path),
             None => ArchiveError::UnsupportedFormat {

@@ -2,9 +2,9 @@
 mod windows_tray {
     use std::{ffi::OsStr, os::windows::ffi::OsStrExt};
     use windows_sys::Win32::UI::Shell::{
-        NIF_ICON, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+        Shell_NotifyIconW, NIF_ICON, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{IMAGE_ICON, LR_LOADFROMFILE, LoadImageW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{LoadImageW, IMAGE_ICON, LR_LOADFROMFILE};
 
     use crate::platform::assets::asset_path;
 

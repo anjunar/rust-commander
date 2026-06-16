@@ -2,9 +2,9 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver},
+        Arc,
     },
     thread,
 };
@@ -78,16 +78,19 @@ impl ArchiveService {
         self.registry.resolve_for_path(path)?.open(path)
     }
 
-    pub fn entries_for_location(&self, location: &PanelLocation) -> Result<Vec<Entry>, ArchiveError> {
+    pub fn entries_for_location(
+        &self,
+        location: &PanelLocation,
+    ) -> Result<Vec<Entry>, ArchiveError> {
         match location {
-            PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path)
-                .map_err(|error| ArchiveError::IoError {
+            PanelLocation::Filesystem(path) => {
+                crate::fs::reader::read_entries(path).map_err(|error| ArchiveError::IoError {
                     detail: error.to_string(),
-                }),
-            PanelLocation::Archive(view) => Ok(self.entries_for_archive_path(
-                &view.session,
-                &view.current_path,
-            )),
+                })
+            }
+            PanelLocation::Archive(view) => {
+                Ok(self.entries_for_archive_path(&view.session, &view.current_path))
+            }
         }
     }
 
@@ -113,24 +116,28 @@ impl ArchiveService {
                     session,
                     entry_paths,
                     target_dir,
-                } => service.extract_selection(&session, &entry_paths, &target_dir, &cancelled, &tx),
+                } => {
+                    service.extract_selection(&session, &entry_paths, &target_dir, &cancelled, &tx)
+                }
                 ArchiveTaskRequest::ExtractAll {
                     session,
                     target_dir,
                 } => service.extract_all(&session, &target_dir, &cancelled, &tx),
-                ArchiveTaskRequest::TestArchive { session } => match service.backend_for_session(&session) {
-                    Ok(backend) => {
-                        let result = backend.test_archive(&session);
-                        if result.is_ok() {
-                            let _ = tx.send(ArchiveTaskEvent::Finished(format!(
-                                "Archive test completed: {}",
-                                session.archive_path().display()
-                            )));
+                ArchiveTaskRequest::TestArchive { session } => {
+                    match service.backend_for_session(&session) {
+                        Ok(backend) => {
+                            let result = backend.test_archive(&session);
+                            if result.is_ok() {
+                                let _ = tx.send(ArchiveTaskEvent::Finished(format!(
+                                    "Archive test completed: {}",
+                                    session.archive_path().display()
+                                )));
+                            }
+                            result
                         }
-                        result
+                        Err(error) => Err(error),
                     }
-                    Err(error) => Err(error),
-                },
+                }
             };
 
             if cancelled.load(Ordering::Relaxed) {
@@ -199,7 +206,11 @@ impl ArchiveService {
         }
 
         let backend = self.backend_for_session(session)?;
-        let total_bytes = session.cached_entries().iter().map(|entry| entry.size).sum::<u64>();
+        let total_bytes = session
+            .cached_entries()
+            .iter()
+            .map(|entry| entry.size)
+            .sum::<u64>();
         let _ = tx.send(ArchiveTaskEvent::Progress(ArchiveProgress {
             operation: Some(ArchiveOperation::ExtractAll {
                 target_dir: target_dir.to_path_buf(),
@@ -243,22 +254,24 @@ impl ArchiveService {
         }
 
         for directory_name in synthetic_dirs {
-            entries_by_name.entry(directory_name.clone()).or_insert_with(|| Entry {
-                name: directory_name.clone(),
-                archive_path: Some(join_archive_path(current_path, &directory_name)),
-                is_dir: true,
-                size_bytes: 0,
-                size_label: "-".into(),
-                type_label: "Folder".into(),
-                modified_at: None,
-                modified_label: "-".into(),
-                attributes_label: "D".into(),
-                is_parent_link: false,
-            });
+            entries_by_name
+                .entry(directory_name.clone())
+                .or_insert_with(|| Entry {
+                    name: directory_name.clone(),
+                    archive_path: Some(join_archive_path(current_path, &directory_name)),
+                    is_dir: true,
+                    size_bytes: 0,
+                    size_label: "-".into(),
+                    type_label: "Folder".into(),
+                    modified_at: None,
+                    modified_label: "-".into(),
+                    attributes_label: "D".into(),
+                    is_parent_link: false,
+                });
         }
 
         let mut entries = entries_by_name.into_values().collect::<Vec<_>>();
-        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by_key(|a| a.name.to_lowercase());
         if session.cached_entries().iter().any(|_| true) {
             entries.insert(0, Entry::parent_link());
         }

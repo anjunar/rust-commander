@@ -3,9 +3,9 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
+        Arc,
     },
     thread,
     time::{Duration, Instant},
@@ -597,12 +597,12 @@ pub fn progress_percent(snapshot: &OperationSnapshot) -> f64 {
 mod tests {
     use std::{
         fs,
-        sync::{Arc, atomic::AtomicBool, mpsc},
+        sync::{atomic::AtomicBool, mpsc, Arc},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
-    use super::{CopyProgress, FileOperationKind, OperationEvent, OperationPlan, copy_path};
+    use super::{copy_path, CopyProgress, FileOperationKind, OperationEvent, OperationPlan};
 
     #[test]
     fn cancelled_directory_copy_cleans_partially_created_target() {

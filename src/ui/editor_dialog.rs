@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use gtk::{glib, prelude::*};
 use sourceview5::{self as sourceview, prelude::*};
 

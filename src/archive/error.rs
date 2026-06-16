@@ -2,19 +2,51 @@ use std::{fmt, path::PathBuf};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArchiveError {
-    BackendNotFound { backend: String, path: Option<PathBuf> },
-    UnsupportedFormat { path: PathBuf },
-    InvalidArchive { path: PathBuf, detail: Option<String> },
-    PasswordRequired { path: PathBuf },
-    WrongPassword { path: PathBuf },
-    ExtractionFailed { path: PathBuf, detail: String },
-    ListFailed { path: PathBuf, detail: String },
-    UnsafeArchivePath { archive_path: String },
+    BackendNotFound {
+        backend: String,
+        path: Option<PathBuf>,
+    },
+    UnsupportedFormat {
+        path: PathBuf,
+    },
+    InvalidArchive {
+        path: PathBuf,
+        detail: Option<String>,
+    },
+    PasswordRequired {
+        path: PathBuf,
+    },
+    WrongPassword {
+        path: PathBuf,
+    },
+    ExtractionFailed {
+        path: PathBuf,
+        detail: String,
+    },
+    ListFailed {
+        path: PathBuf,
+        detail: String,
+    },
+    UnsafeArchivePath {
+        archive_path: String,
+    },
     Cancelled,
-    IoError { detail: String },
-    ProcessError { command: String, exit_code: Option<i32>, detail: String },
-    LibraryError { library: String, detail: String },
-    FeatureNotSupported { backend: String, feature: String },
+    IoError {
+        detail: String,
+    },
+    ProcessError {
+        command: String,
+        exit_code: Option<i32>,
+        detail: String,
+    },
+    LibraryError {
+        library: String,
+        detail: String,
+    },
+    FeatureNotSupported {
+        backend: String,
+        feature: String,
+    },
 }
 
 impl std::error::Error for ArchiveError {}

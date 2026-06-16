@@ -9,20 +9,23 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
+#[cfg(target_os = "windows")]
+use crate::platform::restore_window_placement;
+
 use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
     archive::{ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
     config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
-        PanelLocation,
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
         sorting::SortDirection,
+        PanelLocation,
     },
     fs::{
-        operations::{OperationHandle, start_operation},
-        watcher::{WatchCommand, WatchEvent, start_file_watcher},
+        operations::{start_operation, OperationHandle},
+        watcher::{start_file_watcher, WatchCommand, WatchEvent},
     },
-    platform::{assets::asset_path, current_window_placement, restore_window_placement},
+    platform::{assets::asset_path, current_window_placement},
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
@@ -75,11 +78,7 @@ impl ActiveOperationHandle {
 }
 
 impl MainWindow {
-    pub fn new(
-        app: &gtk::Application,
-        commander: Commander,
-        app_config: AppConfig,
-    ) -> Rc<Self> {
+    pub fn new(app: &gtk::Application, commander: Commander, app_config: AppConfig) -> Rc<Self> {
         install_css();
         let window_config = app_config.window.clone();
 
@@ -91,12 +90,11 @@ impl MainWindow {
             .build();
 
         let asset_icon_dir = asset_path("assets/icons");
-        let icon_basename = "0acc2ce6-257e-4031-9332-b5c73960f871";
         if asset_icon_dir.exists() {
             if let Some(dir_str) = asset_icon_dir.to_str() {
                 let icon_theme = gtk::IconTheme::default();
-                let _ = icon_theme.add_search_path(dir_str);
-                window.set_icon_name(Some(icon_basename));
+                icon_theme.add_search_path(dir_str);
+                window.set_icon_name(Some("rust-commander"));
             }
         }
 
@@ -189,8 +187,8 @@ impl MainWindow {
                     use std::ffi::OsStr;
                     use std::os::windows::ffi::OsStrExt;
                     use windows_sys::Win32::UI::WindowsAndMessaging::{
-                        FindWindowW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_LOADFROMFILE, LoadImageW,
-                        SendMessageW, WM_SETICON,
+                        FindWindowW, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
+                        LR_LOADFROMFILE, WM_SETICON,
                     };
 
                     // find top-level window by title
@@ -237,6 +235,15 @@ impl MainWindow {
         }
 
         this.window.present();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let window = this.window.clone();
+            glib::idle_add_local_once(move || {
+                if let Err(error) = crate::platform::x11_window_icon::apply_window_icon(&window) {
+                    eprintln!("Could not apply X11 window icon: {error}");
+                }
+            });
+        }
         this.restore_window_geometry(window_config);
         this.initialize_split_positions();
 
@@ -252,6 +259,9 @@ impl MainWindow {
     }
 
     pub fn handle_open_active(self: &Rc<Self>) {
+        if self.terminal_dock.has_focus() {
+            return;
+        }
         let active_panel = self.commander.borrow().state().active_panel;
         self.start_selected_navigation(active_panel);
     }
@@ -365,11 +375,7 @@ impl MainWindow {
             this.app_config_cache.replace(next_config.clone());
 
             if let Err(error) = config::save(&next_config) {
-                dialogs::show_error(
-                    &this.window,
-                    "Could not save settings",
-                    &error.to_string(),
-                );
+                dialogs::show_error(&this.window, "Could not save settings", &error.to_string());
                 return;
             }
 
@@ -516,7 +522,6 @@ impl MainWindow {
                     "Loading parent directory...",
                 );
             }
-            return;
         }
 
         if selected.is_dir {
@@ -610,17 +615,18 @@ impl MainWindow {
                 }
                 _ => Ok(worker_location.clone()),
             };
-            let result = actual_location.and_then(|location| {
-                archive_service
-                    .entries_for_location(&location)
-                    .map(|entries| DirectoryLoadResult {
-                        panel,
-                        next_location: location,
-                        entries,
-                        status: worker_status,
-                    })
-            })
-            .map_err(|error| error.to_string());
+            let result = actual_location
+                .and_then(|location| {
+                    archive_service
+                        .entries_for_location(&location)
+                        .map(|entries| DirectoryLoadResult {
+                            panel,
+                            next_location: location,
+                            entries,
+                            status: worker_status,
+                        })
+                })
+                .map_err(|error| error.to_string());
             let _ = tx.send(result);
         });
 
@@ -833,11 +839,12 @@ impl MainWindow {
             .replace(ActiveOperationHandle::Archive(handle.clone()));
 
         let active_operation = Rc::clone(&self.active_operation);
-        let progress_dialog = dialogs::ProgressDialog::new(&self.window, "Archive copy", move || {
-            if let Some(handle) = active_operation.borrow().as_ref() {
-                handle.cancel();
-            }
-        });
+        let progress_dialog =
+            dialogs::ProgressDialog::new(&self.window, "Archive copy", move || {
+                if let Some(handle) = active_operation.borrow().as_ref() {
+                    handle.cancel();
+                }
+            });
 
         let this = Rc::clone(self);
         glib::timeout_add_local(Duration::from_millis(80), move || {
@@ -889,7 +896,11 @@ impl MainWindow {
                             commander.set_status(format!("Archive copy failed: {error}"))
                         };
                         this.apply_update(update);
-                        dialogs::show_error(&this.window, "Archive copy failed", &error.to_string());
+                        dialogs::show_error(
+                            &this.window,
+                            "Archive copy failed",
+                            &error.to_string(),
+                        );
                         keep_running = false;
                     }
                 }
@@ -928,6 +939,16 @@ impl MainWindow {
                             commander.select_single(panel, index)
                         };
                         this.apply_update(update);
+                        this.start_selected_navigation(panel);
+                    });
+                });
+            }
+
+            {
+                let this = Rc::clone(self);
+                panel_view.connect_open_key(move || {
+                    let this = Rc::clone(&this);
+                    glib::idle_add_local_once(move || {
                         this.start_selected_navigation(panel);
                     });
                 });
@@ -1176,11 +1197,17 @@ impl MainWindow {
 
     fn install_window_state_persistence(self: &Rc<Self>) {
         let commander = Rc::clone(&self.commander);
+        let window = self.window.clone();
         let app_config_cache = Rc::clone(&self.app_config_cache);
         self.window.connect_close_request(move |_| {
             {
                 let commander = commander.borrow();
                 let mut app_config = app_config_cache.borrow_mut();
+                app_config.window.maximized = window.is_maximized();
+                if !app_config.window.maximized {
+                    app_config.window.width = window.width().max(1);
+                    app_config.window.height = window.height().max(1);
+                }
                 app_config.panes.left_directory =
                     Some(commander.panel_directory(ActivePanel::Left));
                 app_config.panes.right_directory =
@@ -1218,15 +1245,43 @@ impl MainWindow {
     }
 
     fn restore_window_geometry(&self, window_config: WindowConfig) {
-        let position = window_config
-            .position
-            .unwrap_or(WindowPosition { x: 0, y: 0 });
-        glib::idle_add_local_once({
-            let position = position.clone();
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.window
+                .set_default_size(window_config.width.max(1), window_config.height.max(1));
+            if window_config.maximized {
+                let window = self.window.clone();
+                glib::idle_add_local_once(move || {
+                    window.maximize();
+                });
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let position = window_config
+                .position
+                .unwrap_or(WindowPosition { x: 0, y: 0 });
+            glib::idle_add_local_once({
+                let position = position.clone();
+                let width = window_config.width;
+                let height = window_config.height;
+                let maximized = window_config.maximized;
+                move || {
+                    restore_window_placement(
+                        APP_WINDOW_TITLE,
+                        position.x,
+                        position.y,
+                        width,
+                        height,
+                        maximized,
+                    );
+                }
+            });
             let width = window_config.width;
             let height = window_config.height;
             let maximized = window_config.maximized;
-            move || {
+            glib::timeout_add_local_once(Duration::from_millis(150), move || {
                 restore_window_placement(
                     APP_WINDOW_TITLE,
                     position.x,
@@ -1235,21 +1290,8 @@ impl MainWindow {
                     height,
                     maximized,
                 );
-            }
-        });
-        let width = window_config.width;
-        let height = window_config.height;
-        let maximized = window_config.maximized;
-        glib::timeout_add_local_once(Duration::from_millis(150), move || {
-            restore_window_placement(
-                APP_WINDOW_TITLE,
-                position.x,
-                position.y,
-                width,
-                height,
-                maximized,
-            );
-        });
+            });
+        }
     }
 
     fn initialize_split_positions(&self) {

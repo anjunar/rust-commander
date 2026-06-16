@@ -1,8 +1,4 @@
-use std::{
-    cmp::Reverse,
-    path::Path,
-    sync::Arc,
-};
+use std::{cmp::Reverse, path::Path, sync::Arc};
 
 use super::{
     ArchiveBackend, ArchiveError, ArchiveFormatDetector, LibArchiveBackend, PluginArchiveBackend,

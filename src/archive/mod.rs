@@ -69,9 +69,17 @@ pub enum ArchiveEntryKind {
 pub enum ArchiveOperation {
     OpenArchive,
     List,
-    ExtractEntry { entry_path: String, target_dir: PathBuf },
-    ExtractEntries { entry_paths: Vec<String>, target_dir: PathBuf },
-    ExtractAll { target_dir: PathBuf },
+    ExtractEntry {
+        entry_path: String,
+        target_dir: PathBuf,
+    },
+    ExtractEntries {
+        entry_paths: Vec<String>,
+        target_dir: PathBuf,
+    },
+    ExtractAll {
+        target_dir: PathBuf,
+    },
     Test,
 }
 
@@ -173,11 +181,7 @@ pub trait ArchiveBackend: Send + Sync {
         }
         Ok(())
     }
-    fn extract_all(
-        &self,
-        session: &ArchiveSession,
-        target_dir: &Path,
-    ) -> Result<(), ArchiveError>;
+    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError>;
     fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError>;
 }
 

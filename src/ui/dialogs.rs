@@ -406,7 +406,9 @@ impl ProgressDialog {
                 .operation
                 .as_ref()
                 .map(|operation| match operation {
-                    crate::archive::ArchiveOperation::ExtractEntry { entry_path, .. } => entry_path.clone(),
+                    crate::archive::ArchiveOperation::ExtractEntry { entry_path, .. } => {
+                        entry_path.clone()
+                    }
                     crate::archive::ArchiveOperation::ExtractEntries { entry_paths, .. } => {
                         format!("{} selected archive items", entry_paths.len())
                     }

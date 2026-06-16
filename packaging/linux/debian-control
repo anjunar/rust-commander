@@ -1,0 +1,10 @@
+Package: rust-commander
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Patrick Bittner <patrick@example.com>
+Depends: @DEPENDS@
+Installed-Size: @INSTALLED_SIZE@
+Description: RCommander GTK file commander
+ A native two-pane file commander written in Rust and GTK4.

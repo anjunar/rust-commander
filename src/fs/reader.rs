@@ -7,15 +7,15 @@ use crate::domain::entry::Entry;
 pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
 
-    for entry in
-        fs::read_dir(path).with_context(|| format!("Could not read directory {}", path.display()))?
+    for entry in fs::read_dir(path)
+        .with_context(|| format!("Could not read directory {}", path.display()))?
     {
         let entry =
             entry.with_context(|| format!("Could not read an entry in {}", path.display()))?;
         let entry_path = entry.path();
-        let metadata = entry.metadata().with_context(|| {
-            format!("Could not read metadata for {}", entry_path.display())
-        })?;
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("Could not read metadata for {}", entry_path.display()))?;
         let file_name = entry.file_name().to_string_lossy().into_owned();
         let modified_at = metadata.modified().ok();
 

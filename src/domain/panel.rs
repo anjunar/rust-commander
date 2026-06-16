@@ -3,13 +3,13 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use crate::domain::{
     entry::Entry,
     panel_location::PanelLocation,
     selection::SelectionModel,
-    sorting::{SortColumn, SortDirection, SortState, sort_entries},
+    sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
 
 #[derive(Clone, Debug)]
@@ -291,8 +291,10 @@ mod tests {
 
     use super::Panel;
     use crate::domain::{
-        PanelLocation, entry::Entry, selection::SelectionModel,
+        entry::Entry,
+        selection::SelectionModel,
         sorting::{SortColumn, SortDirection},
+        PanelLocation,
     };
 
     #[test]

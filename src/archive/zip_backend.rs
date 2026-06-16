@@ -74,10 +74,13 @@ impl ZipBackend {
     ) -> Result<(), ArchiveError> {
         let mut archive = self.open_archive(session.archive_path())?;
         for index in 0..archive.len() {
-            let mut file = archive.by_index(index).map_err(|error| ArchiveError::ExtractionFailed {
-                path: session.archive_path().to_path_buf(),
-                detail: error.to_string(),
-            })?;
+            let mut file =
+                archive
+                    .by_index(index)
+                    .map_err(|error| ArchiveError::ExtractionFailed {
+                        path: session.archive_path().to_path_buf(),
+                        detail: error.to_string(),
+                    })?;
             let archive_path = Self::normalize_entry_path(file.name());
             if archive_path.is_empty() || !predicate(&archive_path) {
                 continue;
@@ -85,9 +88,11 @@ impl ZipBackend {
 
             let destination = safe_join_extract_path(target_dir, &archive_path)?;
             if file.is_dir() {
-                fs::create_dir_all(&destination).map_err(|error| ArchiveError::ExtractionFailed {
-                    path: session.archive_path().to_path_buf(),
-                    detail: format!("Could not create {}: {error}", destination.display()),
+                fs::create_dir_all(&destination).map_err(|error| {
+                    ArchiveError::ExtractionFailed {
+                        path: session.archive_path().to_path_buf(),
+                        detail: format!("Could not create {}: {error}", destination.display()),
+                    }
                 })?;
                 continue;
             }
@@ -99,10 +104,11 @@ impl ZipBackend {
                 })?;
             }
 
-            let mut output = File::create(&destination).map_err(|error| ArchiveError::ExtractionFailed {
-                path: session.archive_path().to_path_buf(),
-                detail: format!("Could not create {}: {error}", destination.display()),
-            })?;
+            let mut output =
+                File::create(&destination).map_err(|error| ArchiveError::ExtractionFailed {
+                    path: session.archive_path().to_path_buf(),
+                    detail: format!("Could not create {}: {error}", destination.display()),
+                })?;
             io::copy(&mut file, &mut output).map_err(|error| ArchiveError::ExtractionFailed {
                 path: session.archive_path().to_path_buf(),
                 detail: format!("Could not write {}: {error}", destination.display()),
@@ -141,17 +147,22 @@ impl ArchiveBackend for ZipBackend {
     }
 
     fn can_open(&self, path: &Path) -> bool {
-        matches!(ArchiveFormatDetector::detect(path), Some(ArchiveFormat::Zip))
+        matches!(
+            ArchiveFormatDetector::detect(path),
+            Some(ArchiveFormat::Zip)
+        )
     }
 
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
         let mut archive = self.open_archive(path)?;
         let mut entries = Vec::new();
         for index in 0..archive.len() {
-            let file = archive.by_index(index).map_err(|error| ArchiveError::ListFailed {
-                path: path.to_path_buf(),
-                detail: error.to_string(),
-            })?;
+            let file = archive
+                .by_index(index)
+                .map_err(|error| ArchiveError::ListFailed {
+                    path: path.to_path_buf(),
+                    detail: error.to_string(),
+                })?;
             if let Some(entry) = Self::entry_from_zip_file(&file) {
                 entries.push(entry);
             }
@@ -193,25 +204,26 @@ impl ArchiveBackend for ZipBackend {
             .map(|path| Self::normalize_entry_path(path))
             .collect::<Vec<_>>();
         self.extract_selected(session, target_dir, |candidate| {
-            requested.iter().any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
+            requested
+                .iter()
+                .any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
         })
     }
 
-    fn extract_all(
-        &self,
-        session: &ArchiveSession,
-        target_dir: &Path,
-    ) -> Result<(), ArchiveError> {
+    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError> {
         self.extract_selected(session, target_dir, |_| true)
     }
 
     fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
         let mut archive = self.open_archive(session.archive_path())?;
         for index in 0..archive.len() {
-            let mut file = archive.by_index(index).map_err(|error| ArchiveError::InvalidArchive {
-                path: session.archive_path().to_path_buf(),
-                detail: Some(error.to_string()),
-            })?;
+            let mut file =
+                archive
+                    .by_index(index)
+                    .map_err(|error| ArchiveError::InvalidArchive {
+                        path: session.archive_path().to_path_buf(),
+                        detail: Some(error.to_string()),
+                    })?;
             io::copy(&mut file, &mut io::sink()).map_err(|error| ArchiveError::InvalidArchive {
                 path: session.archive_path().to_path_buf(),
                 detail: Some(error.to_string()),

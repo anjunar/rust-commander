@@ -111,7 +111,11 @@ impl PanelLocation {
                         .map(|parent| parent.display_label())
                         .unwrap_or_else(|| self.display_label())
                 } else if let Some(archive_path) = &entry.archive_path {
-                    format!("{}!/{}", view.session.archive_path().display(), archive_path)
+                    format!(
+                        "{}!/{}",
+                        view.session.archive_path().display(),
+                        archive_path
+                    )
                 } else {
                     self.display_label()
                 };

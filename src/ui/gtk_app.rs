@@ -3,10 +3,10 @@ use gtk::prelude::*;
 
 use crate::{application::Commander, config, ui::main_window::MainWindow};
 
+pub const APP_ID: &str = "dev.rcommander.Gtk";
+
 pub fn run() -> Result<()> {
-    let app = gtk::Application::builder()
-        .application_id("dev.rcommander.Gtk")
-        .build();
+    let app = gtk::Application::builder().application_id(APP_ID).build();
 
     #[cfg(target_os = "windows")]
     app.connect_shutdown(|_| {

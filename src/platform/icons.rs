@@ -132,18 +132,18 @@ mod windows {
     use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr::null_mut, slice};
 
     use gtk::gdk::{self, MemoryFormat, MemoryTexture};
-    use gtk::glib::{Bytes, object::Cast};
+    use gtk::glib::{object::Cast, Bytes};
     use windows_sys::Win32::{
         Graphics::Gdi::{
-            BI_BITFIELDS, BITMAPV5HEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
-            DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
+            CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
+            SelectObject, BITMAPV5HEADER, BI_BITFIELDS, DIB_RGB_COLORS,
         },
         Storage::FileSystem::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL},
         UI::{
             Shell::{
-                SHFILEINFOW, SHGFI_ICON, SHGFI_SMALLICON, SHGFI_USEFILEATTRIBUTES, SHGetFileInfoW,
+                SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_SMALLICON, SHGFI_USEFILEATTRIBUTES,
             },
-            WindowsAndMessaging::{DI_NORMAL, DestroyIcon, DrawIconEx},
+            WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL},
         },
     };
 

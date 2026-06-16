@@ -38,7 +38,6 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     app.set_accels_for_action("win.focus-terminal", &["<Primary>grave"]);
     app.set_accels_for_action("win.restart-terminal", &["<Primary><Shift>grave"]);
     app.set_accels_for_action("win.switch-panel", &["Tab"]);
-    app.set_accels_for_action("win.open", &["Return", "KP_Enter"]);
 }
 
 fn add_action(window: &Rc<MainWindow>, name: &str, callback: fn(&Rc<MainWindow>)) {

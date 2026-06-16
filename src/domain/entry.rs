@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    time::SystemTime,
-};
+use std::{path::PathBuf, time::SystemTime};
 
 use crate::domain::panel_location::PanelLocation;
 
