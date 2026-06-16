@@ -1,6 +1,7 @@
 pub mod icons;
 pub mod open;
 pub mod terminal;
+pub mod tray;
 
 #[cfg(not(target_os = "windows"))]
 pub mod unix;

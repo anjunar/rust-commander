@@ -40,6 +40,19 @@ impl MainWindow {
             .default_height(760)
             .build();
 
+        // Use project-local assets/icons folder for the application icon
+        let asset_icon_dir = std::path::PathBuf::from(r"C:\Users\Patrick\IdeaProjects\rust-commander\assets\icons");
+        let icon_basename = "0acc2ce6-257e-4031-9332-b5c73960f871";
+        if asset_icon_dir.exists() {
+            if let Some(dir_str) = asset_icon_dir.to_str() {
+                let icon_theme = gtk::IconTheme::default();
+                // add the repo assets/icons directory to the icon search path and set the window icon name
+                let _ = icon_theme.add_search_path(dir_str);
+                window.set_icon_name(Some(icon_basename));
+            }
+        }
+
+
         let header = gtk::HeaderBar::new();
         let title = gtk::Label::new(Some("RCommander"));
         title.add_css_class("app-title");
@@ -99,6 +112,43 @@ impl MainWindow {
         this.connect_terminal_dock();
         this.install_watcher_poll(watch_event_rx);
         shortcuts::install(&this, app);
+
+        // Initialize Windows tray icon (no-op on other platforms)
+        #[cfg(target_os = "windows")]
+        {
+            let _ = crate::platform::tray::create_tray_icon();
+        }
+
+        // On Windows: set the native window icon at runtime (WM_SETICON) so the taskbar updates immediately
+        #[cfg(target_os = "windows")]
+        {
+            // Defer to idle so the window is realized
+            glib::idle_add_local_once(move || {
+                unsafe {
+                    use std::os::windows::ffi::OsStrExt;
+                    use std::ffi::OsStr;
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SendMessageW, WM_SETICON, ICON_SMALL, ICON_BIG, LoadImageW, IMAGE_ICON, LR_LOADFROMFILE};
+
+                    // find top-level window by title
+                    let title = "RCommander";
+                    let title_w: Vec<u16> = OsStr::new(title).encode_wide().chain(std::iter::once(0)).collect();
+                    let hwnd = FindWindowW(std::ptr::null(), title_w.as_ptr());
+                    if !hwnd.is_null() {
+                        let ico_path = std::path::Path::new("assets\\icons\\app_icon.ico");
+                        if ico_path.exists() {
+                            let wide: Vec<u16> = ico_path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+                            let hicon = LoadImageW(std::ptr::null_mut(), wide.as_ptr(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+                            if !hicon.is_null() {
+                                // SendMessageW expects msg: u32, wparam: usize, lparam: isize
+                                let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_BIG as usize, hicon as isize);
+                                let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_SMALL as usize, hicon as isize);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         this.window.present();
 
         this
@@ -695,6 +745,28 @@ fn install_css() {
             color: #a9b7c6;
         }
 
+        /* Make minimize/maximize/close titlebuttons match the window background */
+        headerbar .titlebutton,
+        window .titlebutton,
+        .titlebutton {
+            background: #181818;
+            background-color: #181818; /* match main window background */
+            border: none;
+            box-shadow: none;
+            color: inherit;
+        }
+
+        /* Ensure hover/active use the same background (no contrasting highlight) */
+        headerbar .titlebutton:hover,
+        window .titlebutton:hover,
+        .titlebutton:hover,
+        headerbar .titlebutton:active,
+        .titlebutton:active {
+            background: #181818;
+            background-color: #181818;
+            box-shadow: none;
+        }
+
         .app-title {
             font-weight: 700;
             letter-spacing: 0.06em;
@@ -825,6 +897,8 @@ fn install_css() {
         .editor-view gutter {
             background: #141414;
             color: #a9b7c6;
+            font-family: 'Fira Code', 'Cascadia Code', 'Source Code Pro', monospace;
+            font-size: 13px;
         }
 
         .editor-status {

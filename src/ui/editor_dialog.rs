@@ -28,15 +28,14 @@ where
 {
     let initial_text = read_text_file(&path)?;
 
-    let dialog = gtk::Dialog::with_buttons(
-        Some(&format!("Edit {}", file_label(&path))),
-        Some(parent),
-        gtk::DialogFlags::MODAL,
-        &[
-            ("Cancel", gtk::ResponseType::Cancel),
-            ("Save", gtk::ResponseType::Accept),
-        ],
-    );
+    let dialog = gtk::MessageDialog::builder()
+        .transient_for(parent)
+        .modal(true)
+        .text(&format!("Edit {}", file_label(&path)))
+        .buttons(gtk::ButtonsType::None)
+        .build();
+    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
+    dialog.add_button("Save", gtk::ResponseType::Accept);
     dialog.set_default_size(980, 720);
     dialog.set_default_response(gtk::ResponseType::Accept);
 
@@ -132,12 +131,13 @@ pub fn view_file(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
         ViewerContent::Hex { body, status } => ("View", body, status),
     };
 
-    let dialog = gtk::Dialog::with_buttons(
-        Some(&format!("{title_suffix} {}", file_label(&path))),
-        Some(parent),
-        gtk::DialogFlags::MODAL,
-        &[("Close", gtk::ResponseType::Close)],
-    );
+    let dialog = gtk::MessageDialog::builder()
+        .transient_for(parent)
+        .modal(true)
+        .text(&format!("{title_suffix} {}", file_label(&path)))
+        .buttons(gtk::ButtonsType::None)
+        .build();
+    dialog.add_button("Close", gtk::ResponseType::Close);
     dialog.set_default_size(980, 720);
     dialog.set_default_response(gtk::ResponseType::Close);
 
