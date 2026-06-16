@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="RCommander"
+    Manufacturer="Patrick"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="B701A0C0-1A9F-4A45-96D4-7D6493958D02"
+    Language="1031"
+    Scope="perMachine">
+
+    <SummaryInformation Description="RCommander Installer" Manufacturer="Patrick" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of RCommander is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="RCommander" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="RCommander" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="RCommander" Level="1">
+      <ComponentGroupRef Id="StagedFiles" />
+      <ComponentRef Id="ApplicationShortcutComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcutComponent" Guid="*">
+        <Shortcut
+          Id="StartMenuShortcut"
+          Name="RCommander"
+          Target="[INSTALLFOLDER]bin\rust-commander.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\RCommander"
+          Name="Installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>
