@@ -41,6 +41,8 @@ pub fn open_path(path: &Path) -> Result<()> {
     let target = to_wide(path.as_os_str());
 
     let result = unsafe {
+        // ShellExecuteW should return a value > 32 after asking Explorer to run
+        // the default "open" verb for the selected path.
         ShellExecuteW(
             null_mut_hwnd(),
             operation.as_ptr(),
@@ -81,4 +83,21 @@ fn to_wide(value: &std::ffi::OsStr) -> Vec<u16> {
 
 fn null_mut_hwnd() -> *mut core::ffi::c_void {
     std::ptr::null::<core::ffi::c_void>() as *mut core::ffi::c_void
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+
+    use super::to_wide;
+
+    #[test]
+    fn to_wide_appends_trailing_nul() {
+        let wide = to_wide(OsStr::new("open"));
+        assert_eq!(wide.last().copied(), Some(0));
+        assert_eq!(
+            wide[..wide.len() - 1],
+            ['o' as u16, 'p' as u16, 'e' as u16, 'n' as u16]
+        );
+    }
 }

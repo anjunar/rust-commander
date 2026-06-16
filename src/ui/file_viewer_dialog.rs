@@ -1,11 +1,9 @@
-#![allow(deprecated)]
-
 use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Duration};
 
 use anyhow::Result;
 use gtk::{gdk, glib, prelude::*};
 
-use crate::viewer::ViewerState;
+use crate::{ui::dialogs::build_modal_window, viewer::ViewerState};
 
 pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     let state = Rc::new(RefCell::new(ViewerState::open(&path)?));
@@ -13,18 +11,10 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     let vertical_adjustment = gtk::Adjustment::new(0.0, 0.0, 1.0, 1.0, 1.0, 1.0);
     let horizontal_adjustment = gtk::Adjustment::new(0.0, 0.0, 4096.0, 8.0, 64.0, 120.0);
 
-    let dialog = gtk::Dialog::new();
-    dialog.set_transient_for(Some(parent));
-    dialog.set_modal(true);
-    dialog.set_title(Some("Viewer"));
-    dialog.set_default_size(980, 720);
-
-    let content = dialog.content_area();
-    content.set_spacing(10);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
+    let modal = build_modal_window(parent, "Viewer", 980, 720);
+    let dialog = modal.window;
+    let content = modal.content;
+    let actions = modal.actions;
 
     let path_label = gtk::Label::new(Some(&path.display().to_string()));
     path_label.set_xalign(0.0);
@@ -109,11 +99,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
         .build();
     content.append(&horizontal_scrollbar);
 
-    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    footer.set_hexpand(true);
-
     status_label.set_hexpand(true);
-    footer.append(&status_label);
+    content.append(&status_label);
 
     let close_button = gtk::Button::with_label("Close");
     close_button.add_css_class("command-button");
@@ -123,8 +110,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
             dialog.close();
         });
     }
-    footer.append(&close_button);
-    content.append(&footer);
+    actions.append(&close_button);
+    dialog.set_default_widget(Some(&close_button));
 
     render_into_widgets(
         &dialog,
@@ -335,18 +322,16 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
         });
     }
 
-    glib::MainContext::default().spawn_local(async move {
+    glib::idle_add_local_once(move || {
         dialog.present();
         view.grab_focus();
-        dialog.run_future().await;
-        dialog.close();
     });
 
     Ok(())
 }
 
 fn render_into_widgets(
-    dialog: &gtk::Dialog,
+    dialog: &gtk::Window,
     state: &Rc<RefCell<ViewerState>>,
     buffer: &gtk::TextBuffer,
     status_label: &gtk::Label,

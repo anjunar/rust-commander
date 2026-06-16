@@ -38,19 +38,10 @@ mod windows_tray {
             nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
             nid.hIcon = hicon;
             nid.uFlags = NIF_ICON | NIF_TIP;
-            // message id and tip
-            let tip = "RCommander";
-            let tip_w: Vec<u16> = OsStr::new(tip)
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect();
-            for (i, c) in tip_w.iter().enumerate() {
-                if i >= nid.szTip.len() {
-                    break;
-                }
-                nid.szTip[i] = *c;
-            }
+            copy_tip(&mut nid.szTip, "RCommander");
 
+            // Adding the icon should register it with the shell notification area;
+            // a zero return means the tray entry never became visible.
             let res = Shell_NotifyIconW(NIM_ADD, &mut nid as *mut NOTIFYICONDATAW);
             if res == 0 {
                 return Err("Shell_NotifyIconW(NIM_ADD) failed".into());
@@ -64,7 +55,30 @@ mod windows_tray {
         unsafe {
             let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
             nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+            // Best-effort cleanup of the tray slot that was created in create_tray_icon.
             let _ = Shell_NotifyIconW(NIM_DELETE, &mut nid as *mut NOTIFYICONDATAW);
+        }
+    }
+
+    fn copy_tip(target: &mut [u16], tip: &str) {
+        let tip_w: Vec<u16> = OsStr::new(tip)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        for (slot, value) in target.iter_mut().zip(tip_w.into_iter()) {
+            *slot = value;
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::copy_tip;
+
+        #[test]
+        fn copy_tip_writes_nul_terminated_utf16() {
+            let mut buffer = [0u16; 8];
+            copy_tip(&mut buffer, "RC");
+            assert_eq!(&buffer[..3], &[b'R' as u16, b'C' as u16, 0]);
         }
     }
 }

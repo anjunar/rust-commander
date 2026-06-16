@@ -1,17 +1,17 @@
-#![allow(deprecated)]
-
 use std::{
+    cell::{Cell, RefCell},
     fs,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use anyhow::{Context, Result, bail};
 use gtk::{glib, prelude::*};
 use sourceview5::{self as sourceview, prelude::*};
 
-use crate::fs::reader::format_bytes;
+use crate::{fs::reader::format_bytes, ui::dialogs::build_modal_window};
 
 enum ViewerContent {
     Text { body: String, status: String },
@@ -27,24 +27,10 @@ where
     F: Fn(PathBuf) + 'static,
 {
     let initial_text = read_text_file(&path)?;
-
-    let dialog = gtk::MessageDialog::builder()
-        .transient_for(parent)
-        .modal(true)
-        .text(&format!("Edit {}", file_label(&path)))
-        .buttons(gtk::ButtonsType::None)
-        .build();
-    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
-    dialog.add_button("Save", gtk::ResponseType::Accept);
-    dialog.set_default_size(980, 720);
-    dialog.set_default_response(gtk::ResponseType::Accept);
-
-    let content = dialog.content_area();
-    content.set_spacing(10);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
+    let modal = build_modal_window(parent, &format!("Edit {}", file_label(&path)), 980, 720);
+    let window = modal.window;
+    let content = modal.content;
+    let actions = modal.actions;
 
     let path_label = gtk::Label::new(Some(&path.display().to_string()));
     path_label.set_xalign(0.0);
@@ -85,40 +71,72 @@ where
     status_label.add_css_class("editor-status");
     content.append(&status_label);
 
-    let parent = parent.clone();
-    glib::MainContext::default().spawn_local(async move {
-        dialog.present();
-        view.grab_focus();
+    let cancel_button = gtk::Button::with_label("Cancel");
+    let save_button = gtk::Button::with_label("Save");
+    save_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&save_button);
+    window.set_default_widget(Some(&save_button));
 
-        loop {
-            let response = dialog.run_future().await;
-            match response {
-                gtk::ResponseType::Accept => {
-                    let text = current_buffer_text(&buffer);
-                    match save_text_file(&path, &text) {
-                        Ok(()) => {
-                            buffer.set_modified(false);
-                            on_saved(path.clone());
-                            dialog.close();
-                            break;
-                        }
-                        Err(error) => {
-                            crate::ui::dialogs::show_error(
-                                &parent,
-                                "Could not save file",
-                                &error.to_string(),
-                            );
-                        }
+    let parent = parent.clone();
+    let on_saved = Rc::new(RefCell::new(Some(on_saved)));
+    let allow_close = Rc::new(Cell::new(false));
+
+    {
+        let window = window.clone();
+        let buffer = buffer.clone();
+        let path = path.clone();
+        let parent = parent.clone();
+        let on_saved = Rc::clone(&on_saved);
+        save_button.connect_clicked(move |_| {
+            let text = current_buffer_text(&buffer);
+            match save_text_file(&path, &text) {
+                Ok(()) => {
+                    buffer.set_modified(false);
+                    if let Some(on_saved) = on_saved.borrow_mut().take() {
+                        on_saved(path.clone());
                     }
+                    window.close();
                 }
-                _ => {
-                    if !buffer.is_modified() || confirm_discard(&parent).await {
-                        dialog.close();
-                        break;
-                    }
+                Err(error) => {
+                    crate::ui::dialogs::show_error(
+                        &parent,
+                        "Could not save file",
+                        &error.to_string(),
+                    );
                 }
             }
-        }
+        });
+    }
+
+    {
+        let window = window.clone();
+        let buffer = buffer.clone();
+        let allow_close = Rc::clone(&allow_close);
+        let parent = parent.clone();
+        cancel_button.connect_clicked(move |_| {
+            request_close_after_confirm(&window, &parent, &buffer, &allow_close);
+        });
+    }
+
+    {
+        let window = window.clone();
+        let buffer = buffer.clone();
+        let allow_close = Rc::clone(&allow_close);
+        let parent = parent.clone();
+        window.connect_close_request(move |window| {
+            if allow_close.get() || !buffer.is_modified() {
+                return glib::Propagation::Proceed;
+            }
+
+            request_close_after_confirm(window, &parent, &buffer, &allow_close);
+            glib::Propagation::Stop
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
+        view.grab_focus();
     });
 
     Ok(())
@@ -131,22 +149,15 @@ pub fn view_file(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
         ViewerContent::Hex { body, status } => ("View", body, status),
     };
 
-    let dialog = gtk::MessageDialog::builder()
-        .transient_for(parent)
-        .modal(true)
-        .text(&format!("{title_suffix} {}", file_label(&path)))
-        .buttons(gtk::ButtonsType::None)
-        .build();
-    dialog.add_button("Close", gtk::ResponseType::Close);
-    dialog.set_default_size(980, 720);
-    dialog.set_default_response(gtk::ResponseType::Close);
-
-    let content_area = dialog.content_area();
-    content_area.set_spacing(10);
-    content_area.set_margin_top(12);
-    content_area.set_margin_bottom(12);
-    content_area.set_margin_start(12);
-    content_area.set_margin_end(12);
+    let modal = build_modal_window(
+        parent,
+        &format!("{title_suffix} {}", file_label(&path)),
+        980,
+        720,
+    );
+    let window = modal.window;
+    let content_area = modal.content;
+    let actions = modal.actions;
 
     let path_label = gtk::Label::new(Some(&path.display().to_string()));
     path_label.set_xalign(0.0);
@@ -187,11 +198,21 @@ pub fn view_file(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     status_label.add_css_class("editor-status");
     content_area.append(&status_label);
 
-    glib::MainContext::default().spawn_local(async move {
-        dialog.present();
+    let close_button = gtk::Button::with_label("Close");
+    close_button.add_css_class("suggested-action");
+    actions.append(&close_button);
+    window.set_default_widget(Some(&close_button));
+
+    {
+        let window = window.clone();
+        close_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
         view.grab_focus();
-        dialog.run_future().await;
-        dialog.close();
     });
 
     Ok(())
@@ -374,21 +395,39 @@ fn apply_style_scheme(buffer: &sourceview::Buffer) {
 }
 
 async fn confirm_discard(parent: &gtk::ApplicationWindow) -> bool {
-    let dialog = gtk::MessageDialog::builder()
-        .transient_for(parent)
+    let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message_type(gtk::MessageType::Question)
-        .buttons(gtk::ButtonsType::None)
-        .text("Discard changes?")
-        .secondary_text("There are unsaved changes in the editor.")
+        .message("Discard changes?")
+        .detail("There are unsaved changes in the editor.")
+        .buttons(["Keep editing", "Discard"])
+        .cancel_button(0)
+        .default_button(0)
         .build();
-    dialog.add_button("Keep editing", gtk::ResponseType::Cancel);
-    dialog.add_button("Discard", gtk::ResponseType::Accept);
-    dialog.set_default_response(gtk::ResponseType::Cancel);
 
-    let response = dialog.run_future().await;
-    dialog.close();
-    response == gtk::ResponseType::Accept
+    matches!(dialog.choose_future(Some(parent)).await, Ok(1))
+}
+
+fn request_close_after_confirm(
+    window: &gtk::Window,
+    parent: &gtk::ApplicationWindow,
+    buffer: &sourceview::Buffer,
+    allow_close: &Rc<Cell<bool>>,
+) {
+    if !buffer.is_modified() {
+        allow_close.set(true);
+        window.close();
+        return;
+    }
+
+    let window = window.clone();
+    let parent = parent.clone();
+    let allow_close = Rc::clone(allow_close);
+    glib::MainContext::default().spawn_local(async move {
+        if confirm_discard(&parent).await {
+            allow_close.set(true);
+            window.close();
+        }
+    });
 }
 
 fn file_label(path: &Path) -> String {

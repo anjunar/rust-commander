@@ -1,7 +1,9 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use gtk::gdk;
@@ -12,6 +14,18 @@ use crate::domain::entry::Entry;
 pub struct FileIcon {
     pub paintable: Option<gdk::Paintable>,
     pub icon_name: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PathStamp {
+    modified: Option<SystemTime>,
+    len: u64,
+}
+
+#[derive(Clone)]
+struct CachedIcon {
+    icon: FileIcon,
+    stamp: Option<PathStamp>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -25,17 +39,27 @@ enum IconKey {
 
 pub fn icon_for_entry(base_path: &Path, entry: &Entry) -> FileIcon {
     let key = icon_key_for_entry(base_path, entry);
+    let stamp = cache_stamp_for_key(&key);
 
     ICON_CACHE.with(|cache| {
-        if let Some(icon) = cache.borrow().get(&key).cloned() {
-            return icon;
+        let mut cache = cache.borrow_mut();
+        if let Some(cached) = cache.get(&key) {
+            if cached.stamp == stamp {
+                return cached.icon.clone();
+            }
         }
 
         let icon = FileIcon {
             paintable: load_icon(&key),
             icon_name: fallback_icon_name(entry),
         };
-        cache.borrow_mut().insert(key, icon.clone());
+        cache.insert(
+            key,
+            CachedIcon {
+                icon: icon.clone(),
+                stamp,
+            },
+        );
         icon
     })
 }
@@ -83,7 +107,22 @@ fn load_icon(_key: &IconKey) -> Option<gdk::Paintable> {
 }
 
 thread_local! {
-    static ICON_CACHE: RefCell<HashMap<IconKey, FileIcon>> = RefCell::new(HashMap::new());
+    static ICON_CACHE: RefCell<HashMap<IconKey, CachedIcon>> = RefCell::new(HashMap::new());
+}
+
+fn cache_stamp_for_key(key: &IconKey) -> Option<PathStamp> {
+    match key {
+        IconKey::ExistingPath(path) => path_stamp(path),
+        _ => None,
+    }
+}
+
+fn path_stamp(path: &Path) -> Option<PathStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(PathStamp {
+        modified: metadata.modified().ok(),
+        len: metadata.len(),
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -124,6 +163,8 @@ mod windows {
             };
 
         let result = unsafe {
+            // Ask the shell for the icon associated with either the concrete path
+            // or a synthetic extension/directory hint when no real file is needed.
             SHGetFileInfoW(
                 path_wide.as_ptr(),
                 attributes,
@@ -187,6 +228,8 @@ mod windows {
 
         let mut bits = null_mut();
         let bitmap = unsafe {
+            // Render the native HICON into a 32-bit DIB so GTK can wrap the BGRA
+            // pixels in a MemoryTexture without any Win32-specific lifetime hooks.
             CreateDIBSection(
                 memory_dc,
                 &header as *const _ as *const _,
@@ -253,5 +296,72 @@ mod windows {
 
     fn to_wide(value: &OsStr) -> Vec<u16> {
         value.encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::path::PathBuf;
+
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
+        };
+
+        use super::*;
+
+        #[test]
+        fn icon_request_uses_real_paths_for_existing_entries() {
+            let path = PathBuf::from(r"C:\temp\app.exe");
+            let key = IconKey::ExistingPath(path.clone());
+            let (requested_path, attributes, use_file_attributes) = icon_request(&key);
+
+            assert_eq!(requested_path, path.as_path());
+            assert_eq!(attributes, 0);
+            assert!(!use_file_attributes);
+        }
+
+        #[test]
+        fn icon_request_maps_virtual_directory_and_file_requests() {
+            let (directory_path, directory_attributes, directory_hint) =
+                icon_request(&IconKey::Directory);
+            assert_eq!(directory_path, Path::new("folder"));
+            assert_eq!(directory_attributes, FILE_ATTRIBUTE_DIRECTORY);
+            assert!(directory_hint);
+
+            let (file_path, file_attributes, file_hint) = icon_request(&IconKey::File);
+            assert_eq!(file_path, Path::new("file"));
+            assert_eq!(file_attributes, FILE_ATTRIBUTE_NORMAL);
+            assert!(file_hint);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, time::Duration};
+
+    use super::*;
+
+    #[test]
+    fn path_stamp_tracks_size_changes() {
+        let mut path = std::env::temp_dir();
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        path.push(format!(
+            "rcommander-icon-stamp-{}-{timestamp}.tmp",
+            std::process::id()
+        ));
+
+        fs::write(&path, b"a").unwrap();
+        let first = path_stamp(&path).unwrap();
+
+        std::thread::sleep(Duration::from_millis(5));
+        fs::write(&path, b"updated").unwrap();
+        let second = path_stamp(&path).unwrap();
+
+        let _ = fs::remove_file(&path);
+
+        assert_ne!(first, second);
     }
 }

@@ -637,7 +637,7 @@ impl MainWindow {
                         );
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.refresh_after_operation(status)
+                            commander.refresh_with_status(status)
                         };
                         this.apply_update(update);
                         this.sync_watched_paths();
@@ -654,7 +654,7 @@ impl MainWindow {
                         );
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.refresh_after_operation(status)
+                            commander.refresh_with_status(status)
                         };
                         this.apply_update(update);
                         this.sync_watched_paths();

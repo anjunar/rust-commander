@@ -1,5 +1,3 @@
-#![allow(deprecated)]
-
 use gtk::{glib, prelude::*};
 
 use crate::{
@@ -9,20 +7,57 @@ use crate::{
     fs::{operations::progress_percent, reader::format_bytes},
 };
 
-pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
-    let dialog = gtk::MessageDialog::builder()
+pub(crate) struct ModalWindow {
+    pub window: gtk::Window,
+    pub content: gtk::Box,
+    pub actions: gtk::Box,
+}
+
+pub(crate) fn build_modal_window(
+    parent: &gtk::ApplicationWindow,
+    title: &str,
+    default_width: i32,
+    default_height: i32,
+) -> ModalWindow {
+    let window = gtk::Window::builder()
         .transient_for(parent)
         .modal(true)
-        .message_type(gtk::MessageType::Error)
-        .buttons(gtk::ButtonsType::Close)
-        .text(title)
-        .secondary_text(detail)
+        .title(title)
+        .default_width(default_width)
+        .default_height(default_height)
         .build();
 
-    glib::MainContext::default().spawn_local(async move {
-        dialog.run_future().await;
-        dialog.close();
-    });
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    root.set_margin_top(12);
+    root.set_margin_bottom(12);
+    root.set_margin_start(12);
+    root.set_margin_end(12);
+
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_halign(gtk::Align::End);
+
+    root.append(&content);
+    root.append(&actions);
+    window.set_child(Some(&root));
+
+    ModalWindow {
+        window,
+        content,
+        actions,
+    }
+}
+
+pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
+    gtk::AlertDialog::builder()
+        .modal(true)
+        .message(title)
+        .detail(detail)
+        .buttons(["Close"])
+        .cancel_button(0)
+        .default_button(0)
+        .build()
+        .show(Some(parent));
 }
 
 pub fn confirm_operation<F>(
@@ -57,48 +92,35 @@ pub fn confirm_operation<F>(
         ),
     };
 
-    let dialog = gtk::MessageDialog::builder()
-        .transient_for(parent)
+    let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message_type(gtk::MessageType::Question)
-        .buttons(gtk::ButtonsType::None)
-        .text(title)
-        .secondary_text(&detail)
+        .message(title)
+        .detail(&detail)
+        .buttons(["Cancel", confirm_label])
+        .cancel_button(0)
+        .default_button(1)
         .build();
-    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
-    dialog.add_button(confirm_label, gtk::ResponseType::Accept);
-    dialog.set_default_response(gtk::ResponseType::Accept);
 
-    glib::MainContext::default().spawn_local(async move {
-        let response = dialog.run_future().await;
-        dialog.close();
-        if response == gtk::ResponseType::Accept {
-            on_confirm(request);
-        }
-    });
+    dialog.choose(
+        Some(parent),
+        None::<&gtk::gio::Cancellable>,
+        move |response| {
+            if matches!(response, Ok(1)) {
+                on_confirm(request);
+            }
+        },
+    );
 }
 
 pub fn prompt_rename<F>(parent: &gtk::ApplicationWindow, current_name: String, on_confirm: F)
 where
     F: FnOnce(String) + 'static,
 {
-    let dialog = gtk::Dialog::with_buttons(
-        Some("Rename"),
-        Some(parent),
-        gtk::DialogFlags::MODAL,
-        &[
-            ("Cancel", gtk::ResponseType::Cancel),
-            ("Rename", gtk::ResponseType::Accept),
-        ],
-    );
-    dialog.set_default_response(gtk::ResponseType::Accept);
-
-    let content = dialog.content_area();
-    content.set_spacing(12);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, "Rename", 420, 120);
 
     let label = gtk::Label::new(Some("Enter a new name:"));
     label.set_xalign(0.0);
@@ -106,20 +128,40 @@ where
 
     let entry = gtk::Entry::new();
     entry.set_text(&current_name);
-    entry.set_activates_default(true);
     entry.set_hexpand(true);
     content.append(&entry);
 
-    glib::MainContext::default().spawn_local(async move {
-        dialog.present();
+    let cancel_button = gtk::Button::with_label("Cancel");
+    let confirm_button = gtk::Button::with_label("Rename");
+    confirm_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&confirm_button);
+    window.set_default_widget(Some(&confirm_button));
+
+    let callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_confirm)));
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    {
+        let window = window.clone();
+        let entry = entry.clone();
+        let callback = std::rc::Rc::clone(&callback);
+        confirm_button.connect_clicked(move |_| {
+            let value = entry.text().to_string();
+            if let Some(on_confirm) = callback.borrow_mut().take() {
+                on_confirm(value);
+            }
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
         entry.grab_focus();
         entry.select_region(0, -1);
-        let response = dialog.run_future().await;
-        let value = entry.text().to_string();
-        dialog.close();
-        if response == gtk::ResponseType::Accept {
-            on_confirm(value);
-        }
     });
 }
 
@@ -127,42 +169,50 @@ pub fn prompt_new_directory<F>(parent: &gtk::ApplicationWindow, on_confirm: F)
 where
     F: FnOnce(String) + 'static,
 {
-    let dialog = gtk::Dialog::with_buttons(
-        Some("Create directory"),
-        Some(parent),
-        gtk::DialogFlags::MODAL,
-        &[
-            ("Cancel", gtk::ResponseType::Cancel),
-            ("Create", gtk::ResponseType::Accept),
-        ],
-    );
-    dialog.set_default_response(gtk::ResponseType::Accept);
-
-    let content = dialog.content_area();
-    content.set_spacing(12);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, "Create directory", 420, 120);
 
     let label = gtk::Label::new(Some("Enter a name for the new directory:"));
     label.set_xalign(0.0);
     content.append(&label);
 
     let entry = gtk::Entry::new();
-    entry.set_activates_default(true);
     entry.set_hexpand(true);
     content.append(&entry);
 
-    glib::MainContext::default().spawn_local(async move {
-        dialog.present();
+    let cancel_button = gtk::Button::with_label("Cancel");
+    let confirm_button = gtk::Button::with_label("Create");
+    confirm_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&confirm_button);
+    window.set_default_widget(Some(&confirm_button));
+
+    let callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_confirm)));
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    {
+        let window = window.clone();
+        let entry = entry.clone();
+        let callback = std::rc::Rc::clone(&callback);
+        confirm_button.connect_clicked(move |_| {
+            let value = entry.text().to_string();
+            if let Some(on_confirm) = callback.borrow_mut().take() {
+                on_confirm(value);
+            }
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
         entry.grab_focus();
-        let response = dialog.run_future().await;
-        let value = entry.text().to_string();
-        dialog.close();
-        if response == gtk::ResponseType::Accept {
-            on_confirm(value);
-        }
     });
 }
 
@@ -178,36 +228,33 @@ pub fn show_conflict<F>(
         conflict.source.display(),
         conflict.target.display()
     );
-    let dialog = gtk::MessageDialog::builder()
-        .transient_for(parent)
+    let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message_type(gtk::MessageType::Warning)
-        .buttons(gtk::ButtonsType::None)
-        .text(format!("{} conflict", conflict.kind.label()))
-        .secondary_text(&detail)
+        .message(format!("{} conflict", conflict.kind.label()))
+        .detail(&detail)
+        .buttons(["Cancel", "Skip", "Rename", "Overwrite"])
+        .cancel_button(0)
+        .default_button(1)
         .build();
-    dialog.add_button("Cancel", gtk::ResponseType::Cancel);
-    dialog.add_button("Skip", gtk::ResponseType::No);
-    dialog.add_button("Rename", gtk::ResponseType::Apply);
-    dialog.add_button("Overwrite", gtk::ResponseType::Accept);
-    dialog.set_default_response(gtk::ResponseType::No);
 
-    glib::MainContext::default().spawn_local(async move {
-        let response = dialog.run_future().await;
-        dialog.close();
-        let resolution = match response {
-            gtk::ResponseType::Accept => ConflictResolution::Overwrite,
-            gtk::ResponseType::No => ConflictResolution::Skip,
-            gtk::ResponseType::Apply => ConflictResolution::Rename,
-            _ => ConflictResolution::Cancel,
-        };
-        on_resolution(resolution);
-    });
+    dialog.choose(
+        Some(parent),
+        None::<&gtk::gio::Cancellable>,
+        move |response| {
+            let resolution = match response {
+                Ok(3) => ConflictResolution::Overwrite,
+                Ok(1) => ConflictResolution::Skip,
+                Ok(2) => ConflictResolution::Rename,
+                _ => ConflictResolution::Cancel,
+            };
+            on_resolution(resolution);
+        },
+    );
 }
 
 #[derive(Clone)]
 pub struct ProgressDialog {
-    dialog: gtk::Dialog,
+    window: gtk::Window,
     title: gtk::Label,
     detail: gtk::Label,
     eta: gtk::Label,
@@ -219,20 +266,11 @@ impl ProgressDialog {
     where
         F: Fn() + 'static,
     {
-        let dialog = gtk::Dialog::with_buttons(
-            Some(title_text),
-            Some(parent),
-            gtk::DialogFlags::MODAL,
-            &[("Cancel operation", gtk::ResponseType::Cancel)],
-        );
-        dialog.set_default_size(460, 160);
-
-        let content = dialog.content_area();
-        content.set_spacing(10);
-        content.set_margin_top(14);
-        content.set_margin_bottom(14);
-        content.set_margin_start(14);
-        content.set_margin_end(14);
+        let ModalWindow {
+            window,
+            content,
+            actions,
+        } = build_modal_window(parent, title_text, 460, 160);
 
         let title = gtk::Label::new(Some(title_text));
         title.set_xalign(0.0);
@@ -252,17 +290,19 @@ impl ProgressDialog {
         eta.set_xalign(0.0);
         content.append(&eta);
 
-        dialog.connect_response(move |dialog, response| {
-            if response == gtk::ResponseType::Cancel {
-                on_cancel();
-                dialog.set_sensitive(false);
-            }
+        let cancel_button = gtk::Button::with_label("Cancel operation");
+        actions.append(&cancel_button);
+
+        let window_for_cancel = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            on_cancel();
+            window_for_cancel.set_sensitive(false);
         });
 
-        dialog.present();
+        window.present();
 
         Self {
-            dialog,
+            window,
             title,
             detail,
             eta,
@@ -295,7 +335,7 @@ impl ProgressDialog {
     }
 
     pub fn close(&self) {
-        self.dialog.close();
+        self.window.close();
     }
 }
 
