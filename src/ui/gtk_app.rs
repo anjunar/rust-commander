@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gtk::prelude::*;
 
-use crate::{application::Commander, ui::main_window::MainWindow};
+use crate::{application::Commander, config, ui::main_window::MainWindow};
 
 pub fn run() -> Result<()> {
     let app = gtk::Application::builder()
@@ -14,6 +14,14 @@ pub fn run() -> Result<()> {
     });
 
     app.connect_activate(|app| {
+        let app_config = match config::load() {
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("Could not load config: {error}");
+                config::AppConfig::default()
+            }
+        };
+
         let initial_path = match std::env::current_dir() {
             Ok(path) => path,
             Err(error) => {
@@ -30,7 +38,7 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let _window = MainWindow::new(app, commander);
+        let _window = MainWindow::new(app, commander, app_config.window);
     });
 
     app.run();

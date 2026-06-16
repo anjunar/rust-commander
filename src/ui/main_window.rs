@@ -11,6 +11,7 @@ use gtk::{glib, prelude::*};
 
 use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
+    config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
         sorting::SortDirection,
@@ -19,12 +20,14 @@ use crate::{
         operations::{OperationHandle, start_operation},
         watcher::{WatchCommand, WatchEvent, start_file_watcher},
     },
-    platform::assets::asset_path,
+    platform::{assets::asset_path, current_window_placement, restore_window_placement},
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, shortcuts,
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
     },
 };
+
+const APP_WINDOW_TITLE: &str = "RCommander";
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
@@ -37,6 +40,7 @@ pub struct MainWindow {
     active_operation: Rc<RefCell<Option<OperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
+    window_config_cache: Rc<RefCell<WindowConfig>>,
 }
 
 struct DirectoryLoadResult {
@@ -47,14 +51,18 @@ struct DirectoryLoadResult {
 }
 
 impl MainWindow {
-    pub fn new(app: &gtk::Application, commander: Commander) -> Rc<Self> {
+    pub fn new(
+        app: &gtk::Application,
+        commander: Commander,
+        window_config: WindowConfig,
+    ) -> Rc<Self> {
         install_css();
 
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("RCommander")
-            .default_width(1180)
-            .default_height(760)
+            .title(APP_WINDOW_TITLE)
+            .default_width(window_config.width)
+            .default_height(window_config.height)
             .build();
 
         let asset_icon_dir = asset_path("assets/icons");
@@ -90,7 +98,6 @@ impl MainWindow {
         content_paned.set_resize_end_child(false);
         content_paned.set_shrink_start_child(false);
         content_paned.set_shrink_end_child(false);
-        content_paned.set_position(600);
         content_paned.set_start_child(Some(&commander_view.root));
         content_paned.set_end_child(Some(&terminal_dock.root));
         shell.append(&content_paned);
@@ -128,6 +135,7 @@ impl MainWindow {
             active_operation: Rc::new(RefCell::new(None)),
             navigation_busy: Rc::new(Cell::new(false)),
             watch_command_tx,
+            window_config_cache: Rc::new(RefCell::new(window_config.clone())),
         });
 
         this.apply_update(ViewUpdate::all());
@@ -136,6 +144,8 @@ impl MainWindow {
         this.connect_command_bar(&command_bar);
         this.connect_terminal_dock();
         this.install_watcher_poll(watch_event_rx);
+        this.install_window_state_persistence();
+        this.install_window_geometry_tracking();
         shortcuts::install(&this, app);
 
         // Initialize Windows tray icon (no-op on other platforms)
@@ -158,8 +168,7 @@ impl MainWindow {
                     };
 
                     // find top-level window by title
-                    let title = "RCommander";
-                    let title_w: Vec<u16> = OsStr::new(title)
+                    let title_w: Vec<u16> = OsStr::new(APP_WINDOW_TITLE)
                         .encode_wide()
                         .chain(std::iter::once(0))
                         .collect();
@@ -202,6 +211,8 @@ impl MainWindow {
         }
 
         this.window.present();
+        this.restore_window_geometry(window_config);
+        this.initialize_split_positions();
 
         this
     }
@@ -912,6 +923,91 @@ impl MainWindow {
             self.status_label
                 .set_label(&self.commander.borrow().state().status_line());
         }
+    }
+
+    fn install_window_state_persistence(self: &Rc<Self>) {
+        let window_config_cache = Rc::clone(&self.window_config_cache);
+        self.window.connect_close_request(move |_| {
+            if let Err(error) = config::save(&AppConfig {
+                window: window_config_cache.borrow().clone(),
+            }) {
+                eprintln!("Could not save config: {error}");
+            }
+            glib::Propagation::Proceed
+        });
+    }
+
+    fn install_window_geometry_tracking(self: &Rc<Self>) {
+        let window = self.window.clone();
+        let window_config_cache = Rc::clone(&self.window_config_cache);
+        glib::timeout_add_local(Duration::from_millis(250), move || {
+            let mut config = window_config_cache.borrow_mut();
+            config.maximized = window.is_maximized();
+            if let Some(placement) = current_window_placement(APP_WINDOW_TITLE) {
+                config.width = placement.width.max(1);
+                config.height = placement.height.max(1);
+                config.position = Some(WindowPosition {
+                    x: placement.x,
+                    y: placement.y,
+                });
+                config.maximized = placement.maximized;
+            } else if !config.maximized {
+                config.width = window.width().max(1);
+                config.height = window.height().max(1);
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    fn restore_window_geometry(&self, window_config: WindowConfig) {
+        let position = window_config
+            .position
+            .unwrap_or(WindowPosition { x: 0, y: 0 });
+        glib::idle_add_local_once({
+            let position = position.clone();
+            let width = window_config.width;
+            let height = window_config.height;
+            let maximized = window_config.maximized;
+            move || {
+                restore_window_placement(
+                    APP_WINDOW_TITLE,
+                    position.x,
+                    position.y,
+                    width,
+                    height,
+                    maximized,
+                );
+            }
+        });
+        let width = window_config.width;
+        let height = window_config.height;
+        let maximized = window_config.maximized;
+        glib::timeout_add_local_once(Duration::from_millis(150), move || {
+            restore_window_placement(
+                APP_WINDOW_TITLE,
+                position.x,
+                position.y,
+                width,
+                height,
+                maximized,
+            );
+        });
+    }
+
+    fn initialize_split_positions(&self) {
+        let horizontal = self.commander_view.root.clone();
+        let vertical = self.content_paned.clone();
+        glib::timeout_add_local_once(Duration::from_millis(30), move || {
+            let horizontal_width = horizontal.width();
+            if horizontal_width > 0 {
+                horizontal.set_position(horizontal_width / 2);
+            }
+
+            let vertical_height = vertical.height();
+            if vertical_height > 0 {
+                vertical.set_position(vertical_height / 2);
+            }
+        });
     }
 }
 
