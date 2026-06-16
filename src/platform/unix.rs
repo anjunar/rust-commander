@@ -64,3 +64,50 @@ pub fn open_path(path: &Path) -> Result<()> {
 
     Ok(())
 }
+
+pub fn open_console(path: &Path) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .with_context(|| format!("Could not open a console for {}", path.display()))?;
+
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for (program, args) in [
+            ("x-terminal-emulator", vec!["--working-directory"]),
+            ("gnome-terminal", vec!["--working-directory"]),
+            ("xfce4-terminal", vec!["--working-directory"]),
+            ("konsole", vec!["--workdir"]),
+            ("kitty", vec!["--directory"]),
+            ("alacritty", vec!["--working-directory"]),
+        ] {
+            let result = Command::new(program)
+                .args(&args)
+                .arg(path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+
+            match result {
+                Ok(_) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("Could not open a console for {}", path.display()));
+                }
+            }
+        }
+    }
+
+    anyhow::bail!("No supported terminal application was found for {}", path.display())
+}

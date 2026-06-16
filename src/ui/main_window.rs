@@ -128,6 +128,31 @@ impl MainWindow {
         });
     }
 
+    pub fn handle_open_console(self: &Rc<Self>) {
+        let path = self
+            .commander
+            .borrow()
+            .state()
+            .active_panel()
+            .path
+            .clone();
+
+        if let Err(error) = crate::platform::open_console(&path) {
+            dialogs::show_error(
+                &self.window,
+                "Could not open console",
+                &error.to_string(),
+            );
+            return;
+        }
+
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.set_status(format!("Console opened at {}", path.display()))
+        };
+        self.apply_update(update);
+    }
+
     pub fn handle_copy(self: &Rc<Self>) {
         self.handle_operation(FileOperationKind::Copy);
     }
@@ -377,8 +402,9 @@ impl MainWindow {
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 7] = [
+        let callbacks: [fn(&Rc<Self>); 8] = [
             Self::handle_rename,
+            Self::handle_open_console,
             Self::handle_edit,
             Self::handle_copy,
             Self::handle_move,
@@ -475,6 +501,7 @@ fn build_command_bar() -> gtk::Box {
 
     for label in [
         "F2 Rename",
+        "F3 Console",
         "F4 Edit",
         "F5 Copy",
         "F6 Move",

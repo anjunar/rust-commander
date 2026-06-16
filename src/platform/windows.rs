@@ -1,6 +1,7 @@
 use std::{
     os::windows::ffi::OsStrExt,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -55,6 +56,21 @@ pub fn open_path(path: &Path) -> Result<()> {
             format!("Could not launch the default action for {}", path.display())
         });
     }
+
+    Ok(())
+}
+
+pub fn open_console(path: &Path) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    use windows_sys::Win32::System::Threading::CREATE_NEW_CONSOLE;
+
+    Command::new("cmd.exe")
+        .arg("/K")
+        .current_dir(path)
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .spawn()
+        .with_context(|| format!("Could not open a console for {}", path.display()))?;
 
     Ok(())
 }

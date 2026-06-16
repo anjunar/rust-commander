@@ -40,7 +40,7 @@ impl AppState {
             right,
             roots,
             active_panel: ActivePanel::Left,
-            status: "Ready. F4 edits, Enter opens, Tab switches panels, F5 copies.".into(),
+            status: "Ready. F3 opens a console, F4 edits, Enter opens, Tab switches panels, F5 copies.".into(),
         }
     }
 

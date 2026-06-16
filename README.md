@@ -18,6 +18,7 @@ On Windows, make sure the GTK4 runtime and development files are installed and v
 ## Keyboard Workflow
 
 - `F2`: Rename
+- `F3`: Open a console in the active panel path
 - `F5`: Copy to the opposite panel
 - `F6`: Move to the opposite panel
 - `F8`: Delete
