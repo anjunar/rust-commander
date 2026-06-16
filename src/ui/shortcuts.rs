@@ -6,6 +6,7 @@ use crate::ui::main_window::MainWindow;
 
 pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "rename", MainWindow::handle_rename);
+    add_action(window, "edit", MainWindow::handle_edit);
     add_action(window, "copy", MainWindow::handle_copy);
     add_action(window, "move-files", MainWindow::handle_move);
     add_action(window, "delete", MainWindow::handle_delete);
@@ -13,6 +14,7 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "open", MainWindow::handle_open_active);
 
     app.set_accels_for_action("win.rename", &["F2"]);
+    app.set_accels_for_action("win.edit", &["F4"]);
     app.set_accels_for_action("win.copy", &["F5"]);
     app.set_accels_for_action("win.move-files", &["F6"]);
     app.set_accels_for_action("win.delete", &["F8"]);

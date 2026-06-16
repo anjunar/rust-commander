@@ -12,7 +12,7 @@ use crate::{
         operations::{OperationHandle, start_operation},
         watcher::{WatchCommand, start_file_watcher},
     },
-    ui::{commander_view::CommanderView, dialogs, shortcuts},
+    ui::{commander_view::CommanderView, dialogs, editor_dialog, shortcuts},
 };
 
 pub struct MainWindow {
@@ -130,6 +130,58 @@ impl MainWindow {
 
     pub fn handle_copy(self: &Rc<Self>) {
         self.handle_operation(FileOperationKind::Copy);
+    }
+
+    pub fn handle_edit(self: &Rc<Self>) {
+        let selected = self
+            .commander
+            .borrow()
+            .state()
+            .active_panel()
+            .selected_item();
+
+        let Some(selected) = selected else {
+            dialogs::show_error(
+                &self.window,
+                "Edit is not available",
+                "No entry is selected.",
+            );
+            return;
+        };
+
+        if selected.is_parent_link {
+            dialogs::show_error(
+                &self.window,
+                "Edit is not available",
+                "The parent directory entry cannot be edited.",
+            );
+            return;
+        }
+
+        if selected.is_dir {
+            dialogs::show_error(
+                &self.window,
+                "Edit is not available",
+                "Directories cannot be opened in the text editor.",
+            );
+            return;
+        }
+
+        let this = Rc::clone(self);
+        if let Err(error) = editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
+            let update = {
+                let mut commander = this.commander.borrow_mut();
+                commander.refresh_with_status(format!("Saved: {}", path.display()))
+            };
+            this.apply_update(update);
+            this.sync_watched_paths();
+        }) {
+            dialogs::show_error(
+                &self.window,
+                "Could not open editor",
+                &error.to_string(),
+            );
+        }
     }
 
     pub fn handle_move(self: &Rc<Self>) {
@@ -325,8 +377,9 @@ impl MainWindow {
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 6] = [
+        let callbacks: [fn(&Rc<Self>); 7] = [
             Self::handle_rename,
+            Self::handle_edit,
             Self::handle_copy,
             Self::handle_move,
             Self::handle_delete,
@@ -422,6 +475,7 @@ fn build_command_bar() -> gtk::Box {
 
     for label in [
         "F2 Rename",
+        "F4 Edit",
         "F5 Copy",
         "F6 Move",
         "F8 Delete",
@@ -587,6 +641,19 @@ fn install_css() {
 
         .panel-scroller > viewport {
             border-radius: 8px;
+        }
+
+        .editor-view,
+        .editor-view text,
+        .editor-view border,
+        .editor-view gutter {
+            background: #101820;
+            color: #e6edf3;
+        }
+
+        .editor-status {
+            color: #9eb0c1;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
         }
 
         scrollbar slider {

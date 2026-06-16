@@ -143,6 +143,10 @@ impl Commander {
     }
 
     pub fn refresh_after_operation(&mut self, status: String) -> ViewUpdate {
+        self.refresh_with_status(status)
+    }
+
+    pub fn refresh_with_status(&mut self, status: String) -> ViewUpdate {
         self.state.roots = platform::available_roots();
 
         match read_entries(&self.state.left.path) {
