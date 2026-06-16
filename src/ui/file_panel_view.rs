@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gio, prelude::*};
+use gtk::{gio, glib, prelude::*};
 
 use crate::{
     application::ActivePanel,
@@ -110,6 +110,7 @@ impl FilePanelView {
         let was_ignoring_sort = self.ignore_sort.replace(true);
         self.ignore_selection.set(true);
         self.store.remove_all();
+        let primary_selected = selected.iter().next().copied();
 
         for entry in entries {
             self.store.append(&FileRowObject::new(base_path, entry));
@@ -123,6 +124,13 @@ impl FilePanelView {
         }
         self.ignore_selection.set(false);
         self.ignore_sort.set(was_ignoring_sort);
+
+        if let Some(index) = primary_selected {
+            let column_view = self.column_view.clone();
+            glib::idle_add_local_once(move || {
+                column_view.scroll_to(index as u32, None, gtk::ListScrollFlags::SELECT, None);
+            });
+        }
     }
 
     pub fn set_roots(&self, roots: &[RootLocation], selected_index: Option<usize>) {
