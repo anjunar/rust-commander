@@ -1,5 +1,7 @@
 use std::{path::PathBuf, time::SystemTime};
 
+use rust_i18n::t;
+
 use crate::domain::panel_location::PanelLocation;
 
 #[derive(Clone, Debug)]
@@ -24,7 +26,7 @@ impl Entry {
             is_dir: true,
             size_bytes: 0,
             size_label: "-".into(),
-            type_label: "Parent".into(),
+            type_label: t!("entry.parent").into_owned(),
             modified_at: None,
             modified_label: String::new(),
             attributes_label: "UP".into(),

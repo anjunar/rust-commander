@@ -14,6 +14,7 @@ notify = "8.2.0"
 sourceview5 = { version = "0.11.0", features = ["gtk_v4_12"] }
 image = "0.24"
 ico = "0.4"
+rust-i18n = "4.1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.8.23"
 unrar = "0.5.8"

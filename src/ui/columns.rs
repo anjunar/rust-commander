@@ -1,6 +1,7 @@
 use std::cmp::Ordering as StdOrdering;
 
 use gtk::prelude::*;
+use rust_i18n::t;
 
 use crate::{domain::sorting::SortColumn, ui::file_row_object::FileRowObject};
 
@@ -12,11 +13,21 @@ pub struct FileColumnBinding {
 
 pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
     let specs = [
-        ("Name", SortColumn::Name, 320, true),
-        ("Size", SortColumn::Size, 96, false),
-        ("Type", SortColumn::Type, 92, false),
-        ("Modified", SortColumn::Modified, 150, false),
-        ("Attributes", SortColumn::Attributes, 96, false),
+        (column_title(SortColumn::Name), SortColumn::Name, 320, true),
+        (column_title(SortColumn::Size), SortColumn::Size, 96, false),
+        (column_title(SortColumn::Type), SortColumn::Type, 92, false),
+        (
+            column_title(SortColumn::Modified),
+            SortColumn::Modified,
+            150,
+            false,
+        ),
+        (
+            column_title(SortColumn::Attributes),
+            SortColumn::Attributes,
+            96,
+            false,
+        ),
     ];
 
     specs
@@ -26,7 +37,7 @@ pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
                 SortColumn::Name => name_factory().upcast::<gtk::ListItemFactory>(),
                 _ => text_factory(sort_column).upcast::<gtk::ListItemFactory>(),
             };
-            let column = gtk::ColumnViewColumn::new(Some(title), Some(factory));
+            let column = gtk::ColumnViewColumn::new(Some(&title), Some(factory));
             column.set_resizable(true);
             column.set_fixed_width(width);
             column.set_expand(expands);
@@ -39,6 +50,16 @@ pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
             }
         })
         .collect()
+}
+
+pub fn column_title(column: SortColumn) -> String {
+    match column {
+        SortColumn::Name => t!("column.name").into_owned(),
+        SortColumn::Size => t!("column.size").into_owned(),
+        SortColumn::Type => t!("column.type").into_owned(),
+        SortColumn::Modified => t!("column.modified").into_owned(),
+        SortColumn::Attributes => t!("column.attributes").into_owned(),
+    }
 }
 
 fn name_factory() -> gtk::SignalListItemFactory {

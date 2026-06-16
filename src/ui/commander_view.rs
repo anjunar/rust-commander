@@ -73,6 +73,11 @@ impl CommanderView {
         self.panel(active_panel).grab_focus();
     }
 
+    pub fn refresh_labels(&self) {
+        self.left.refresh_labels();
+        self.right.refresh_labels();
+    }
+
     pub fn set_interaction_enabled(&self, enabled: bool) {
         self.left.set_interaction_enabled(enabled);
         self.right.set_interaction_enabled(enabled);

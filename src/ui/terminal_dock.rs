@@ -1,6 +1,7 @@
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use gtk::prelude::*;
+use rust_i18n::t;
 
 use crate::ui::{
     terminal_controller::{TerminalAction, TerminalCommand, TerminalController},
@@ -33,7 +34,7 @@ impl TerminalDock {
         toolbar.set_margin_start(10);
         toolbar.set_margin_end(10);
 
-        let title_label = gtk::Label::new(Some("Terminal"));
+        let title_label = gtk::Label::new(Some(&t!("terminal.title")));
         title_label.set_xalign(0.0);
         title_label.add_css_class("terminal-title");
         toolbar.append(&title_label);
@@ -45,9 +46,9 @@ impl TerminalDock {
         cwd_label.add_css_class("terminal-cwd");
         toolbar.append(&cwd_label);
 
-        let restart_button = gtk::Button::with_label("Restart");
-        let clear_button = gtk::Button::with_label("Clear");
-        let close_button = gtk::Button::with_label("Close");
+        let restart_button = gtk::Button::with_label(&t!("terminal.restart"));
+        let clear_button = gtk::Button::with_label(&t!("common.clear"));
+        let close_button = gtk::Button::with_label(&t!("common.close"));
         restart_button.add_css_class("terminal-button");
         clear_button.add_css_class("terminal-button");
         close_button.add_css_class("terminal-button");
@@ -170,16 +171,19 @@ impl TerminalDock {
     }
 
     pub fn refresh_toolbar(&self) {
+        self.restart_button.set_label(&t!("terminal.restart"));
+        self.clear_button.set_label(&t!("common.clear"));
+        self.close_button.set_label(&t!("common.close"));
         if self.controller.is_supported() {
-            self.title_label.set_label("Terminal");
+            self.title_label.set_label(&t!("terminal.title"));
             let cwd = self.controller.current_working_dir();
             self.cwd_label.set_label(&cwd.display().to_string());
         } else {
             self.title_label
-                .set_label("Terminal (Windows backend pending)");
+                .set_label(&t!("terminal.title_windows_pending"));
             let cwd = self.state().borrow().last_panel_dir.clone();
             self.cwd_label
-                .set_label(&format!("Panel path: {}", cwd.display()));
+                .set_label(&t!("terminal.panel_path", path = cwd.display().to_string()));
         }
     }
 }

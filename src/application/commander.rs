@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
+use rust_i18n::t;
 
 use crate::{
     application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
@@ -58,8 +59,7 @@ impl Commander {
     pub fn apply_archive_config(&mut self, archive_config: ArchiveConfig) -> ViewUpdate {
         let _ = archive_config;
         self.archive_service = ArchiveService::with_default_backends();
-        self.state.status =
-            "Archive settings updated. Internal/native archive backends are active.".into();
+        self.state.status = t!("status.archive_settings_updated").into_owned();
         ViewUpdate::status()
     }
 
@@ -191,11 +191,12 @@ impl Commander {
         self.state
             .panel_mut(panel)
             .navigate_to(PanelLocation::filesystem(root.path.clone()), entries);
-        self.state.status = format!(
-            "Switched {} panel to {}",
-            panel.label(),
-            root.path.display()
-        );
+        self.state.status = t!(
+            "status.switched_panel",
+            panel = panel.label(),
+            path = root.path.display().to_string()
+        )
+        .into_owned();
         Ok(ViewUpdate::panel_entries(panel))
     }
 
@@ -224,7 +225,7 @@ impl Commander {
             .entries_for_location(&self.state.right.location)?;
         self.state.left.replace_entries(left_entries);
         self.state.right.replace_entries(right_entries);
-        self.state.status = "File changes detected. View refreshed.".into();
+        self.state.status = t!("status.view_refreshed").into_owned();
         Ok(ViewUpdate {
             roots: true,
             ..ViewUpdate::both_panels()
@@ -253,7 +254,14 @@ impl Commander {
                     }
                 }
                 Err(error) => {
-                    failures.push(format!("{} refresh failed: {error}", panel.label()));
+                    failures.push(
+                        t!(
+                            "status.refresh_failed",
+                            panel = panel.label(),
+                            error = error.to_string()
+                        )
+                        .into_owned(),
+                    );
                 }
             }
         }
@@ -277,7 +285,14 @@ impl Commander {
             .entries_for_location(&self.state.left.location)
         {
             Ok(entries) => self.state.left.replace_entries(entries),
-            Err(error) => failures.push(format!("Left refresh failed: {error}")),
+            Err(error) => failures.push(
+                t!(
+                    "status.refresh_failed",
+                    panel = t!("panel.left"),
+                    error = error.to_string()
+                )
+                .into_owned(),
+            ),
         }
 
         match self
@@ -285,7 +300,14 @@ impl Commander {
             .entries_for_location(&self.state.right.location)
         {
             Ok(entries) => self.state.right.replace_entries(entries),
-            Err(error) => failures.push(format!("Right refresh failed: {error}")),
+            Err(error) => failures.push(
+                t!(
+                    "status.refresh_failed",
+                    panel = t!("panel.right"),
+                    error = error.to_string()
+                )
+                .into_owned(),
+            ),
         }
 
         self.state.status = if failures.is_empty() {
@@ -309,7 +331,12 @@ impl Commander {
         self.state
             .panel_mut(panel)
             .set_sort_state(column, direction);
-        self.state.status = format!("Sorted {} panel by {column:?}.", panel.label());
+        self.state.status = t!(
+            "status.sorted_panel",
+            panel = panel.label(),
+            column = sort_column_label(column)
+        )
+        .into_owned();
         ViewUpdate::panel_entries(panel)
     }
 
@@ -324,7 +351,7 @@ impl Commander {
         let (source, target) = self.state.panel(panel).rename_target(new_name.trim())?;
 
         if source == target {
-            self.state.status = "Rename skipped: name is unchanged.".into();
+            self.state.status = t!("status.rename_skipped").into_owned();
             return Ok(ViewUpdate::status());
         }
 
@@ -336,7 +363,7 @@ impl Commander {
             .archive_service
             .entries_for_location(&self.state.panel(panel).location)?;
         self.state.panel_mut(panel).replace_entries(entries);
-        self.state.status = format!("Renamed: {}", target.display());
+        self.state.status = t!("status.renamed", path = target.display().to_string()).into_owned();
 
         Ok(ViewUpdate::panel_entries(panel))
     }
@@ -368,7 +395,11 @@ impl Commander {
             .archive_service
             .entries_for_location(&self.state.panel(panel).location)?;
         self.state.panel_mut(panel).replace_entries(entries);
-        self.state.status = format!("Created directory: {}", target.display());
+        self.state.status = t!(
+            "status.created_directory",
+            path = target.display().to_string()
+        )
+        .into_owned();
 
         Ok(ViewUpdate::panel_entries(panel))
     }
@@ -426,5 +457,15 @@ impl Commander {
     pub fn set_status(&mut self, status: impl Into<String>) -> ViewUpdate {
         self.state.status = status.into();
         ViewUpdate::status()
+    }
+}
+
+fn sort_column_label(column: SortColumn) -> String {
+    match column {
+        SortColumn::Name => t!("column.name").into_owned(),
+        SortColumn::Size => t!("column.size").into_owned(),
+        SortColumn::Type => t!("column.type").into_owned(),
+        SortColumn::Modified => t!("column.modified").into_owned(),
+        SortColumn::Attributes => t!("column.attributes").into_owned(),
     }
 }

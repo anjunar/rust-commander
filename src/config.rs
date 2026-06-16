@@ -17,6 +17,8 @@ pub struct AppConfig {
     pub panes: PaneConfig,
     #[serde(default)]
     pub archive: ArchiveConfig,
+    #[serde(default)]
+    pub locale: LocaleConfig,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -55,6 +57,12 @@ impl Default for WindowConfig {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ArchiveConfig {}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct LocaleConfig {
+    pub language: Option<String>,
+}
 
 pub fn load() -> Result<AppConfig> {
     let path = config_file_path().context("Could not determine config file path")?;
@@ -123,8 +131,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        load_from_path, save_to_path, AppConfig, ArchiveConfig, PaneConfig, WindowConfig,
-        WindowPosition,
+        load_from_path, save_to_path, AppConfig, ArchiveConfig, LocaleConfig, PaneConfig,
+        WindowConfig, WindowPosition,
     };
 
     #[test]
@@ -145,6 +153,9 @@ mod tests {
                 right_directory: Some(PathBuf::from("/tmp/right")),
             },
             archive: ArchiveConfig::default(),
+            locale: LocaleConfig {
+                language: Some("fr".into()),
+            },
         };
 
         save_to_path(&config, &temp_path).unwrap();
@@ -164,5 +175,6 @@ mod tests {
             loaded.panes.right_directory,
             Some(PathBuf::from("/tmp/right"))
         );
+        assert_eq!(loaded.locale.language.as_deref(), Some("fr"));
     }
 }

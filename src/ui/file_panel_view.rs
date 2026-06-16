@@ -105,6 +105,14 @@ impl FilePanelView {
         }
     }
 
+    pub fn refresh_labels(&self) {
+        for binding in &self.columns {
+            binding
+                .column
+                .set_title(Some(&crate::ui::columns::column_title(binding.sort_column)));
+        }
+    }
+
     pub fn set_path(&self, label: &str) {
         self.path_label.set_label(label);
     }

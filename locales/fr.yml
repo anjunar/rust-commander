@@ -1,0 +1,191 @@
+panel:
+  left: gauche
+  right: droite
+
+column:
+  name: Nom
+  size: Taille
+  type: Type
+  modified: Modifie
+  attributes: Attributs
+
+entry:
+  parent: Parent
+  folder: Dossier
+  file: Fichier
+  symlink: Lien symbolique
+  archive_item: Entree d'archive
+
+operation:
+  copy: Copier
+  move: Deplacer
+  delete: Supprimer
+  copy_verb: copier
+  move_verb: deplacer
+  delete_verb: supprimer
+
+common:
+  close: Fermer
+  cancel: Annuler
+  rename: Renommer
+  create: Creer
+  save: Enregistrer
+  skip: Ignorer
+  overwrite: Ecraser
+  clear: Effacer
+  items_count: "%{count} elements"
+
+command:
+  settings: F1 Parametres
+  rename: F2 Renommer
+  view: F3 Voir
+  edit: F4 Editer
+  copy: F5 Copier
+  move: F6 Deplacer
+  mkdir: F7 Dossier
+  delete: F8 Supprimer
+  terminal: F9 Terminal
+  quit: F10 Quitter
+
+settings:
+  title: Parametres de l'application
+  description: La prise en charge des archives est preparee autour de backends internes et natifs. Aucun outil d'archive externe n'est configure a ce stade.
+  archive_info: "Etat actuel : backend ZIP integre plus emplacements reserves pour libarchive, UnRAR et les plugins."
+  language: Langue
+
+dialog:
+  copy_confirmation_title: Confirmer la copie
+  copy_confirmation_detail: "Copier %{source} vers %{target} ?"
+  move_confirmation_title: Confirmer le deplacement
+  move_confirmation_detail: "Deplacer %{source} vers %{target} ?"
+  delete_confirmation_title: Confirmer la suppression
+  delete_confirmation_detail: "Supprimer %{source} ?"
+  rename_title: Renommer
+  rename_prompt: "Saisissez un nouveau nom :"
+  mkdir_title: Creer un dossier
+  mkdir_prompt: "Saisissez un nom pour le nouveau dossier :"
+  conflict_title: "Conflit de %{kind}"
+  conflict_detail: "La cible existe deja.\n\nSource : %{source}\nCible : %{target}"
+
+editor:
+  edit_title: "Editer %{file}"
+  utf8_text_file: Fichier texte UTF-8
+  binary_file_not_editable: Le fichier selectionne semble binaire et ne peut pas etre edite comme texte.
+  invalid_utf8_for_edit: "Le fichier selectionne n'est pas un UTF-8 valide et ne peut pas etre edite dans l'editeur de texte : %{path}"
+  discard_changes_title: Ignorer les modifications ?
+  discard_changes_detail: Il y a des modifications non enregistrees dans l'editeur.
+  keep_editing: Continuer l'edition
+  discard: Ignorer
+
+viewer:
+  window_title: Visionneuse
+  view_prefix: Voir
+  title: "Voir %{file}"
+  mode_text: Texte
+  mode_hex: Hex
+  status: "%{mode} | %{size} | ligne %{line} | col %{col} | F2 changer de mode | Esc fermer"
+  read_only_text_truncated: "Vue texte en lecture seule. Affichage des %{shown} premiers sur %{total}."
+  read_only_text_total: "Vue texte en lecture seule. %{total} au total."
+  read_only_hex_truncated: "Vue hexadecimale en lecture seule pour du contenu binaire. Affichage des %{shown} premiers sur %{total}."
+  read_only_hex_total: "Vue hexadecimale en lecture seule pour du contenu binaire. %{total} au total."
+  invalid_utf8_for_view: Le fichier selectionne n'est pas un UTF-8 valide et ne peut pas etre affiche comme texte.
+  could_not_decode_preview: Impossible de decoder l'aperçu du texte.
+  empty_hex_file: "00000000  <fichier vide>"
+  error_with_detail: "Erreur de la visionneuse : %{error}"
+  scroll_update_error: "Erreur de la visionneuse : impossible de mettre a jour la position de defilement"
+  render_error_body: "Impossible d'afficher le contenu du fichier.\n\n%{error}"
+
+progress:
+  operation_title: "Operation %{kind}"
+  preparing_file_operation: Preparation de l'operation sur les fichiers...
+  eta_unknown: "ETA --:--"
+  cancel_operation: Annuler l'operation
+  in_progress: "%{kind} en cours"
+  file_operation_detail: "%{processed} sur %{total} | %{processed_entries} / %{total_entries} elements\n%{item}"
+  archive_copy: Copie d'archive
+  archive_copy_in_progress: Copie d'archive en cours
+  selected_archive_items: "%{count} elements d'archive selectionnes"
+  extracting_complete_archive: Extraction de l'archive complete
+  opening_archive: Ouverture de l'archive
+  listing_archive: Lecture de l'archive
+  testing_archive: Test de l'archive
+  preparing_archive_operation: Preparation de l'operation d'archive...
+  working: Traitement...
+  items_count: "Elements %{processed}/%{total}"
+  waiting_for_conflict_resolution: En attente de la resolution du conflit...
+
+terminal:
+  title: Terminal
+  restart: Redemarrer
+  title_windows_pending: Terminal (backend Windows en attente)
+  panel_path: "Chemin du panneau : %{path}"
+  unsupported_path_chars: "Le repertoire du terminal contient des caracteres non pris en charge : %{path}"
+  windows_placeholder_title: Le terminal integre est actuellement disponible sur les builds Linux avec VTE.
+  windows_placeholder_body: "Repertoire de travail demande : %{path}\n\nPourquoi ceci reste un espace reserve sous Windows :\nConPTY fournit un flux de pseudo-console, mais l'application hote doit elle-meme afficher la sortie du terminal et collecter les entrees. GTK4 ne fournit pas de widget terminal natif sous Windows comparable a VTE, et ce projet evite volontairement de construire son propre emulateur.\n\nL'architecture du dock est deja separee afin qu'un controle terminal natif Windows puisse etre ajoute plus tard sans modifier l'interface du commander."
+
+archive:
+  test_completed: "Test d'archive termine : %{path}"
+  extracted_items: "%{count} element(s) extrait(s) vers %{target}"
+  extracted_archive: "Archive extraite vers %{target} (%{size})"
+
+status:
+  ready: Pret. F3 affiche, F4 edite, Entree ouvre, Tab change de panneau, F5 copie.
+  selected_active: "%{status} | %{count} selectionnes dans le panneau actif"
+  selected_inactive: "%{status} | %{count} selectionnes dans le panneau inactif"
+  selected_both: "%{status} | %{active} selectionnes actif | %{inactive} selectionnes inactif"
+  archive_settings_updated: Parametres d'archive mis a jour. Les backends d'archive internes et natifs sont actifs.
+  view_refreshed: Modifications de fichiers detectees. Vue actualisee.
+  refresh_failed: "Actualisation de %{panel} echouee : %{error}"
+  sorted_panel: "Panneau %{panel} trie par %{column}."
+  rename_skipped: Renommage ignore. Le nom est inchangé.
+  renamed: "Renomme : %{path}"
+  created_directory: "Dossier cree : %{path}"
+  console_opened_at: "Console ouverte dans %{path}"
+  language_changed: "Langue changee en %{language}."
+  saved: "Enregistre : %{path}"
+  up_one_level: "Monter d'un niveau : %{path}"
+  loading_parent_directory: Chargement du dossier parent...
+  opened: "Ouvert : %{path}"
+  loading_directory: Chargement du dossier...
+  opened_archive: "Archive ouverte : %{path}"
+  opening_archive: Ouverture de l'archive...
+  switched_panel: "Panneau %{panel} bascule vers %{path}"
+  loading_drive: Chargement du lecteur...
+  navigation_failed: "Navigation echouee : %{error}"
+  navigation_loader_disconnected: "Navigation echouee : le chargeur d'arriere-plan s'est deconnecte."
+  operation_current_item: "%{kind} : %{item}"
+  operation_completed: "%{kind} termine : %{count} elements, %{size} en %{seconds}s"
+  operation_cancelled: "%{kind} annule apres %{count} elements et %{size}."
+  file_operation_failed: "Echec de l'operation sur les fichiers : %{error}"
+  copy_current_path: "Copie : %{path}"
+  archive_extraction_in_progress: Extraction d'archive en cours
+  archive_copy_cancelled: Copie d'archive annulee.
+  archive_copy_failed: "Echec de la copie d'archive : %{error}"
+  command_failed: "Commande echouee : %{error}"
+
+error:
+  no_entry_selected: Aucune entree n'est selectionnee.
+  view_unavailable: L'affichage n'est pas disponible
+  parent_cannot_be_viewed: L'entree du dossier parent ne peut pas etre affichee.
+  directory_cannot_be_viewed: Les dossiers ne peuvent pas etre affiches dans la visionneuse de fichiers.
+  archive_view_not_wired: L'affichage direct des fichiers a l'interieur des archives est prepare architecturalement, mais pas encore branche.
+  could_not_open_viewer: Impossible d'ouvrir la visionneuse
+  rename_unavailable: Le renommage n'est pas disponible
+  parent_cannot_be_renamed: L'entree du dossier parent ne peut pas etre renommee.
+  could_not_open_console: Impossible d'ouvrir la console
+  could_not_save_settings: Impossible d'enregistrer les parametres
+  edit_unavailable: L'edition n'est pas disponible
+  parent_cannot_be_edited: L'entree du dossier parent ne peut pas etre editee.
+  directory_cannot_be_edited: Les dossiers ne peuvent pas etre ouverts dans l'editeur de texte.
+  archive_edit_not_supported: L'edition de fichiers directement dans les archives n'est pas prise en charge a ce stade.
+  could_not_open_editor: Impossible d'ouvrir l'editeur
+  could_not_open_directory: Impossible d'ouvrir le dossier
+  file_operation_running: Une operation sur les fichiers est deja en cours
+  cancel_or_finish_current_operation: Annulez ou terminez d'abord l'operation en cours.
+  operation_unavailable: L'operation n'est pas disponible
+  file_operation_failed: Echec de l'operation sur les fichiers
+  archive_copy_unavailable: La copie d'archive n'est pas disponible
+  no_filesystem_target_directory: Aucun dossier cible du systeme de fichiers n'est disponible.
+  archive_copy_failed: Echec de la copie d'archive
+  command_failed: Commande echouee
+  could_not_start_terminal: Impossible de demarrer le terminal

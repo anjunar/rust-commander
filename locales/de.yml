@@ -1,0 +1,191 @@
+panel:
+  left: links
+  right: rechts
+
+column:
+  name: Name
+  size: Groesse
+  type: Typ
+  modified: Geaendert
+  attributes: Attribute
+
+entry:
+  parent: Uebergeordnet
+  folder: Ordner
+  file: Datei
+  symlink: Symlink
+  archive_item: Archiveintrag
+
+operation:
+  copy: Kopieren
+  move: Verschieben
+  delete: Loeschen
+  copy_verb: kopieren
+  move_verb: verschieben
+  delete_verb: loeschen
+
+common:
+  close: Schliessen
+  cancel: Abbrechen
+  rename: Umbenennen
+  create: Erstellen
+  save: Speichern
+  skip: Ueberspringen
+  overwrite: Ueberschreiben
+  clear: Leeren
+  items_count: "%{count} Elemente"
+
+command:
+  settings: F1 Einstellungen
+  rename: F2 Umbenennen
+  view: F3 Anzeigen
+  edit: F4 Bearbeiten
+  copy: F5 Kopieren
+  move: F6 Verschieben
+  mkdir: F7 Ordner
+  delete: F8 Loeschen
+  terminal: F9 Terminal
+  quit: F10 Beenden
+
+settings:
+  title: Anwendungseinstellungen
+  description: Die Archivunterstuetzung ist fuer interne und native Backends vorbereitet. In diesem Stadium ist kein externes Archivwerkzeug konfiguriert.
+  archive_info: "Aktueller Stand: eingebautes ZIP-Backend plus Platzhalter fuer native Backends wie libarchive, UnRAR und Plugins."
+  language: Sprache
+
+dialog:
+  copy_confirmation_title: Kopieren bestaetigen
+  copy_confirmation_detail: "%{source} nach %{target} kopieren?"
+  move_confirmation_title: Verschieben bestaetigen
+  move_confirmation_detail: "%{source} nach %{target} verschieben?"
+  delete_confirmation_title: Loeschen bestaetigen
+  delete_confirmation_detail: "%{source} loeschen?"
+  rename_title: Umbenennen
+  rename_prompt: "Neuen Namen eingeben:"
+  mkdir_title: Ordner erstellen
+  mkdir_prompt: "Namen fuer den neuen Ordner eingeben:"
+  conflict_title: "%{kind}-Konflikt"
+  conflict_detail: "Das Ziel existiert bereits.\n\nQuelle: %{source}\nZiel: %{target}"
+
+editor:
+  edit_title: "%{file} bearbeiten"
+  utf8_text_file: UTF-8-Textdatei
+  binary_file_not_editable: Die ausgewaehlte Datei scheint binaer zu sein und kann nicht als Text bearbeitet werden.
+  invalid_utf8_for_edit: "Die ausgewaehlte Datei ist kein gueltiges UTF-8 und kann nicht im Texteditor bearbeitet werden: %{path}"
+  discard_changes_title: Aenderungen verwerfen?
+  discard_changes_detail: Im Editor gibt es ungespeicherte Aenderungen.
+  keep_editing: Weiter bearbeiten
+  discard: Verwerfen
+
+viewer:
+  window_title: Betrachter
+  view_prefix: Anzeigen
+  title: "%{file} anzeigen"
+  mode_text: Text
+  mode_hex: Hex
+  status: "%{mode} | %{size} | Zeile %{line} | Spalte %{col} | F2 Modus wechseln | Esc schliessen"
+  read_only_text_truncated: "Schreibgeschuetzte Textansicht. Die ersten %{shown} von %{total} werden angezeigt."
+  read_only_text_total: "Schreibgeschuetzte Textansicht. Insgesamt %{total}."
+  read_only_hex_truncated: "Schreibgeschuetzte Hex-Ansicht fuer binaere Inhalte. Die ersten %{shown} von %{total} werden angezeigt."
+  read_only_hex_total: "Schreibgeschuetzte Hex-Ansicht fuer binaere Inhalte. Insgesamt %{total}."
+  invalid_utf8_for_view: Die ausgewaehlte Datei ist kein gueltiges UTF-8 und kann nicht als Text angezeigt werden.
+  could_not_decode_preview: Die Textvorschau konnte nicht dekodiert werden.
+  empty_hex_file: "00000000  <leere Datei>"
+  error_with_detail: "Betrachterfehler: %{error}"
+  scroll_update_error: "Betrachterfehler: Scroll-Position konnte nicht aktualisiert werden"
+  render_error_body: "Dateiansicht konnte nicht gerendert werden.\n\n%{error}"
+
+progress:
+  operation_title: "%{kind}-Vorgang"
+  preparing_file_operation: Dateivorgang wird vorbereitet...
+  eta_unknown: "ETA --:--"
+  cancel_operation: Vorgang abbrechen
+  in_progress: "%{kind} laeuft"
+  file_operation_detail: "%{processed} von %{total} | %{processed_entries} / %{total_entries} Elemente\n%{item}"
+  archive_copy: Archiv kopieren
+  archive_copy_in_progress: Archivkopie laeuft
+  selected_archive_items: "%{count} ausgewaehlte Archivelemente"
+  extracting_complete_archive: Komplettes Archiv wird entpackt
+  opening_archive: Archiv wird geoeffnet
+  listing_archive: Archiv wird eingelesen
+  testing_archive: Archiv wird getestet
+  preparing_archive_operation: Archivvorgang wird vorbereitet...
+  working: Arbeite...
+  items_count: "Elemente %{processed}/%{total}"
+  waiting_for_conflict_resolution: Warte auf Konfliktaufloesung...
+
+terminal:
+  title: Terminal
+  restart: Neustart
+  title_windows_pending: Terminal (Windows-Backend ausstehend)
+  panel_path: "Panel-Pfad: %{path}"
+  unsupported_path_chars: "Das Terminalverzeichnis enthaelt nicht unterstuetzte Zeichen: %{path}"
+  windows_placeholder_title: Das eingebettete Terminal ist derzeit auf Linux-Builds mit VTE verfuegbar.
+  windows_placeholder_body: "Angefordertes Arbeitsverzeichnis: %{path}\n\nWarum dies unter Windows noch ein Platzhalter ist:\nConPTY liefert einen Pseudokonsolen-Stream, aber die Host-Anwendung muss Terminalausgabe selbst rendern und Eingaben selbst erfassen. GTK4 bietet auf Windows kein natives Terminal-Widget wie VTE, und dieses Projekt verzichtet bewusst auf einen eigenen Emulator.\n\nDie Dock-Architektur ist bereits getrennt, sodass spaeter ein Windows-natives Terminal-Steuerelement hinzugefuegt werden kann, ohne die umgebende Commander-UI zu aendern."
+
+archive:
+  test_completed: "Archivtest abgeschlossen: %{path}"
+  extracted_items: "%{count} Element(e) nach %{target} extrahiert"
+  extracted_archive: "Archiv nach %{target} extrahiert (%{size})"
+
+status:
+  ready: Bereit. F3 zeigt an, F4 bearbeitet, Enter oeffnet, Tab wechselt Panels, F5 kopiert.
+  selected_active: "%{status} | %{count} im aktiven Panel ausgewaehlt"
+  selected_inactive: "%{status} | %{count} im inaktiven Panel ausgewaehlt"
+  selected_both: "%{status} | %{active} aktiv ausgewaehlt | %{inactive} inaktiv ausgewaehlt"
+  archive_settings_updated: Archiveinstellungen aktualisiert. Interne und native Archiv-Backends sind aktiv.
+  view_refreshed: Dateiaenderungen erkannt. Ansicht aktualisiert.
+  refresh_failed: "Aktualisierung von %{panel} fehlgeschlagen: %{error}"
+  sorted_panel: "%{panel}-Panel nach %{column} sortiert."
+  rename_skipped: Umbenennen uebersprungen. Der Name ist unveraendert.
+  renamed: "Umbenannt: %{path}"
+  created_directory: "Ordner erstellt: %{path}"
+  console_opened_at: "Konsole geoeffnet in %{path}"
+  language_changed: "Sprache auf %{language} gesetzt."
+  saved: "Gespeichert: %{path}"
+  up_one_level: "Eine Ebene nach oben: %{path}"
+  loading_parent_directory: Uebergeordneter Ordner wird geladen...
+  opened: "Geoeffnet: %{path}"
+  loading_directory: Ordner wird geladen...
+  opened_archive: "Archiv geoeffnet: %{path}"
+  opening_archive: Archiv wird geoeffnet...
+  switched_panel: "%{panel}-Panel nach %{path} gewechselt"
+  loading_drive: Laufwerk wird geladen...
+  navigation_failed: "Navigation fehlgeschlagen: %{error}"
+  navigation_loader_disconnected: "Navigation fehlgeschlagen: Hintergrundlader getrennt."
+  operation_current_item: "%{kind}: %{item}"
+  operation_completed: "%{kind} abgeschlossen: %{count} Elemente, %{size} in %{seconds}s"
+  operation_cancelled: "%{kind} nach %{count} Elementen und %{size} abgebrochen."
+  file_operation_failed: "Dateivorgang fehlgeschlagen: %{error}"
+  copy_current_path: "Kopiere: %{path}"
+  archive_extraction_in_progress: Archiv-Extraktion laeuft
+  archive_copy_cancelled: Archivkopie abgebrochen.
+  archive_copy_failed: "Archivkopie fehlgeschlagen: %{error}"
+  command_failed: "Befehl fehlgeschlagen: %{error}"
+
+error:
+  no_entry_selected: Kein Eintrag ist ausgewaehlt.
+  view_unavailable: Anzeigen ist nicht verfuegbar
+  parent_cannot_be_viewed: Der uebergeordnete Verzeichniseintrag kann nicht angezeigt werden.
+  directory_cannot_be_viewed: Verzeichnisse koennen im Dateibetrachter nicht angezeigt werden.
+  archive_view_not_wired: Die Anzeige von Dateien direkt in Archiven ist architektonisch vorbereitet, aber noch nicht angeschlossen.
+  could_not_open_viewer: Betrachter konnte nicht geoeffnet werden
+  rename_unavailable: Umbenennen ist nicht verfuegbar
+  parent_cannot_be_renamed: Der uebergeordnete Verzeichniseintrag kann nicht umbenannt werden.
+  could_not_open_console: Konsole konnte nicht geoeffnet werden
+  could_not_save_settings: Einstellungen konnten nicht gespeichert werden
+  edit_unavailable: Bearbeiten ist nicht verfuegbar
+  parent_cannot_be_edited: Der uebergeordnete Verzeichniseintrag kann nicht bearbeitet werden.
+  directory_cannot_be_edited: Verzeichnisse koennen nicht im Texteditor geoeffnet werden.
+  archive_edit_not_supported: Das Bearbeiten von Dateien direkt in Archiven wird in diesem Stadium nicht unterstuetzt.
+  could_not_open_editor: Editor konnte nicht geoeffnet werden
+  could_not_open_directory: Verzeichnis konnte nicht geoeffnet werden
+  file_operation_running: Dateivorgang laeuft bereits
+  cancel_or_finish_current_operation: Bitte den aktuellen Vorgang erst abbrechen oder abschliessen.
+  operation_unavailable: Vorgang ist nicht verfuegbar
+  file_operation_failed: Dateivorgang fehlgeschlagen
+  archive_copy_unavailable: Archivkopie ist nicht verfuegbar
+  no_filesystem_target_directory: Kein Zielverzeichnis im Dateisystem verfuegbar.
+  archive_copy_failed: Archivkopie fehlgeschlagen
+  command_failed: Befehl fehlgeschlagen
+  could_not_start_terminal: Terminal konnte nicht gestartet werden

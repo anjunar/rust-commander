@@ -1,5 +1,7 @@
 use std::{io, path::Path};
 
+use rust_i18n::t;
+
 use crate::viewer::{
     file_source::FileSource,
     hex_view::{render_hex_lines, total_hex_lines},
@@ -154,7 +156,7 @@ impl ViewerState {
     pub fn render(&mut self) -> io::Result<RenderedContent> {
         self.clamp_after_indexing()?;
 
-        let title = format!("View {}", file_label(self.path()));
+        let title = t!("viewer.title", file = file_label(self.path())).into_owned();
         let body = match self.mode {
             ViewerMode::Text => {
                 let render = render_text_lines(
@@ -186,15 +188,17 @@ impl ViewerState {
 
     pub fn status_line(&self) -> String {
         let mode = match self.mode {
-            ViewerMode::Text => "Text",
-            ViewerMode::Hex => "Hex",
+            ViewerMode::Text => t!("viewer.mode_text").into_owned(),
+            ViewerMode::Hex => t!("viewer.mode_hex").into_owned(),
         };
-        format!(
-            "{mode} | {} | line {} | col {} | F2 toggle mode | Esc close",
-            format_bytes(self.source.len()),
-            self.first_visible_line.saturating_add(1),
-            self.horizontal_offset.saturating_add(1),
+        t!(
+            "viewer.status",
+            mode = mode,
+            size = format_bytes(self.source.len()),
+            line = self.first_visible_line.saturating_add(1),
+            col = self.horizontal_offset.saturating_add(1)
         )
+        .into_owned()
     }
 
     fn max_first_visible_line(&self) -> usize {

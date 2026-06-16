@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use gtk::{glib, prelude::*};
+use rust_i18n::t;
 use sourceview5::{self as sourceview, prelude::*};
 
 use crate::{fs::reader::format_bytes, ui::dialogs::build_modal_window};
@@ -27,7 +28,12 @@ where
     F: Fn(PathBuf) + 'static,
 {
     let initial_text = read_text_file(&path)?;
-    let modal = build_modal_window(parent, &format!("Edit {}", file_label(&path)), 980, 720);
+    let modal = build_modal_window(
+        parent,
+        &t!("editor.edit_title", file = file_label(&path)),
+        980,
+        720,
+    );
     let window = modal.window;
     let content = modal.content;
     let actions = modal.actions;
@@ -66,13 +72,13 @@ where
     scrolled.add_css_class("panel-scroller");
     content.append(&scrolled);
 
-    let status_label = gtk::Label::new(Some("UTF-8 text file"));
+    let status_label = gtk::Label::new(Some(&t!("editor.utf8_text_file")));
     status_label.set_xalign(0.0);
     status_label.add_css_class("editor-status");
     content.append(&status_label);
 
-    let cancel_button = gtk::Button::with_label("Cancel");
-    let save_button = gtk::Button::with_label("Save");
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let save_button = gtk::Button::with_label(&t!("common.save"));
     save_button.add_css_class("suggested-action");
     actions.append(&cancel_button);
     actions.append(&save_button);
@@ -145,8 +151,12 @@ where
 pub fn view_file(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     let content = read_viewer_content(&path)?;
     let (title_suffix, body, status_text) = match content {
-        ViewerContent::Text { body, status } => ("View", body, status),
-        ViewerContent::Hex { body, status } => ("View", body, status),
+        ViewerContent::Text { body, status } => {
+            (t!("viewer.view_prefix").into_owned(), body, status)
+        }
+        ViewerContent::Hex { body, status } => {
+            (t!("viewer.view_prefix").into_owned(), body, status)
+        }
     };
 
     let modal = build_modal_window(
@@ -198,7 +208,7 @@ pub fn view_file(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     status_label.add_css_class("editor-status");
     content_area.append(&status_label);
 
-    let close_button = gtk::Button::with_label("Close");
+    let close_button = gtk::Button::with_label(&t!("common.close"));
     close_button.add_css_class("suggested-action");
     actions.append(&close_button);
     window.set_default_widget(Some(&close_button));
@@ -223,14 +233,15 @@ fn read_text_file(path: &Path) -> Result<String> {
         fs::read(path).with_context(|| format!("Could not read file {}", path.display()))?;
 
     if bytes.contains(&0) {
-        bail!("The selected file appears to be binary and cannot be edited as text.");
+        bail!("{}", t!("editor.binary_file_not_editable"));
     }
 
     String::from_utf8(bytes).with_context(|| {
-        format!(
-            "The selected file is not valid UTF-8 and cannot be edited in the text editor: {}",
-            path.display()
+        t!(
+            "editor.invalid_utf8_for_edit",
+            path = path.display().to_string()
         )
+        .into_owned()
     })
 }
 
@@ -246,12 +257,19 @@ fn read_viewer_content(path: &Path) -> Result<ViewerContent> {
             let body = decode_text_prefix(&bytes)?;
             let status = if truncated {
                 format!(
-                    "Read-only text view. Showing the first {} of {}.",
-                    format_bytes(bytes.len() as u64),
-                    format_bytes(file_size)
+                    "{}",
+                    t!(
+                        "viewer.read_only_text_truncated",
+                        shown = format_bytes(bytes.len() as u64),
+                        total = format_bytes(file_size)
+                    )
                 )
             } else {
-                format!("Read-only text view. {} total.", format_bytes(file_size))
+                t!(
+                    "viewer.read_only_text_total",
+                    total = format_bytes(file_size)
+                )
+                .into_owned()
             };
             Ok(ViewerContent::Text { body, status })
         }
@@ -259,15 +277,19 @@ fn read_viewer_content(path: &Path) -> Result<ViewerContent> {
             let (bytes, truncated) = read_limited_bytes(path, VIEW_HEX_LIMIT_BYTES)?;
             let status = if truncated {
                 format!(
-                    "Read-only hex view for binary content. Showing the first {} of {}.",
-                    format_bytes(bytes.len() as u64),
-                    format_bytes(file_size)
+                    "{}",
+                    t!(
+                        "viewer.read_only_hex_truncated",
+                        shown = format_bytes(bytes.len() as u64),
+                        total = format_bytes(file_size)
+                    )
                 )
             } else {
-                format!(
-                    "Read-only hex view for binary content. {} total.",
-                    format_bytes(file_size)
+                t!(
+                    "viewer.read_only_hex_total",
+                    total = format_bytes(file_size)
                 )
+                .into_owned()
             };
             Ok(ViewerContent::Hex {
                 body: format_hex_dump(&bytes),
@@ -323,11 +345,11 @@ fn decode_text_prefix(bytes: &[u8]) -> Result<String> {
         Err(error) => {
             let valid_up_to = error.valid_up_to();
             if valid_up_to == 0 {
-                bail!("The selected file is not valid UTF-8 and cannot be viewed as text.")
+                bail!("{}", t!("viewer.invalid_utf8_for_view"))
             }
             std::str::from_utf8(&bytes[..valid_up_to])
                 .map(|text| text.to_string())
-                .with_context(|| "Could not decode the text preview.")
+                .with_context(|| t!("viewer.could_not_decode_preview").into_owned())
         }
     }
 }
@@ -336,7 +358,7 @@ fn format_hex_dump(bytes: &[u8]) -> String {
     const BYTES_PER_LINE: usize = 16;
 
     if bytes.is_empty() {
-        return "00000000  <empty file>".into();
+        return t!("viewer.empty_hex_file").into_owned();
     }
 
     let mut lines = Vec::new();
@@ -397,9 +419,12 @@ fn apply_style_scheme(buffer: &sourceview::Buffer) {
 async fn confirm_discard(parent: &gtk::ApplicationWindow) -> bool {
     let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message("Discard changes?")
-        .detail("There are unsaved changes in the editor.")
-        .buttons(["Keep editing", "Discard"])
+        .message(t!("editor.discard_changes_title").into_owned())
+        .detail(t!("editor.discard_changes_detail").into_owned())
+        .buttons([
+            t!("editor.keep_editing").into_owned(),
+            t!("editor.discard").into_owned(),
+        ])
         .cancel_button(0)
         .default_button(0)
         .build();

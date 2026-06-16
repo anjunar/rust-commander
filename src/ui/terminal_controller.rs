@@ -5,6 +5,7 @@ use std::{
 };
 
 use gtk::{gdk, glib, prelude::*};
+use rust_i18n::t;
 
 #[cfg(not(target_os = "windows"))]
 use gtk::{gio, pango};
@@ -281,10 +282,11 @@ impl LinuxTerminalBackend {
 
     fn spawn(&self, working_dir: &Path) -> Result<(), String> {
         let Some(working_directory) = working_dir.to_str() else {
-            return Err(format!(
-                "The terminal directory contains unsupported characters: {}",
-                working_dir.display()
-            ));
+            return Err(t!(
+                "terminal.unsupported_path_chars",
+                path = working_dir.display().to_string()
+            )
+            .into_owned());
         };
         let working_directory = working_directory.to_string();
         let working_directory_path = PathBuf::from(&working_directory);
@@ -367,9 +369,7 @@ impl UnsupportedTerminalBackend {
         widget.add_css_class("terminal-placeholder");
         widget.set_focusable(true);
 
-        let title = gtk::Label::new(Some(
-            "Embedded terminal is currently available on Linux builds with VTE.",
-        ));
+        let title = gtk::Label::new(Some(&t!("terminal.windows_placeholder_title")));
         title.set_wrap(true);
         title.set_xalign(0.0);
         title.add_css_class("terminal-placeholder-title");
@@ -396,9 +396,9 @@ impl UnsupportedTerminalBackend {
             state.last_panel_dir = working_dir.to_path_buf();
         }
 
-        self.description.set_label(&format!(
-            "Requested working directory: {}\n\nWhy this is still a placeholder on Windows:\nConPTY supplies a pseudoconsole stream, but the host application must render terminal output and collect terminal input itself. GTK4 does not provide a native Windows terminal widget comparable to VTE, and this project intentionally avoids building its own emulator.\n\nThe dock architecture is already separated so a future Windows-native terminal control can be added without changing the surrounding commander UI.",
-            working_dir.display()
+        self.description.set_label(&t!(
+            "terminal.windows_placeholder_body",
+            path = working_dir.display().to_string()
         ));
         Ok(())
     }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gtk::prelude::*;
 
-use crate::{application::Commander, config, ui::main_window::MainWindow};
+use crate::{application::Commander, config, i18n, ui::main_window::MainWindow};
 
 pub const APP_ID: &str = "dev.rcommander.Gtk";
 
@@ -21,6 +21,7 @@ pub fn run() -> Result<()> {
                 config::AppConfig::default()
             }
         };
+        i18n::apply_locale(app_config.locale.language.as_deref());
 
         let fallback_path = match std::env::current_dir() {
             Ok(path) => path,

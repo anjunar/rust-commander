@@ -1,0 +1,191 @@
+panel:
+  left: left
+  right: right
+
+column:
+  name: Name
+  size: Size
+  type: Type
+  modified: Modified
+  attributes: Attributes
+
+entry:
+  parent: Parent
+  folder: Folder
+  file: File
+  symlink: Symlink
+  archive_item: Archive entry
+
+operation:
+  copy: Copy
+  move: Move
+  delete: Delete
+  copy_verb: copy
+  move_verb: move
+  delete_verb: delete
+
+common:
+  close: Close
+  cancel: Cancel
+  rename: Rename
+  create: Create
+  save: Save
+  skip: Skip
+  overwrite: Overwrite
+  clear: Clear
+  items_count: "%{count} items"
+
+command:
+  settings: F1 Settings
+  rename: F2 Rename
+  view: F3 View
+  edit: F4 Edit
+  copy: F5 Copy
+  move: F6 Move
+  mkdir: F7 MkDir
+  delete: F8 Delete
+  terminal: F9 Terminal
+  quit: F10 Quit
+
+settings:
+  title: Application settings
+  description: Archive support is prepared around internal and native backends. No external archive tool is configured in this stage.
+  archive_info: "Current stage: built-in ZIP backend plus native-backend placeholders for libarchive, UnRAR and plugins."
+  language: Language
+
+dialog:
+  copy_confirmation_title: Copy confirmation
+  copy_confirmation_detail: "Copy %{source} to %{target}?"
+  move_confirmation_title: Move confirmation
+  move_confirmation_detail: "Move %{source} to %{target}?"
+  delete_confirmation_title: Delete confirmation
+  delete_confirmation_detail: "Delete %{source}?"
+  rename_title: Rename
+  rename_prompt: "Enter a new name:"
+  mkdir_title: Create directory
+  mkdir_prompt: "Enter a name for the new directory:"
+  conflict_title: "%{kind} conflict"
+  conflict_detail: "The target already exists.\n\nSource: %{source}\nTarget: %{target}"
+
+editor:
+  edit_title: "Edit %{file}"
+  utf8_text_file: UTF-8 text file
+  binary_file_not_editable: The selected file appears to be binary and cannot be edited as text.
+  invalid_utf8_for_edit: "The selected file is not valid UTF-8 and cannot be edited in the text editor: %{path}"
+  discard_changes_title: Discard changes?
+  discard_changes_detail: There are unsaved changes in the editor.
+  keep_editing: Keep editing
+  discard: Discard
+
+viewer:
+  window_title: Viewer
+  view_prefix: View
+  title: "View %{file}"
+  mode_text: Text
+  mode_hex: Hex
+  status: "%{mode} | %{size} | line %{line} | col %{col} | F2 toggle mode | Esc close"
+  read_only_text_truncated: "Read-only text view. Showing the first %{shown} of %{total}."
+  read_only_text_total: "Read-only text view. %{total} total."
+  read_only_hex_truncated: "Read-only hex view for binary content. Showing the first %{shown} of %{total}."
+  read_only_hex_total: "Read-only hex view for binary content. %{total} total."
+  invalid_utf8_for_view: The selected file is not valid UTF-8 and cannot be viewed as text.
+  could_not_decode_preview: Could not decode the text preview.
+  empty_hex_file: "00000000  <empty file>"
+  error_with_detail: "Viewer error: %{error}"
+  scroll_update_error: "Viewer error: Could not update scroll position"
+  render_error_body: "Could not render file view.\n\n%{error}"
+
+progress:
+  operation_title: "%{kind} operation"
+  preparing_file_operation: Preparing file operation...
+  eta_unknown: "ETA --:--"
+  cancel_operation: Cancel operation
+  in_progress: "%{kind} in progress"
+  file_operation_detail: "%{processed} of %{total} | %{processed_entries} / %{total_entries} items\n%{item}"
+  archive_copy: Archive copy
+  archive_copy_in_progress: Archive copy in progress
+  selected_archive_items: "%{count} selected archive items"
+  extracting_complete_archive: Extracting complete archive
+  opening_archive: Opening archive
+  listing_archive: Listing archive
+  testing_archive: Testing archive
+  preparing_archive_operation: Preparing archive operation...
+  working: Working...
+  items_count: "Items %{processed}/%{total}"
+  waiting_for_conflict_resolution: Waiting for conflict resolution...
+
+terminal:
+  title: Terminal
+  restart: Restart
+  title_windows_pending: Terminal (Windows backend pending)
+  panel_path: "Panel path: %{path}"
+  unsupported_path_chars: "The terminal directory contains unsupported characters: %{path}"
+  windows_placeholder_title: Embedded terminal is currently available on Linux builds with VTE.
+  windows_placeholder_body: "Requested working directory: %{path}\n\nWhy this is still a placeholder on Windows:\nConPTY supplies a pseudoconsole stream, but the host application must render terminal output and collect terminal input itself. GTK4 does not provide a native Windows terminal widget comparable to VTE, and this project intentionally avoids building its own emulator.\n\nThe dock architecture is already separated so a future Windows-native terminal control can be added without changing the surrounding commander UI."
+
+archive:
+  test_completed: "Archive test completed: %{path}"
+  extracted_items: "Extracted %{count} item(s) to %{target}"
+  extracted_archive: "Extracted archive to %{target} (%{size})"
+
+status:
+  ready: Ready. F3 views, F4 edits, Enter opens, Tab switches panels, F5 copies.
+  selected_active: "%{status} | %{count} selected in the active panel"
+  selected_inactive: "%{status} | %{count} selected in the inactive panel"
+  selected_both: "%{status} | %{active} selected active | %{inactive} selected inactive"
+  archive_settings_updated: Archive settings updated. Internal/native archive backends are active.
+  view_refreshed: File changes detected. View refreshed.
+  refresh_failed: "%{panel} refresh failed: %{error}"
+  sorted_panel: "Sorted %{panel} panel by %{column}."
+  rename_skipped: Rename skipped. Name is unchanged.
+  renamed: "Renamed: %{path}"
+  created_directory: "Created directory: %{path}"
+  console_opened_at: "Console opened at %{path}"
+  language_changed: "Language changed to %{language}."
+  saved: "Saved: %{path}"
+  up_one_level: "Up one level: %{path}"
+  loading_parent_directory: Loading parent directory...
+  opened: "Opened: %{path}"
+  loading_directory: Loading directory...
+  opened_archive: "Opened archive: %{path}"
+  opening_archive: Opening archive...
+  switched_panel: "Switched %{panel} panel to %{path}"
+  loading_drive: Loading drive...
+  navigation_failed: "Navigation failed: %{error}"
+  navigation_loader_disconnected: "Navigation failed: background loader disconnected."
+  operation_current_item: "%{kind}: %{item}"
+  operation_completed: "%{kind} completed: %{count} items, %{size} in %{seconds}s"
+  operation_cancelled: "%{kind} cancelled after %{count} items and %{size}."
+  file_operation_failed: "File operation failed: %{error}"
+  copy_current_path: "Copy: %{path}"
+  archive_extraction_in_progress: Archive extraction in progress
+  archive_copy_cancelled: Archive copy cancelled.
+  archive_copy_failed: "Archive copy failed: %{error}"
+  command_failed: "Command failed: %{error}"
+
+error:
+  no_entry_selected: No entry is selected.
+  view_unavailable: View is not available
+  parent_cannot_be_viewed: The parent directory entry cannot be viewed.
+  directory_cannot_be_viewed: Directories cannot be viewed in the file viewer.
+  archive_view_not_wired: Viewing files directly inside archives is prepared architecturally, but not wired yet.
+  could_not_open_viewer: Could not open viewer
+  rename_unavailable: Rename is not available
+  parent_cannot_be_renamed: The parent directory entry cannot be renamed.
+  could_not_open_console: Could not open console
+  could_not_save_settings: Could not save settings
+  edit_unavailable: Edit is not available
+  parent_cannot_be_edited: The parent directory entry cannot be edited.
+  directory_cannot_be_edited: Directories cannot be opened in the text editor.
+  archive_edit_not_supported: Editing files directly inside archives is not supported in this stage.
+  could_not_open_editor: Could not open editor
+  could_not_open_directory: Could not open directory
+  file_operation_running: File operation already running
+  cancel_or_finish_current_operation: Cancel or finish the current operation first.
+  operation_unavailable: Operation is not available
+  file_operation_failed: File operation failed
+  archive_copy_unavailable: Archive copy is not available
+  no_filesystem_target_directory: No filesystem target directory is available.
+  archive_copy_failed: Archive copy failed
+  command_failed: Command failed
+  could_not_start_terminal: Could not start terminal

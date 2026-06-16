@@ -9,6 +9,8 @@ use std::{
     thread,
 };
 
+use rust_i18n::t;
+
 use super::{
     ArchiveBackendRegistry, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveOperation,
     ArchiveProgress, ArchiveSession,
@@ -129,8 +131,11 @@ impl ArchiveService {
                             let result = backend.test_archive(&session);
                             if result.is_ok() {
                                 let _ = tx.send(ArchiveTaskEvent::Finished(format!(
-                                    "Archive test completed: {}",
-                                    session.archive_path().display()
+                                    "{}",
+                                    t!(
+                                        "archive.test_completed",
+                                        path = session.archive_path().display().to_string()
+                                    )
                                 )));
                             }
                             result
@@ -185,11 +190,14 @@ impl ArchiveService {
         }));
 
         backend.extract_entries(session, entry_paths, target_dir)?;
-        let _ = tx.send(ArchiveTaskEvent::Finished(format!(
-            "Extracted {} item(s) to {}",
-            entry_paths.len(),
-            target_dir.display()
-        )));
+        let _ = tx.send(ArchiveTaskEvent::Finished(
+            t!(
+                "archive.extracted_items",
+                count = entry_paths.len(),
+                target = target_dir.display().to_string()
+            )
+            .into_owned(),
+        ));
         Ok(())
     }
 
@@ -221,11 +229,14 @@ impl ArchiveService {
             ..ArchiveProgress::default()
         }));
         backend.extract_all(session, target_dir)?;
-        let _ = tx.send(ArchiveTaskEvent::Finished(format!(
-            "Extracted archive to {} ({})",
-            target_dir.display(),
-            format_bytes(total_bytes)
-        )));
+        let _ = tx.send(ArchiveTaskEvent::Finished(
+            t!(
+                "archive.extracted_archive",
+                target = target_dir.display().to_string(),
+                size = format_bytes(total_bytes)
+            )
+            .into_owned(),
+        ));
         Ok(())
     }
 
@@ -262,7 +273,7 @@ impl ArchiveService {
                     is_dir: true,
                     size_bytes: 0,
                     size_label: "-".into(),
-                    type_label: "Folder".into(),
+                    type_label: t!("entry.folder").into_owned(),
                     modified_at: None,
                     modified_label: "-".into(),
                     attributes_label: "D".into(),
@@ -298,10 +309,10 @@ fn archive_entry_to_panel_entry(entry: &ArchiveEntry) -> Entry {
             format_bytes(entry.size)
         },
         type_label: match entry.kind {
-            ArchiveEntryKind::Directory => "Folder".into(),
-            ArchiveEntryKind::File => "File".into(),
-            ArchiveEntryKind::Symlink => "Symlink".into(),
-            ArchiveEntryKind::Unknown => "Archive entry".into(),
+            ArchiveEntryKind::Directory => t!("entry.folder").into_owned(),
+            ArchiveEntryKind::File => t!("entry.file").into_owned(),
+            ArchiveEntryKind::Symlink => t!("entry.symlink").into_owned(),
+            ArchiveEntryKind::Unknown => t!("entry.archive_item").into_owned(),
         },
         modified_at: entry.modified_time,
         modified_label: entry

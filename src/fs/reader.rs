@@ -1,6 +1,7 @@
 use std::{fs, path::Path, time::SystemTime};
 
 use anyhow::{Context, Result};
+use rust_i18n::t;
 
 use crate::domain::entry::Entry;
 
@@ -25,7 +26,11 @@ pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
             is_dir: metadata.is_dir(),
             size_bytes: metadata.len(),
             size_label: format_size(&metadata, metadata.is_dir()),
-            type_label: if metadata.is_dir() { "Folder" } else { "File" }.into(),
+            type_label: if metadata.is_dir() {
+                t!("entry.folder").into_owned()
+            } else {
+                t!("entry.file").into_owned()
+            },
             modified_at,
             modified_label: format_modified(modified_at),
             attributes_label: format_attributes(&metadata, &file_name),

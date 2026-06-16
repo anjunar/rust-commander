@@ -2,6 +2,7 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Duration};
 
 use anyhow::Result;
 use gtk::{gdk, glib, prelude::*};
+use rust_i18n::t;
 
 use crate::{ui::dialogs::build_modal_window, viewer::ViewerState};
 
@@ -11,7 +12,7 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     let vertical_adjustment = gtk::Adjustment::new(0.0, 0.0, 1.0, 1.0, 1.0, 1.0);
     let horizontal_adjustment = gtk::Adjustment::new(0.0, 0.0, 4096.0, 8.0, 64.0, 120.0);
 
-    let modal = build_modal_window(parent, "Viewer", 980, 720);
+    let modal = build_modal_window(parent, &t!("viewer.window_title"), 980, 720);
     let dialog = modal.window;
     let content = modal.content;
     let actions = modal.actions;
@@ -102,7 +103,7 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
     status_label.set_hexpand(true);
     content.append(&status_label);
 
-    let close_button = gtk::Button::with_label("Close");
+    let close_button = gtk::Button::with_label(&t!("common.close"));
     close_button.add_css_class("command-button");
     {
         let dialog = dialog.clone();
@@ -147,7 +148,10 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
                     gdk::Key::Home => state.go_to_start(),
                     gdk::Key::End => {
                         if let Err(error) = state.go_to_end() {
-                            status_label.set_label(&format!("Viewer error: {error}"));
+                            status_label.set_label(&t!(
+                                "viewer.error_with_detail",
+                                error = error.to_string()
+                            ));
                             return glib::Propagation::Stop;
                         }
                     }
@@ -235,7 +239,7 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf) -> Result<()> {
                 } else if state.set_first_visible_line(target_line).is_ok() {
                     true
                 } else {
-                    status_label.set_label("Viewer error: Could not update scroll position");
+                    status_label.set_label(&t!("viewer.scroll_update_error"));
                     false
                 }
             };
@@ -353,8 +357,8 @@ fn render_into_widgets(
             );
         }
         Err(error) => {
-            buffer.set_text(&format!("Could not render file view.\n\n{error}"));
-            status_label.set_label(&format!("Viewer error: {error}"));
+            buffer.set_text(&t!("viewer.render_error_body", error = error.to_string()));
+            status_label.set_label(&t!("viewer.error_with_detail", error = error.to_string()));
         }
     }
 }

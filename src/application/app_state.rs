@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use rust_i18n::t;
+
 use crate::domain::{Panel, RootLocation};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -16,10 +18,10 @@ impl ActivePanel {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Left => "left",
-            Self::Right => "right",
+            Self::Left => t!("panel.left").into_owned(),
+            Self::Right => t!("panel.right").into_owned(),
         }
     }
 }
@@ -40,8 +42,7 @@ impl AppState {
             right,
             roots,
             active_panel: ActivePanel::Left,
-            status: "Ready. F3 views, F4 edits, Enter opens, Tab switches panels, F5 copies."
-                .into(),
+            status: t!("status.ready").into_owned(),
         }
     }
 
@@ -93,24 +94,25 @@ impl AppState {
 
         match (active_selected, inactive_selected) {
             (0, 0) => self.status.clone(),
-            (active_count, 0) => {
-                format!(
-                    "{} | {active_count} selected in the active panel",
-                    self.status
-                )
-            }
-            (0, inactive_count) => {
-                format!(
-                    "{} | {inactive_count} selected in the inactive panel",
-                    self.status
-                )
-            }
-            (active_count, inactive_count) => {
-                format!(
-                    "{} | {active_count} selected active | {inactive_count} selected inactive",
-                    self.status
-                )
-            }
+            (active_count, 0) => t!(
+                "status.selected_active",
+                status = self.status.as_str(),
+                count = active_count
+            )
+            .into_owned(),
+            (0, inactive_count) => t!(
+                "status.selected_inactive",
+                status = self.status.as_str(),
+                count = inactive_count
+            )
+            .into_owned(),
+            (active_count, inactive_count) => t!(
+                "status.selected_both",
+                status = self.status.as_str(),
+                active = active_count,
+                inactive = inactive_count
+            )
+            .into_owned(),
         }
     }
 }

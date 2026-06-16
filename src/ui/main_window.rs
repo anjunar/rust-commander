@@ -8,6 +8,7 @@ use std::{
 };
 
 use gtk::{glib, prelude::*};
+use rust_i18n::t;
 
 #[cfg(target_os = "windows")]
 use crate::platform::restore_window_placement;
@@ -99,7 +100,7 @@ impl MainWindow {
         }
 
         let header = gtk::HeaderBar::new();
-        let title = gtk::Label::new(Some("RCommander"));
+        let title = gtk::Label::new(Some(APP_WINDOW_TITLE));
         title.add_css_class("app-title");
         header.set_title_widget(Some(&title));
         window.set_titlebar(Some(&header));
@@ -163,6 +164,7 @@ impl MainWindow {
         });
 
         this.apply_update(ViewUpdate::all());
+        this.refresh_localized_labels();
         this.sync_watched_paths();
         this.connect_panel_events();
         this.connect_command_bar(&command_bar);
@@ -277,8 +279,8 @@ impl MainWindow {
         let Some(selected) = selected else {
             dialogs::show_error(
                 &self.window,
-                "View is not available",
-                "No entry is selected.",
+                &t!("error.view_unavailable"),
+                &t!("error.no_entry_selected"),
             );
             return;
         };
@@ -286,8 +288,8 @@ impl MainWindow {
         if selected.is_parent_link {
             dialogs::show_error(
                 &self.window,
-                "View is not available",
-                "The parent directory entry cannot be viewed.",
+                &t!("error.view_unavailable"),
+                &t!("error.parent_cannot_be_viewed"),
             );
             return;
         }
@@ -295,8 +297,8 @@ impl MainWindow {
         if selected.is_dir {
             dialogs::show_error(
                 &self.window,
-                "View is not available",
-                "Directories cannot be viewed in the file viewer.",
+                &t!("error.view_unavailable"),
+                &t!("error.directory_cannot_be_viewed"),
             );
             return;
         }
@@ -304,14 +306,18 @@ impl MainWindow {
         if selected.archive_path.is_some() {
             dialogs::show_error(
                 &self.window,
-                "View is not available",
-                "Viewing files directly inside archives is prepared architecturally, but not wired yet.",
+                &t!("error.view_unavailable"),
+                &t!("error.archive_view_not_wired"),
             );
             return;
         }
 
         if let Err(error) = file_viewer_dialog::open(&self.window, selected.path.clone()) {
-            dialogs::show_error(&self.window, "Could not open viewer", &error.to_string());
+            dialogs::show_error(
+                &self.window,
+                &t!("error.could_not_open_viewer"),
+                &error.to_string(),
+            );
         }
     }
 
@@ -326,8 +332,8 @@ impl MainWindow {
         let Some(selected) = selected else {
             dialogs::show_error(
                 &self.window,
-                "Rename is not available",
-                "No entry is selected.",
+                &t!("error.rename_unavailable"),
+                &t!("error.no_entry_selected"),
             );
             return;
         };
@@ -335,8 +341,8 @@ impl MainWindow {
         if selected.is_parent_link {
             dialogs::show_error(
                 &self.window,
-                "Rename is not available",
-                "The parent directory entry cannot be renamed.",
+                &t!("error.rename_unavailable"),
+                &t!("error.parent_cannot_be_renamed"),
             );
             return;
         }
@@ -357,13 +363,23 @@ impl MainWindow {
             .host_directory();
 
         if let Err(error) = crate::platform::open_console(&path) {
-            dialogs::show_error(&self.window, "Could not open console", &error.to_string());
+            dialogs::show_error(
+                &self.window,
+                &t!("error.could_not_open_console"),
+                &error.to_string(),
+            );
             return;
         }
 
         let update = {
             let mut commander = self.commander.borrow_mut();
-            commander.set_status(format!("Console opened at {}", path.display()))
+            commander.set_status(
+                t!(
+                    "status.console_opened_at",
+                    path = path.display().to_string()
+                )
+                .into_owned(),
+            )
         };
         self.apply_update(update);
     }
@@ -373,17 +389,30 @@ impl MainWindow {
         let this = Rc::clone(self);
         dialogs::show_settings(&self.window, current_config, move |next_config| {
             this.app_config_cache.replace(next_config.clone());
+            let selected_locale = crate::i18n::apply_locale(next_config.locale.language.as_deref());
 
             if let Err(error) = config::save(&next_config) {
-                dialogs::show_error(&this.window, "Could not save settings", &error.to_string());
+                dialogs::show_error(
+                    &this.window,
+                    &t!("error.could_not_save_settings"),
+                    &error.to_string(),
+                );
                 return;
             }
 
             let update = {
                 let mut commander = this.commander.borrow_mut();
-                commander.apply_archive_config(next_config.archive.clone())
+                commander.apply_archive_config(next_config.archive.clone());
+                commander.set_status(
+                    t!(
+                        "status.language_changed",
+                        language = crate::i18n::locale_display_name(selected_locale)
+                    )
+                    .into_owned(),
+                )
             };
             this.apply_update(update);
+            this.refresh_localized_labels();
         });
     }
 
@@ -429,8 +458,8 @@ impl MainWindow {
         let Some(selected) = selected else {
             dialogs::show_error(
                 &self.window,
-                "Edit is not available",
-                "No entry is selected.",
+                &t!("error.edit_unavailable"),
+                &t!("error.no_entry_selected"),
             );
             return;
         };
@@ -438,8 +467,8 @@ impl MainWindow {
         if selected.is_parent_link {
             dialogs::show_error(
                 &self.window,
-                "Edit is not available",
-                "The parent directory entry cannot be edited.",
+                &t!("error.edit_unavailable"),
+                &t!("error.parent_cannot_be_edited"),
             );
             return;
         }
@@ -447,8 +476,8 @@ impl MainWindow {
         if selected.is_dir {
             dialogs::show_error(
                 &self.window,
-                "Edit is not available",
-                "Directories cannot be opened in the text editor.",
+                &t!("error.edit_unavailable"),
+                &t!("error.directory_cannot_be_edited"),
             );
             return;
         }
@@ -456,8 +485,8 @@ impl MainWindow {
         if selected.archive_path.is_some() {
             dialogs::show_error(
                 &self.window,
-                "Edit is not available",
-                "Editing files directly inside archives is not supported in this stage.",
+                &t!("error.edit_unavailable"),
+                &t!("error.archive_edit_not_supported"),
             );
             return;
         }
@@ -467,13 +496,19 @@ impl MainWindow {
             editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
                 let update = {
                     let mut commander = this.commander.borrow_mut();
-                    commander.refresh_with_status(format!("Saved: {}", path.display()))
+                    commander.refresh_with_status(
+                        t!("status.saved", path = path.display().to_string()).into_owned(),
+                    )
                 };
                 this.apply_update(update);
                 this.trigger_manual_refresh_cooldown();
             })
         {
-            dialogs::show_error(&self.window, "Could not open editor", &error.to_string());
+            dialogs::show_error(
+                &self.window,
+                &t!("error.could_not_open_editor"),
+                &error.to_string(),
+            );
         }
     }
 
@@ -514,18 +549,20 @@ impl MainWindow {
                 commander.state().panel(panel).location.parent()
             };
             if let Some(next_location) = next_location {
-                let status = format!("Up one level: {}", next_location.display_label());
+                let status =
+                    t!("status.up_one_level", path = next_location.display_label()).into_owned();
                 self.start_directory_load(
                     panel,
                     next_location,
                     status,
-                    "Loading parent directory...",
+                    &t!("status.loading_parent_directory"),
                 );
             }
         }
 
         if selected.is_dir {
-            let status = format!("Opened: {}", selected.path.display());
+            let status =
+                t!("status.opened", path = selected.path.display().to_string()).into_owned();
             let next_location = {
                 let commander = self.commander.borrow();
                 match commander.state().panel(panel).location.clone() {
@@ -538,7 +575,12 @@ impl MainWindow {
                     }
                 }
             };
-            self.start_directory_load(panel, next_location, status, "Loading directory...");
+            self.start_directory_load(
+                panel,
+                next_location,
+                status,
+                &t!("status.loading_directory"),
+            );
             return;
         }
 
@@ -549,12 +591,16 @@ impl MainWindow {
                 .archive_service()
                 .is_archive_path(&selected.path)
         {
-            let status = format!("Opened archive: {}", selected.path.display());
+            let status = t!(
+                "status.opened_archive",
+                path = selected.path.display().to_string()
+            )
+            .into_owned();
             self.start_directory_load(
                 panel,
                 PanelLocation::filesystem(selected.path),
                 status,
-                "Opening archive...",
+                &t!("status.opening_archive"),
             );
             return;
         }
@@ -576,16 +622,17 @@ impl MainWindow {
             return;
         };
 
-        let status = format!(
-            "Switched {} panel to {}",
-            panel.label(),
-            target_path.display()
-        );
+        let status = t!(
+            "status.switched_panel",
+            panel = panel.label(),
+            path = target_path.display().to_string()
+        )
+        .into_owned();
         self.start_directory_load(
             panel,
             PanelLocation::filesystem(target_path),
             status,
-            "Loading drive...",
+            &t!("status.loading_drive"),
         );
     }
 
@@ -594,7 +641,7 @@ impl MainWindow {
         panel: ActivePanel,
         next_location: PanelLocation,
         status: String,
-        busy_message: &'static str,
+        busy_message: &str,
     ) {
         if self.navigation_busy.get() || self.active_operation.borrow().is_some() {
             return;
@@ -654,13 +701,19 @@ impl MainWindow {
                     Err(error) => {
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.set_status(format!("Navigation failed: {error}"))
+                            commander.set_status(
+                                t!("status.navigation_failed", error = error.as_str()).into_owned(),
+                            )
                         };
                         this.apply_update(update);
                         this.commander_view
                             .apply_roots(this.commander.borrow().state());
                         this.focus_active_panel();
-                        dialogs::show_error(&this.window, "Could not open directory", &error);
+                        dialogs::show_error(
+                            &this.window,
+                            &t!("error.could_not_open_directory"),
+                            &error,
+                        );
                     }
                 }
                 glib::ControlFlow::Break
@@ -670,7 +723,7 @@ impl MainWindow {
                 this.set_navigation_busy(false, "");
                 let update = {
                     let mut commander = this.commander.borrow_mut();
-                    commander.set_status("Navigation failed: background loader disconnected.")
+                    commander.set_status(t!("status.navigation_loader_disconnected").into_owned())
                 };
                 this.apply_update(update);
                 this.commander_view
@@ -685,8 +738,8 @@ impl MainWindow {
         if self.active_operation.borrow().is_some() {
             dialogs::show_error(
                 &self.window,
-                "File operation already running",
-                "Cancel or finish the current operation first.",
+                &t!("error.file_operation_running"),
+                &t!("error.cancel_or_finish_current_operation"),
             );
             return;
         }
@@ -696,7 +749,7 @@ impl MainWindow {
             Err(error) => {
                 dialogs::show_error(
                     &self.window,
-                    "Operation is not available",
+                    &t!("error.operation_unavailable"),
                     &error.to_string(),
                 );
                 return;
@@ -723,7 +776,7 @@ impl MainWindow {
         let active_operation = Rc::clone(&self.active_operation);
         let progress_dialog = dialogs::ProgressDialog::new(
             &self.window,
-            &format!("{} operation", request.kind.label()),
+            &t!("progress.operation_title", kind = request.kind.label()),
             move || {
                 if let Some(handle) = active_operation.borrow().as_ref() {
                     handle.cancel();
@@ -741,11 +794,14 @@ impl MainWindow {
                         progress_dialog.update_progress(&snapshot);
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.set_status(format!(
-                                "{}: {}",
-                                snapshot.kind.label(),
-                                snapshot.current_item
-                            ))
+                            commander.set_status(
+                                t!(
+                                    "status.operation_current_item",
+                                    kind = snapshot.kind.label(),
+                                    item = snapshot.current_item.as_str()
+                                )
+                                .into_owned(),
+                            )
                         };
                         this.apply_update(update);
                     }
@@ -761,13 +817,14 @@ impl MainWindow {
                     OperationEvent::Finished(summary) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        let status = format!(
-                            "{} completed: {} items, {} in {:.1}s",
-                            summary.kind.label(),
-                            summary.total_entries,
-                            crate::fs::reader::format_bytes(summary.total_bytes),
-                            summary.elapsed.as_secs_f64()
-                        );
+                        let status = t!(
+                            "status.operation_completed",
+                            kind = summary.kind.label(),
+                            count = summary.total_entries,
+                            size = crate::fs::reader::format_bytes(summary.total_bytes),
+                            seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
+                        )
+                        .into_owned();
                         let update = {
                             let mut commander = this.commander.borrow_mut();
                             commander.refresh_with_status(status)
@@ -779,12 +836,13 @@ impl MainWindow {
                     OperationEvent::Cancelled(summary) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        let status = format!(
-                            "{} cancelled after {} items and {}.",
-                            summary.kind.label(),
-                            summary.total_entries,
-                            crate::fs::reader::format_bytes(summary.total_bytes)
-                        );
+                        let status = t!(
+                            "status.operation_cancelled",
+                            kind = summary.kind.label(),
+                            count = summary.total_entries,
+                            size = crate::fs::reader::format_bytes(summary.total_bytes)
+                        )
+                        .into_owned();
                         let update = {
                             let mut commander = this.commander.borrow_mut();
                             commander.refresh_with_status(status)
@@ -798,10 +856,17 @@ impl MainWindow {
                         this.active_operation.borrow_mut().take();
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.set_status(format!("File operation failed: {error}"))
+                            commander.set_status(
+                                t!("status.file_operation_failed", error = error.as_str())
+                                    .into_owned(),
+                            )
                         };
                         this.apply_update(update);
-                        dialogs::show_error(&this.window, "File operation failed", &error);
+                        dialogs::show_error(
+                            &this.window,
+                            &t!("error.file_operation_failed"),
+                            &error,
+                        );
                         keep_running = false;
                     }
                 }
@@ -822,8 +887,8 @@ impl MainWindow {
         let Some(target_dir) = request.target_directory.clone() else {
             dialogs::show_error(
                 &self.window,
-                "Archive copy is not available",
-                "No filesystem target directory is available.",
+                &t!("error.archive_copy_unavailable"),
+                &t!("error.no_filesystem_target_directory"),
             );
             return;
         };
@@ -840,7 +905,7 @@ impl MainWindow {
 
         let active_operation = Rc::clone(&self.active_operation);
         let progress_dialog =
-            dialogs::ProgressDialog::new(&self.window, "Archive copy", move || {
+            dialogs::ProgressDialog::new(&self.window, &t!("progress.archive_copy"), move || {
                 if let Some(handle) = active_operation.borrow().as_ref() {
                     handle.cancel();
                 }
@@ -856,13 +921,16 @@ impl MainWindow {
                         progress_dialog.update_archive_progress(&progress);
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.set_status(format!(
-                                "Copy: {}",
-                                progress
-                                    .current_path
-                                    .clone()
-                                    .unwrap_or_else(|| "Archive extraction in progress".into())
-                            ))
+                            commander.set_status(
+                                t!(
+                                    "status.copy_current_path",
+                                    path = progress.current_path.clone().unwrap_or_else(|| t!(
+                                        "status.archive_extraction_in_progress"
+                                    )
+                                    .into_owned())
+                                )
+                                .into_owned(),
+                            )
                         };
                         this.apply_update(update);
                     }
@@ -882,7 +950,9 @@ impl MainWindow {
                         this.active_operation.borrow_mut().take();
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status("Archive copy cancelled.".into())
+                            commander.refresh_with_status(
+                                t!("status.archive_copy_cancelled").into_owned(),
+                            )
                         };
                         this.apply_update(update);
                         this.trigger_manual_refresh_cooldown();
@@ -893,12 +963,15 @@ impl MainWindow {
                         this.active_operation.borrow_mut().take();
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.set_status(format!("Archive copy failed: {error}"))
+                            commander.set_status(
+                                t!("status.archive_copy_failed", error = error.to_string())
+                                    .into_owned(),
+                            )
                         };
                         this.apply_update(update);
                         dialogs::show_error(
                             &this.window,
-                            "Archive copy failed",
+                            &t!("error.archive_copy_failed"),
                             &error.to_string(),
                         );
                         keep_running = false;
@@ -1050,7 +1123,7 @@ impl MainWindow {
                     this.run_command(|commander| {
                         Ok(commander.refresh_panels(
                             &affected_panels,
-                            "File changes detected. View refreshed.",
+                            t!("status.view_refreshed").into_owned(),
                         ))
                     });
                     this.trigger_manual_refresh_cooldown();
@@ -1075,10 +1148,16 @@ impl MainWindow {
             Err(error) => {
                 let update = {
                     let mut commander = self.commander.borrow_mut();
-                    commander.set_status(format!("Command failed: {error}"))
+                    commander.set_status(
+                        t!("status.command_failed", error = error.to_string()).into_owned(),
+                    )
                 };
                 self.apply_update(update);
-                dialogs::show_error(&self.window, "Command failed", &error.to_string());
+                dialogs::show_error(
+                    &self.window,
+                    &t!("error.command_failed"),
+                    &error.to_string(),
+                );
             }
         }
     }
@@ -1156,7 +1235,7 @@ impl MainWindow {
             }
             TerminalAction::FocusPanels => self.focus_active_panel(),
             TerminalAction::ShowError(error) => {
-                dialogs::show_error(&self.window, "Could not start terminal", &error);
+                dialogs::show_error(&self.window, &t!("error.could_not_start_terminal"), &error);
             }
         }
     }
@@ -1309,6 +1388,45 @@ impl MainWindow {
             }
         });
     }
+
+    fn refresh_localized_labels(&self) {
+        self.commander_view.refresh_labels();
+        self.terminal_dock.refresh_toolbar();
+        if let Some(titlebar) = self.window.titlebar() {
+            if let Ok(header) = titlebar.downcast::<gtk::HeaderBar>() {
+                if let Some(title_widget) = header.title_widget() {
+                    if let Ok(label) = title_widget.downcast::<gtk::Label>() {
+                        label.set_label(APP_WINDOW_TITLE);
+                    }
+                }
+            }
+        }
+
+        let labels = command_bar_labels();
+        let mut index = 0usize;
+        let mut child = self
+            .window
+            .child()
+            .and_then(|child| child.downcast::<gtk::Box>().ok())
+            .and_then(|shell| shell.last_child());
+        while let Some(widget) = child {
+            let previous = widget.prev_sibling();
+            if let Ok(button_row) = widget.clone().downcast::<gtk::Box>() {
+                let mut button = button_row.first_child();
+                while let Some(widget) = button {
+                    button = widget.next_sibling();
+                    if let Ok(button) = widget.downcast::<gtk::Button>() {
+                        if let Some(label) = labels.get(index) {
+                            button.set_label(label);
+                        }
+                        index += 1;
+                    }
+                }
+                break;
+            }
+            child = previous;
+        }
+    }
 }
 
 fn build_command_bar() -> gtk::Box {
@@ -1316,24 +1434,28 @@ fn build_command_bar() -> gtk::Box {
     command_bar.add_css_class("command-bar");
     command_bar.set_homogeneous(true);
 
-    for label in [
-        "F1 Settings",
-        "F2 Rename",
-        "F3 View",
-        "F4 Edit",
-        "F5 Copy",
-        "F6 Move",
-        "F7 MkDir",
-        "F8 Delete",
-        "F9 Terminal",
-        "F10 Quit",
-    ] {
-        let button = gtk::Button::with_label(label);
+    for label in command_bar_labels() {
+        let button = gtk::Button::with_label(&label);
         button.add_css_class("command-button");
         command_bar.append(&button);
     }
 
     command_bar
+}
+
+fn command_bar_labels() -> Vec<String> {
+    vec![
+        t!("command.settings").into_owned(),
+        t!("command.rename").into_owned(),
+        t!("command.view").into_owned(),
+        t!("command.edit").into_owned(),
+        t!("command.copy").into_owned(),
+        t!("command.move").into_owned(),
+        t!("command.mkdir").into_owned(),
+        t!("command.delete").into_owned(),
+        t!("command.terminal").into_owned(),
+        t!("command.quit").into_owned(),
+    ]
 }
 
 fn install_css() {
