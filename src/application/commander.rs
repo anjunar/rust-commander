@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use crate::{
     application::{ActivePanel, app_state::AppState, commands::ViewUpdate},
     domain::{
-        Panel,
+        Entry, Panel,
         operation::{FileOperationKind, FileOperationRequest},
         panel::parent_path,
         sorting::{SortColumn, SortDirection},
@@ -127,6 +127,19 @@ impl Commander {
             root.path.display()
         );
         Ok(ViewUpdate::panel_entries(panel))
+    }
+
+    pub fn navigate_to_loaded(
+        &mut self,
+        panel: ActivePanel,
+        next_path: PathBuf,
+        entries: Vec<Entry>,
+        status: String,
+    ) -> ViewUpdate {
+        self.state.active_panel = panel;
+        self.state.panel_mut(panel).navigate_to(next_path, entries);
+        self.state.status = status;
+        ViewUpdate::panel_entries(panel)
     }
 
     pub fn refresh_visible_panels(&mut self) -> Result<ViewUpdate> {

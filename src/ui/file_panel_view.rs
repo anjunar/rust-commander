@@ -128,7 +128,12 @@ impl FilePanelView {
         if let Some(index) = primary_selected {
             let column_view = self.column_view.clone();
             glib::idle_add_local_once(move || {
-                column_view.scroll_to(index as u32, None, gtk::ListScrollFlags::SELECT, None);
+                column_view.scroll_to(
+                    index as u32,
+                    None,
+                    gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS,
+                    None,
+                );
             });
         }
     }
@@ -156,6 +161,11 @@ impl FilePanelView {
 
     pub fn grab_focus(&self) {
         self.column_view.grab_focus();
+    }
+
+    pub fn set_interaction_enabled(&self, enabled: bool) {
+        self.root_dropdown.set_sensitive(enabled);
+        self.column_view.set_sensitive(enabled);
     }
 
     pub fn connect_selection_changed<F>(&self, f: F)

@@ -73,6 +73,11 @@ impl CommanderView {
     pub fn focus_active_panel(&self, active_panel: ActivePanel) {
         self.panel(active_panel).grab_focus();
     }
+
+    pub fn set_interaction_enabled(&self, enabled: bool) {
+        self.left.set_interaction_enabled(enabled);
+        self.right.set_interaction_enabled(enabled);
+    }
 }
 
 impl Default for CommanderView {

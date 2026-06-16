@@ -1,4 +1,11 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    path::PathBuf,
+    rc::Rc,
+    sync::mpsc::{self, TryRecvError},
+    thread,
+    time::Duration,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -24,10 +31,19 @@ pub struct MainWindow {
     commander_view: CommanderView,
     terminal_dock: TerminalDock,
     content_paned: gtk::Paned,
+    busy_spinner: gtk::Spinner,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
     active_operation: Rc<RefCell<Option<OperationHandle>>>,
+    navigation_busy: Rc<Cell<bool>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
+}
+
+struct DirectoryLoadResult {
+    panel: ActivePanel,
+    next_path: PathBuf,
+    entries: Vec<crate::domain::Entry>,
+    status: String,
 }
 
 impl MainWindow {
@@ -79,10 +95,19 @@ impl MainWindow {
         content_paned.set_end_child(Some(&terminal_dock.root));
         shell.append(&content_paned);
 
+        let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let busy_spinner = gtk::Spinner::new();
+        busy_spinner.set_spinning(false);
+        busy_spinner.set_visible(false);
+        busy_spinner.add_css_class("busy-spinner");
+        status_row.append(&busy_spinner);
+
         let status_label = gtk::Label::new(None);
         status_label.set_xalign(0.0);
+        status_label.set_hexpand(true);
         status_label.add_css_class("status-line");
-        shell.append(&status_label);
+        status_row.append(&status_label);
+        shell.append(&status_row);
 
         let command_bar = build_command_bar();
         shell.append(&command_bar);
@@ -97,9 +122,11 @@ impl MainWindow {
             commander_view,
             terminal_dock,
             content_paned,
+            busy_spinner,
             status_label,
             commander,
             active_operation: Rc::new(RefCell::new(None)),
+            navigation_busy: Rc::new(Cell::new(false)),
             watch_command_tx,
         });
 
@@ -189,7 +216,7 @@ impl MainWindow {
 
     pub fn handle_open_active(self: &Rc<Self>) {
         let active_panel = self.commander.borrow().state().active_panel;
-        self.run_command(|commander| commander.activate_selected(active_panel));
+        self.start_selected_navigation(active_panel);
     }
 
     pub fn handle_view(self: &Rc<Self>) {
@@ -390,6 +417,133 @@ impl MainWindow {
         self.window.close();
     }
 
+    fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
+        let selected = {
+            let commander = self.commander.borrow();
+            commander.state().panel(panel).selected_item()
+        };
+
+        let Some(selected) = selected else {
+            self.run_command(|commander| commander.activate_selected(panel));
+            return;
+        };
+
+        if selected.is_parent_link {
+            let status = format!("Up one level: {}", selected.path.display());
+            self.start_directory_load(panel, selected.path, status, "Loading parent directory...");
+            return;
+        }
+
+        if selected.is_dir {
+            let status = format!("Opened: {}", selected.path.display());
+            self.start_directory_load(panel, selected.path, status, "Loading directory...");
+            return;
+        }
+
+        self.run_command(|commander| commander.activate_selected(panel));
+    }
+
+    fn start_root_navigation(self: &Rc<Self>, panel: ActivePanel, index: usize) {
+        let target_path = {
+            let commander = self.commander.borrow();
+            commander
+                .state()
+                .roots
+                .get(index)
+                .map(|root| root.path.clone())
+        };
+
+        let Some(target_path) = target_path else {
+            return;
+        };
+
+        let status = format!(
+            "Switched {} panel to {}",
+            panel.label(),
+            target_path.display()
+        );
+        self.start_directory_load(panel, target_path, status, "Loading drive...");
+    }
+
+    fn start_directory_load(
+        self: &Rc<Self>,
+        panel: ActivePanel,
+        next_path: PathBuf,
+        status: String,
+        busy_message: &'static str,
+    ) {
+        if self.navigation_busy.get() || self.active_operation.borrow().is_some() {
+            return;
+        }
+
+        self.set_navigation_busy(true, busy_message);
+
+        let (tx, rx) = mpsc::channel();
+        let worker_path = next_path.clone();
+        let worker_status = status.clone();
+        thread::spawn(move || {
+            let result = crate::fs::reader::read_entries(&worker_path)
+                .map(|entries| DirectoryLoadResult {
+                    panel,
+                    next_path: worker_path,
+                    entries,
+                    status: worker_status,
+                })
+                .map_err(|error| error.to_string());
+            let _ = tx.send(result);
+        });
+
+        let this = Rc::clone(self);
+        glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
+            Ok(result) => {
+                this.set_navigation_busy(false, "");
+                match result {
+                    Ok(load) => {
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.navigate_to_loaded(
+                                load.panel,
+                                load.next_path,
+                                load.entries,
+                                load.status,
+                            )
+                        };
+                        this.apply_update(update);
+                        this.commander_view
+                            .apply_roots(this.commander.borrow().state());
+                        this.focus_active_panel();
+                        this.sync_watched_paths();
+                    }
+                    Err(error) => {
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(format!("Navigation failed: {error}"))
+                        };
+                        this.apply_update(update);
+                        this.commander_view
+                            .apply_roots(this.commander.borrow().state());
+                        this.focus_active_panel();
+                        dialogs::show_error(&this.window, "Could not open directory", &error);
+                    }
+                }
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => {
+                this.set_navigation_busy(false, "");
+                let update = {
+                    let mut commander = this.commander.borrow_mut();
+                    commander.set_status("Navigation failed: background loader disconnected.")
+                };
+                this.apply_update(update);
+                this.commander_view
+                    .apply_roots(this.commander.borrow().state());
+                this.focus_active_panel();
+                glib::ControlFlow::Break
+            }
+        });
+    }
+
     fn handle_operation(self: &Rc<Self>, kind: FileOperationKind) {
         if self.active_operation.borrow().is_some() {
             dialogs::show_error(
@@ -537,8 +691,12 @@ impl MainWindow {
                 panel_view.connect_activate(move |index| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
-                        this.run_command(|commander| commander.activate_index(panel, index));
-                        this.sync_watched_paths();
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.select_single(panel, index)
+                        };
+                        this.apply_update(update);
+                        this.start_selected_navigation(panel);
                     });
                 });
             }
@@ -548,8 +706,7 @@ impl MainWindow {
                 panel_view.connect_root_changed(move |index| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
-                        this.run_command(|commander| commander.change_root(panel, index));
-                        this.sync_watched_paths();
+                        this.start_root_navigation(panel, index);
                     });
                 });
             }
@@ -711,6 +868,20 @@ impl MainWindow {
             TerminalAction::ShowError(error) => {
                 dialogs::show_error(&self.window, "Could not start terminal", &error);
             }
+        }
+    }
+
+    fn set_navigation_busy(&self, busy: bool, message: &str) {
+        self.navigation_busy.set(busy);
+        self.busy_spinner.set_visible(busy);
+        self.busy_spinner.set_spinning(busy);
+        self.commander_view.set_interaction_enabled(!busy);
+
+        if busy {
+            self.status_label.set_label(message);
+        } else {
+            self.status_label
+                .set_label(&self.commander.borrow().state().status_line());
         }
     }
 }
