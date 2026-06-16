@@ -22,7 +22,7 @@ use crate::{
     },
     platform::{assets::asset_path, current_window_placement, restore_window_placement},
     ui::{
-        commander_view::CommanderView, dialogs, editor_dialog, shortcuts,
+        commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
     },
 };
@@ -265,7 +265,7 @@ impl MainWindow {
             return;
         }
 
-        if let Err(error) = editor_dialog::view_file(&self.window, selected.path.clone()) {
+        if let Err(error) = file_viewer_dialog::open(&self.window, selected.path.clone()) {
             dialogs::show_error(&self.window, "Could not open viewer", &error.to_string());
         }
     }

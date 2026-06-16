@@ -931,6 +931,7 @@ dependencies = [
  "gtk4",
  "ico",
  "image",
+ "memchr",
  "notify",
  "serde",
  "sourceview5",

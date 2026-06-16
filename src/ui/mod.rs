@@ -4,6 +4,7 @@ pub mod dialogs;
 pub mod editor_dialog;
 pub mod file_panel_view;
 pub mod file_row_object;
+pub mod file_viewer_dialog;
 pub mod gtk_app;
 pub mod main_window;
 pub mod shortcuts;
