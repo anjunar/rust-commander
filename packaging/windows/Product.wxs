@@ -11,6 +11,8 @@
     <SummaryInformation Description="RCommander Installer" Manufacturer="Patrick" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of RCommander is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="AppIcon" SourceFile="$(var.AppIconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="RCommander" />
@@ -33,7 +35,9 @@
           Id="StartMenuShortcut"
           Name="RCommander"
           Target="[INSTALLFOLDER]bin\rust-commander.exe"
-          WorkingDirectory="INSTALLFOLDER" />
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="AppIcon"
+          IconIndex="0" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
         <RegistryValue
           Root="HKLM"

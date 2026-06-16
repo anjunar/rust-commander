@@ -157,6 +157,11 @@ $stageRoot = Join-Path $repoRoot "dist\windows\stage"
 $outputRoot = Join-Path $repoRoot $OutputDir
 $productWxs = Join-Path $PSScriptRoot "Product.wxs"
 $msiPath = Join-Path $outputRoot "RCommander-$version-x64.msi"
+$appIconPath = Join-Path $repoRoot "assets\icons\app_icon.ico"
+
+if (-not (Test-Path $appIconPath)) {
+    throw "Application icon not found: $appIconPath"
+}
 
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
@@ -207,6 +212,7 @@ try {
         -arch x64 `
         -o $msiPath `
         -d ProductVersion=$version `
+        -d AppIconPath=$appIconPath `
         -src $productWxs `
         -src $generatedWxs
 

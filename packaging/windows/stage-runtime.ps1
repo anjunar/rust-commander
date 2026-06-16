@@ -171,17 +171,23 @@ $mingwLib = Join-Path $MingwRoot "lib"
 $mingwShare = Join-Path $MingwRoot "share"
 $mingwEtc = Join-Path $MingwRoot "etc"
 
-if (-not (Test-Path $exePath)) {
-    Push-Location $repoRoot
-    try {
+Push-Location $repoRoot
+try {
+    if ($Configuration -eq "release") {
         cargo build --release
         if ($LASTEXITCODE -ne 0) {
             throw "cargo build --release failed."
         }
     }
-    finally {
-        Pop-Location
+    else {
+        cargo build --profile $Configuration
+        if ($LASTEXITCODE -ne 0) {
+            throw "cargo build --profile $Configuration failed."
+        }
     }
+}
+finally {
+    Pop-Location
 }
 
 if (Test-Path $stagePath) {
