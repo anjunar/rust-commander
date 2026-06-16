@@ -6,24 +6,28 @@ use crate::{
 };
 
 pub struct CommanderView {
-    pub root: gtk::Box,
+    pub root: gtk::Paned,
     pub left: FilePanelView,
     pub right: FilePanelView,
 }
 
 impl CommanderView {
     pub fn new() -> Self {
-        let root = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let root = gtk::Paned::new(gtk::Orientation::Horizontal);
         root.set_hexpand(true);
         root.set_vexpand(true);
-        root.set_homogeneous(true);
         root.add_css_class("commander-view");
+        root.set_resize_start_child(true);
+        root.set_resize_end_child(true);
+        root.set_shrink_start_child(false);
+        root.set_shrink_end_child(false);
+        root.set_position(590);
 
         let left = FilePanelView::new(ActivePanel::Left);
         let right = FilePanelView::new(ActivePanel::Right);
 
-        root.append(&left.root);
-        root.append(&right.root);
+        root.set_start_child(Some(&left.root));
+        root.set_end_child(Some(&right.root));
 
         Self { root, left, right }
     }
@@ -63,6 +67,10 @@ impl CommanderView {
     pub fn apply_active_panel(&self, active_panel: ActivePanel) {
         self.left.set_active(active_panel == ActivePanel::Left);
         self.right.set_active(active_panel == ActivePanel::Right);
+        self.panel(active_panel).grab_focus();
+    }
+
+    pub fn focus_active_panel(&self, active_panel: ActivePanel) {
         self.panel(active_panel).grab_focus();
     }
 }

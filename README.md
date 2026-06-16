@@ -15,6 +15,16 @@ This project uses gtk-rs (`gtk4`, `gio`, `glib`) and native GTK4 widgets. The fi
 
 On Windows, make sure the GTK4 runtime and development files are installed and visible to `pkg-config` before building. The project targets GTK 4.10 APIs for `ColumnView` sorting integration.
 
+## Embedded Terminal Notes
+
+The bottom terminal dock is integrated into the GTK4 layout and uses a real `vte4` terminal on Linux builds.
+
+On Windows, the dock currently remains a structured placeholder instead of pretending to be a terminal. This is intentional: Microsoft ConPTY provides a pseudoconsole stream, but the host application must still render terminal output and collect terminal input itself. GTK4 does not provide a native Windows terminal widget comparable to VTE, and RCommander explicitly avoids shipping a homemade textbox-based terminal emulator.
+
+The current architecture already isolates the terminal backend so a future Windows-native terminal control can be added without rebuilding the surrounding commander UI.
+
+The selected Windows direction is documented in [WINDOWS_TERMINAL_STRATEGY.md](./WINDOWS_TERMINAL_STRATEGY.md).
+
 ## Keyboard Workflow
 
 - `F2`: Rename

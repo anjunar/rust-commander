@@ -40,7 +40,9 @@ impl AppState {
             right,
             roots,
             active_panel: ActivePanel::Left,
-            status: "Ready. F3 opens a console, F4 edits, Enter opens, Tab switches panels, F5 copies.".into(),
+            status:
+                "Ready. F3 opens a console, F4 edits, Enter opens, Tab switches panels, F5 copies."
+                    .into(),
         }
     }
 
@@ -86,10 +88,16 @@ impl AppState {
         match (active_selected, inactive_selected) {
             (0, 0) => self.status.clone(),
             (active_count, 0) => {
-                format!("{} | {active_count} selected in the active panel", self.status)
+                format!(
+                    "{} | {active_count} selected in the active panel",
+                    self.status
+                )
             }
             (0, inactive_count) => {
-                format!("{} | {inactive_count} selected in the inactive panel", self.status)
+                format!(
+                    "{} | {inactive_count} selected in the inactive panel",
+                    self.status
+                )
             }
             (active_count, inactive_count) => {
                 format!(

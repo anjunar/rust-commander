@@ -12,12 +12,17 @@ use crate::{
         operations::{OperationHandle, start_operation},
         watcher::{WatchCommand, start_file_watcher},
     },
-    ui::{commander_view::CommanderView, dialogs, editor_dialog, shortcuts},
+    ui::{
+        commander_view::CommanderView, dialogs, editor_dialog, shortcuts,
+        terminal_controller::TerminalAction, terminal_dock::TerminalDock,
+    },
 };
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
     commander_view: CommanderView,
+    terminal_dock: TerminalDock,
+    content_paned: gtk::Paned,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
     active_operation: Rc<RefCell<Option<OperationHandle>>>,
@@ -48,7 +53,20 @@ impl MainWindow {
         shell.set_margin_end(8);
 
         let commander_view = CommanderView::new();
-        shell.append(&commander_view.root);
+        let initial_dir = commander.state().active_panel().path.clone();
+        let terminal_dock = TerminalDock::new(initial_dir);
+
+        let content_paned = gtk::Paned::new(gtk::Orientation::Vertical);
+        content_paned.set_hexpand(true);
+        content_paned.set_vexpand(true);
+        content_paned.set_resize_start_child(true);
+        content_paned.set_resize_end_child(false);
+        content_paned.set_shrink_start_child(false);
+        content_paned.set_shrink_end_child(false);
+        content_paned.set_position(600);
+        content_paned.set_start_child(Some(&commander_view.root));
+        content_paned.set_end_child(Some(&terminal_dock.root));
+        shell.append(&content_paned);
 
         let status_label = gtk::Label::new(None);
         status_label.set_xalign(0.0);
@@ -66,6 +84,8 @@ impl MainWindow {
         let this = Rc::new(Self {
             window,
             commander_view,
+            terminal_dock,
+            content_paned,
             status_label,
             commander,
             active_operation: Rc::new(RefCell::new(None)),
@@ -76,6 +96,7 @@ impl MainWindow {
         this.sync_watched_paths();
         this.connect_panel_events();
         this.connect_command_bar(&command_bar);
+        this.connect_terminal_dock();
         this.install_watcher_poll(watch_event_rx);
         shortcuts::install(&this, app);
         this.window.present();
@@ -129,20 +150,10 @@ impl MainWindow {
     }
 
     pub fn handle_open_console(self: &Rc<Self>) {
-        let path = self
-            .commander
-            .borrow()
-            .state()
-            .active_panel()
-            .path
-            .clone();
+        let path = self.commander.borrow().state().active_panel().path.clone();
 
         if let Err(error) = crate::platform::open_console(&path) {
-            dialogs::show_error(
-                &self.window,
-                "Could not open console",
-                &error.to_string(),
-            );
+            dialogs::show_error(&self.window, "Could not open console", &error.to_string());
             return;
         }
 
@@ -155,6 +166,33 @@ impl MainWindow {
 
     pub fn handle_copy(self: &Rc<Self>) {
         self.handle_operation(FileOperationKind::Copy);
+    }
+
+    pub fn handle_toggle_terminal(self: &Rc<Self>) {
+        if !self.terminal_dock.is_supported() {
+            self.handle_open_console();
+            return;
+        }
+        self.terminal_dock.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.terminal_dock.toggle());
+    }
+
+    pub fn handle_focus_terminal(self: &Rc<Self>) {
+        if !self.terminal_dock.is_supported() {
+            self.handle_open_console();
+            return;
+        }
+        self.terminal_dock.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.terminal_dock.focus_terminal());
+    }
+
+    pub fn handle_restart_terminal(self: &Rc<Self>) {
+        if !self.terminal_dock.is_supported() {
+            self.handle_open_console();
+            return;
+        }
+        self.terminal_dock.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.terminal_dock.restart_in_panel_dir());
     }
 
     pub fn handle_edit(self: &Rc<Self>) {
@@ -193,19 +231,17 @@ impl MainWindow {
         }
 
         let this = Rc::clone(self);
-        if let Err(error) = editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
-            let update = {
-                let mut commander = this.commander.borrow_mut();
-                commander.refresh_with_status(format!("Saved: {}", path.display()))
-            };
-            this.apply_update(update);
-            this.sync_watched_paths();
-        }) {
-            dialogs::show_error(
-                &self.window,
-                "Could not open editor",
-                &error.to_string(),
-            );
+        if let Err(error) =
+            editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
+                let update = {
+                    let mut commander = this.commander.borrow_mut();
+                    commander.refresh_with_status(format!("Saved: {}", path.display()))
+                };
+                this.apply_update(update);
+                this.sync_watched_paths();
+            })
+        {
+            dialogs::show_error(&self.window, "Could not open editor", &error.to_string());
         }
     }
 
@@ -428,6 +464,22 @@ impl MainWindow {
         }
     }
 
+    fn connect_terminal_dock(self: &Rc<Self>) {
+        {
+            let this = Rc::clone(self);
+            self.terminal_dock.connect_focus_return(move || {
+                this.focus_active_panel();
+            });
+        }
+
+        {
+            let this = Rc::clone(self);
+            self.terminal_dock.connect_buttons(move |action| {
+                this.handle_terminal_action(action);
+            });
+        }
+    }
+
     fn install_watcher_poll(self: &Rc<Self>, watch_event_rx: std::sync::mpsc::Receiver<()>) {
         let this = Rc::clone(self);
         glib::timeout_add_local(Duration::from_millis(350), move || {
@@ -486,11 +538,41 @@ impl MainWindow {
         if update.status || update.selection || update.active_panel {
             self.status_label.set_label(&state.status_line());
         }
+
+        self.terminal_dock
+            .set_panel_dir(state.active_panel().path.clone());
+        self.terminal_dock.refresh_toolbar();
     }
 
     fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
         let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
+    }
+
+    fn active_panel_path(&self) -> std::path::PathBuf {
+        self.commander.borrow().state().active_panel().path.clone()
+    }
+
+    fn focus_active_panel(&self) {
+        let active_panel = self.commander.borrow().state().active_panel;
+        self.commander_view.focus_active_panel(active_panel);
+    }
+
+    fn handle_terminal_action(&self, action: TerminalAction) {
+        match action {
+            TerminalAction::None => {
+                self.terminal_dock.sync_visibility();
+                if self.terminal_dock.state().borrow().visible
+                    && self.content_paned.position() < 320
+                {
+                    self.content_paned.set_position(600);
+                }
+            }
+            TerminalAction::FocusPanels => self.focus_active_panel(),
+            TerminalAction::ShowError(error) => {
+                dialogs::show_error(&self.window, "Could not start terminal", &error);
+            }
+        }
     }
 }
 
@@ -681,6 +763,43 @@ fn install_css() {
         .editor-status {
             color: #9eb0c1;
             font-family: 'Cascadia Code', 'Consolas', monospace;
+        }
+
+        .terminal-dock {
+            border: 1px solid #314050;
+            border-radius: 10px;
+            background: #0d131a;
+        }
+
+        .terminal-toolbar {
+            border-bottom: 1px solid #223242;
+            background: rgba(22, 33, 43, 0.92);
+        }
+
+        .terminal-title {
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+
+        .terminal-cwd {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            color: #9eb0c1;
+        }
+
+        .terminal-button {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+        }
+
+        .terminal-placeholder {
+            background: #101820;
+        }
+
+        .terminal-placeholder-title {
+            font-weight: 700;
+        }
+
+        .terminal-placeholder-copy {
+            color: #b6c6d6;
         }
 
         scrollbar slider {

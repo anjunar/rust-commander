@@ -13,6 +13,17 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "delete", MainWindow::handle_delete);
     add_action(window, "switch-panel", MainWindow::handle_switch_panel);
     add_action(window, "open", MainWindow::handle_open_active);
+    add_action(
+        window,
+        "toggle-terminal",
+        MainWindow::handle_toggle_terminal,
+    );
+    add_action(window, "focus-terminal", MainWindow::handle_focus_terminal);
+    add_action(
+        window,
+        "restart-terminal",
+        MainWindow::handle_restart_terminal,
+    );
 
     app.set_accels_for_action("win.rename", &["F2"]);
     app.set_accels_for_action("win.console", &["F3"]);
@@ -20,6 +31,9 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     app.set_accels_for_action("win.copy", &["F5"]);
     app.set_accels_for_action("win.move-files", &["F6"]);
     app.set_accels_for_action("win.delete", &["F8"]);
+    app.set_accels_for_action("win.toggle-terminal", &["F9"]);
+    app.set_accels_for_action("win.focus-terminal", &["<Primary>grave"]);
+    app.set_accels_for_action("win.restart-terminal", &["<Primary><Shift>grave"]);
     app.set_accels_for_action("win.switch-panel", &["Tab"]);
     app.set_accels_for_action("win.open", &["Return", "KP_Enter"]);
 }

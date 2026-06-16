@@ -10,6 +10,20 @@ This project is a clean GTK4 rebuild. The old Slint prototype is used only as a 
 - `platform/`: OS-specific behavior. It detects roots/drives, opens files with the default app, and provides icon-name hints for GTK cells.
 - `ui/`: GTK-only code. It creates the `gtk::Application`, main window, two commander panels, `ColumnView` columns/factories, `glib::Object` row wrappers, dialogs, shortcuts, CSS, and event wiring.
 
+## Embedded Terminal Architecture
+
+The main shell now contains:
+
+- a horizontal `GtkPaned` for the left and right file panels,
+- a vertical `GtkPaned` that keeps the commander panels above and the terminal dock below,
+- a `TerminalDock` UI component with toolbar and backend widget,
+- a `TerminalController` that maps UI actions such as toggle, focus, clear, and restart,
+- a `TerminalState` that tracks visibility, current working directory, and the last active panel path.
+
+Linux uses `vte4` for a real embedded terminal widget.
+
+Windows is intentionally separated behind the same controller boundary. ConPTY alone is not a terminal widget; Microsoft documents that the host must render the terminal stream and collect input itself. Because this project does not ship a custom emulator and GTK4 does not include a native Windows terminal widget comparable to VTE, the Windows backend remains a placeholder until a suitable native terminal control is selected.
+
 ## Data Flow
 
 1. GTK events and shortcuts call small UI closures.

@@ -1,6 +1,9 @@
 #![allow(deprecated)]
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, bail};
 use gtk::{glib, prelude::*};
@@ -110,8 +113,8 @@ where
 }
 
 fn read_text_file(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)
-        .with_context(|| format!("Could not read file {}", path.display()))?;
+    let bytes =
+        fs::read(path).with_context(|| format!("Could not read file {}", path.display()))?;
 
     if bytes.contains(&0) {
         bail!("The selected file appears to be binary and cannot be edited as text.");

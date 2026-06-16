@@ -102,12 +102,16 @@ pub fn open_console(path: &Path) -> Result<()> {
                 Ok(_) => return Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("Could not open a console for {}", path.display()));
+                    return Err(error).with_context(|| {
+                        format!("Could not open a console for {}", path.display())
+                    });
                 }
             }
         }
     }
 
-    anyhow::bail!("No supported terminal application was found for {}", path.display())
+    anyhow::bail!(
+        "No supported terminal application was found for {}",
+        path.display()
+    )
 }

@@ -52,7 +52,10 @@ fn icon_key_for_entry(base_path: &Path, entry: &Entry) -> IconKey {
 
     if entry.is_dir {
         IconKey::Directory
-    } else if let Some(extension) = Path::new(&entry.name).extension().and_then(|ext| ext.to_str()) {
+    } else if let Some(extension) = Path::new(&entry.name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+    {
         IconKey::FileExtension(extension.to_ascii_lowercase())
     } else {
         IconKey::File
@@ -85,13 +88,7 @@ thread_local! {
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use std::{
-        ffi::OsStr,
-        os::windows::ffi::OsStrExt,
-        path::Path,
-        ptr::null_mut,
-        slice,
-    };
+    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr::null_mut, slice};
 
     use gtk::gdk::{self, MemoryFormat, MemoryTexture};
     use gtk::glib::{Bytes, object::Cast};
@@ -118,8 +115,13 @@ mod windows {
         let path_wide = to_wide(path.as_os_str());
 
         let mut file_info = SHFILEINFOW::default();
-        let flags =
-            SHGFI_ICON | SHGFI_SMALLICON | if use_file_attributes { SHGFI_USEFILEATTRIBUTES } else { 0 };
+        let flags = SHGFI_ICON
+            | SHGFI_SMALLICON
+            | if use_file_attributes {
+                SHGFI_USEFILEATTRIBUTES
+            } else {
+                0
+            };
 
         let result = unsafe {
             SHGetFileInfoW(
@@ -148,7 +150,9 @@ mod windows {
                 (Path::new("folder"), FILE_ATTRIBUTE_DIRECTORY, true)
             }
             IconKey::ExistingPath(path) => (path.as_path(), 0, false),
-            IconKey::FileExtension(extension) => (Path::new(extension), FILE_ATTRIBUTE_NORMAL, true),
+            IconKey::FileExtension(extension) => {
+                (Path::new(extension), FILE_ATTRIBUTE_NORMAL, true)
+            }
             IconKey::File => (Path::new("file"), FILE_ATTRIBUTE_NORMAL, true),
         }
     }
@@ -221,7 +225,9 @@ mod windows {
         };
 
         let paintable = if draw_ok {
-            let src = unsafe { slice::from_raw_parts(bits as *const u8, (ICON_SIZE * ICON_SIZE * 4) as usize) };
+            let src = unsafe {
+                slice::from_raw_parts(bits as *const u8, (ICON_SIZE * ICON_SIZE * 4) as usize)
+            };
             let bytes = Bytes::from_owned(src.to_vec());
             let texture = MemoryTexture::new(
                 ICON_SIZE,
