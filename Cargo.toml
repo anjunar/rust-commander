@@ -1,7 +1,7 @@
 [package]
 name = "rust-commander"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 description = "A clean GTK4 two-pane file commander"
 license = "MIT"
 

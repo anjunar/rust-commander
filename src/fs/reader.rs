@@ -5,28 +5,33 @@ use anyhow::{Context, Result};
 use crate::domain::entry::Entry;
 
 pub fn read_entries(path: &Path) -> Result<Vec<Entry>> {
-    let mut entries = fs::read_dir(path)
-        .with_context(|| format!("Could not read directory {}", path.display()))?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let metadata = entry.metadata().ok()?;
-            let file_name = entry.file_name().to_string_lossy().into_owned();
-            let modified_at = metadata.modified().ok();
+    let mut entries = Vec::new();
 
-            Some(Entry {
-                name: file_name.clone(),
-                archive_path: None,
-                is_dir: metadata.is_dir(),
-                size_bytes: metadata.len(),
-                size_label: format_size(&metadata, metadata.is_dir()),
-                type_label: if metadata.is_dir() { "Folder" } else { "File" }.into(),
-                modified_at,
-                modified_label: format_modified(modified_at),
-                attributes_label: format_attributes(&metadata, &file_name),
-                is_parent_link: false,
-            })
-        })
-        .collect::<Vec<_>>();
+    for entry in
+        fs::read_dir(path).with_context(|| format!("Could not read directory {}", path.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("Could not read an entry in {}", path.display()))?;
+        let entry_path = entry.path();
+        let metadata = entry.metadata().with_context(|| {
+            format!("Could not read metadata for {}", entry_path.display())
+        })?;
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        let modified_at = metadata.modified().ok();
+
+        entries.push(Entry {
+            name: file_name.clone(),
+            archive_path: None,
+            is_dir: metadata.is_dir(),
+            size_bytes: metadata.len(),
+            size_label: format_size(&metadata, metadata.is_dir()),
+            type_label: if metadata.is_dir() { "Folder" } else { "File" }.into(),
+            modified_at,
+            modified_label: format_modified(modified_at),
+            attributes_label: format_attributes(&metadata, &file_name),
+            is_parent_link: false,
+        });
+    }
 
     if path.parent().is_some() {
         entries.insert(0, Entry::parent_link());

@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
     sync::mpsc::{self, TryRecvError},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::{glib, prelude::*};
@@ -41,6 +41,7 @@ pub struct MainWindow {
     commander: Rc<RefCell<Commander>>,
     active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
+    watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
 }
@@ -158,6 +159,7 @@ impl MainWindow {
             commander,
             active_operation: Rc::new(RefCell::new(None)),
             navigation_busy: Rc::new(Cell::new(false)),
+            watcher_refresh_cooldown_until: Rc::new(Cell::new(None)),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
         });
@@ -462,7 +464,7 @@ impl MainWindow {
                     commander.refresh_with_status(format!("Saved: {}", path.display()))
                 };
                 this.apply_update(update);
-                this.sync_watched_paths();
+                this.trigger_manual_refresh_cooldown();
             })
         {
             dialogs::show_error(&self.window, "Could not open editor", &error.to_string());
@@ -481,7 +483,7 @@ impl MainWindow {
         let this = Rc::clone(self);
         dialogs::prompt_new_directory(&self.window, move |name| {
             this.run_command(|commander| commander.create_directory_in_active(&name));
-            this.sync_watched_paths();
+            this.trigger_manual_refresh_cooldown();
         });
     }
 
@@ -641,7 +643,7 @@ impl MainWindow {
                         this.commander_view
                             .apply_roots(this.commander.borrow().state());
                         this.focus_active_panel();
-                        this.sync_watched_paths();
+                        this.trigger_manual_refresh_cooldown();
                     }
                     Err(error) => {
                         let update = {
@@ -765,7 +767,7 @@ impl MainWindow {
                             commander.refresh_with_status(status)
                         };
                         this.apply_update(update);
-                        this.sync_watched_paths();
+                        this.trigger_manual_refresh_cooldown();
                         keep_running = false;
                     }
                     OperationEvent::Cancelled(summary) => {
@@ -782,7 +784,7 @@ impl MainWindow {
                             commander.refresh_with_status(status)
                         };
                         this.apply_update(update);
-                        this.sync_watched_paths();
+                        this.trigger_manual_refresh_cooldown();
                         keep_running = false;
                     }
                     OperationEvent::Failed(error) => {
@@ -865,7 +867,7 @@ impl MainWindow {
                             commander.refresh_with_status(message)
                         };
                         this.apply_update(update);
-                        this.sync_watched_paths();
+                        this.trigger_manual_refresh_cooldown();
                         keep_running = false;
                     }
                     ArchiveTaskEvent::Cancelled => {
@@ -876,7 +878,7 @@ impl MainWindow {
                             commander.refresh_with_status("Archive copy cancelled.".into())
                         };
                         this.apply_update(update);
-                        this.sync_watched_paths();
+                        this.trigger_manual_refresh_cooldown();
                         keep_running = false;
                     }
                     ArchiveTaskEvent::Failed(error) => {
@@ -1017,7 +1019,11 @@ impl MainWindow {
                 changed_paths.extend(event.paths);
             }
 
-            if !changed_paths.is_empty() && this.active_operation.borrow().is_none() {
+            if !changed_paths.is_empty()
+                && this.active_operation.borrow().is_none()
+                && !this.navigation_busy.get()
+                && !this.is_watcher_refresh_suppressed()
+            {
                 let affected_panels = this.affected_panels_for_paths(&changed_paths);
                 if !affected_panels.is_empty() {
                     this.run_command(|commander| {
@@ -1026,7 +1032,7 @@ impl MainWindow {
                             "File changes detected. View refreshed.",
                         ))
                     });
-                    this.sync_watched_paths();
+                    this.trigger_manual_refresh_cooldown();
                 }
             }
 
@@ -1084,6 +1090,23 @@ impl MainWindow {
     fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
         let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
+    }
+
+    fn trigger_manual_refresh_cooldown(&self) {
+        self.watcher_refresh_cooldown_until
+            .set(Some(Instant::now() + Duration::from_millis(900)));
+        self.sync_watched_paths();
+    }
+
+    fn is_watcher_refresh_suppressed(&self) -> bool {
+        match self.watcher_refresh_cooldown_until.get() {
+            Some(until) if Instant::now() < until => true,
+            Some(_) => {
+                self.watcher_refresh_cooldown_until.set(None);
+                false
+            }
+            None => false,
+        }
     }
 
     fn active_panel_path(&self) -> std::path::PathBuf {

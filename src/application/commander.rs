@@ -218,7 +218,9 @@ impl Commander {
         panels: &[ActivePanel],
         status: impl Into<String>,
     ) -> ViewUpdate {
+        let status = status.into();
         let mut update = ViewUpdate::default();
+        let mut failures = Vec::new();
 
         for panel in panels {
             match self
@@ -233,31 +235,40 @@ impl Commander {
                     }
                 }
                 Err(error) => {
-                    self.state.status = format!("{} refresh failed: {error}", panel.label());
+                    failures.push(format!("{} refresh failed: {error}", panel.label()));
                 }
             }
         }
 
         update.selection = true;
         update.status = true;
-        self.state.status = status.into();
+        self.state.status = if failures.is_empty() {
+            status
+        } else {
+            failures.join(" | ")
+        };
         update
     }
 
     pub fn refresh_with_status(&mut self, status: String) -> ViewUpdate {
         self.state.roots = platform::available_roots();
+        let mut failures = Vec::new();
 
         match self.archive_service.entries_for_location(&self.state.left.location) {
             Ok(entries) => self.state.left.replace_entries(entries),
-            Err(error) => self.state.status = format!("Left refresh failed: {error}"),
+            Err(error) => failures.push(format!("Left refresh failed: {error}")),
         }
 
         match self.archive_service.entries_for_location(&self.state.right.location) {
             Ok(entries) => self.state.right.replace_entries(entries),
-            Err(error) => self.state.status = format!("Right refresh failed: {error}"),
+            Err(error) => failures.push(format!("Right refresh failed: {error}")),
         }
 
-        self.state.status = status;
+        self.state.status = if failures.is_empty() {
+            status
+        } else {
+            failures.join(" | ")
+        };
         ViewUpdate {
             roots: true,
             ..ViewUpdate::both_panels()

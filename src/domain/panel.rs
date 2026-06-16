@@ -168,13 +168,10 @@ impl Panel {
     }
 
     pub fn update_history_after_rename(&mut self, old_name: &str, new_name: &str) {
-        if let Some(saved) = self
-            .selected_history
-            .get_mut(&self.location.history_key())
-            && !saved.is_parent_link
-            && saved.name == old_name
-        {
-            saved.name = new_name.to_string();
+        if let Some(saved) = self.selected_history.get_mut(&self.location.history_key()) {
+            if !saved.is_parent_link && saved.name == old_name {
+                saved.name = new_name.to_string();
+            }
         }
     }
 
@@ -200,12 +197,12 @@ impl Panel {
             return None;
         }
 
-        if let Some(saved) = self.selected_history.get(&self.location.history_key())
-            && let Some(index) = self.entries.iter().position(|entry| {
+        if let Some(saved) = self.selected_history.get(&self.location.history_key()) {
+            if let Some(index) = self.entries.iter().position(|entry| {
                 entry.name == saved.name && entry.is_parent_link == saved.is_parent_link
-            })
-        {
-            return Some(index);
+            }) {
+                return Some(index);
+            }
         }
 
         Some(0)
@@ -271,10 +268,10 @@ impl Panel {
             })
             .or(focused_index);
 
-        if selected_indices.is_empty()
-            && let Some(index) = focused_index
-        {
-            selected_indices.insert(index);
+        if selected_indices.is_empty() {
+            if let Some(index) = focused_index {
+                selected_indices.insert(index);
+            }
         }
 
         SelectionModel::new(selected_indices, focused_index, anchor_index)

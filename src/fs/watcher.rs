@@ -52,14 +52,15 @@ pub fn start_file_watcher() -> (mpsc::Sender<WatchCommand>, mpsc::Receiver<Watch
                     }
 
                     for new_path in &unique_paths {
-                        if !watched_paths.iter().any(|path| path == new_path)
-                            && new_path.is_dir()
-                            && let Err(error) = watcher.watch(new_path, RecursiveMode::NonRecursive)
-                        {
-                            eprintln!(
-                                "Could not watch directory ({}): {error}",
-                                new_path.display()
-                            );
+                        if !watched_paths.iter().any(|path| path == new_path) && new_path.is_dir() {
+                            if let Err(error) =
+                                watcher.watch(new_path, RecursiveMode::NonRecursive)
+                            {
+                                eprintln!(
+                                    "Could not watch directory ({}): {error}",
+                                    new_path.display()
+                                );
+                            }
                         }
                     }
 
