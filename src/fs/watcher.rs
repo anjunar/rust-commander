@@ -6,16 +6,24 @@ pub enum WatchCommand {
     SetPaths(Vec<PathBuf>),
 }
 
-pub fn start_file_watcher() -> (mpsc::Sender<WatchCommand>, mpsc::Receiver<()>) {
+#[derive(Clone, Debug)]
+pub struct WatchEvent {
+    pub paths: Vec<PathBuf>,
+}
+
+pub fn start_file_watcher() -> (mpsc::Sender<WatchCommand>, mpsc::Receiver<WatchEvent>) {
     let (watch_command_tx, watch_command_rx) = mpsc::channel::<WatchCommand>();
-    let (watch_event_tx, watch_event_rx) = mpsc::channel::<()>();
+    let (watch_event_tx, watch_event_rx) = mpsc::channel::<WatchEvent>();
 
     thread::spawn(move || {
         let callback_tx = watch_event_tx.clone();
         let watcher_result = notify::recommended_watcher(
             move |result: notify::Result<notify::Event>| match result {
-                Ok(_) => {
-                    let _ = callback_tx.send(());
+                Ok(event) => {
+                    let paths = dedupe_paths(event.paths);
+                    if !paths.is_empty() {
+                        let _ = callback_tx.send(WatchEvent { paths });
+                    }
                 }
                 Err(error) => {
                     eprintln!("File watcher error: {error}");

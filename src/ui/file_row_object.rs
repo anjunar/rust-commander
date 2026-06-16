@@ -44,8 +44,32 @@ glib::wrapper! {
 impl FileRowObject {
     pub fn new(base_path: &Path, entry: &Entry) -> Self {
         let object: Self = glib::Object::new();
+        object.update(base_path, entry);
+        object
+    }
+
+    pub fn update(&self, base_path: &Path, entry: &Entry) {
+        self.imp().data.replace(Self::build_data(base_path, entry));
+    }
+
+    pub fn matches_entry(&self, base_path: &Path, entry: &Entry) -> bool {
+        let data = self.imp().data.borrow();
+        let path = entry.full_path(base_path).display().to_string();
+
+        data.name == entry.name
+            && data.path == path
+            && data.size == entry.size_label
+            && data.type_label == entry.type_label
+            && data.modified == entry.modified_label
+            && data.attributes == entry.attributes_label
+            && data.size_bytes == entry.size_bytes
+            && data.is_dir == entry.is_dir
+            && data.is_parent_link == entry.is_parent_link
+    }
+
+    fn build_data(base_path: &Path, entry: &Entry) -> FileRowData {
         let icon = platform::icon_for_entry(base_path, entry);
-        let data = FileRowData {
+        FileRowData {
             name: entry.name.clone(),
             path: entry.full_path(base_path).display().to_string(),
             size: entry.size_label.clone(),
@@ -57,9 +81,7 @@ impl FileRowObject {
             size_bytes: entry.size_bytes,
             is_dir: entry.is_dir,
             is_parent_link: entry.is_parent_link,
-        };
-        object.imp().data.replace(data);
-        object
+        }
     }
 
     pub fn name(&self) -> String {

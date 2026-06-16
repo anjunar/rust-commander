@@ -155,6 +155,34 @@ impl Commander {
         })
     }
 
+    pub fn refresh_panels(
+        &mut self,
+        panels: &[ActivePanel],
+        status: impl Into<String>,
+    ) -> ViewUpdate {
+        let mut update = ViewUpdate::default();
+
+        for panel in panels {
+            match read_entries(&self.state.panel(*panel).path) {
+                Ok(entries) => {
+                    self.state.panel_mut(*panel).replace_entries(entries);
+                    match panel {
+                        ActivePanel::Left => update.left_entries = true,
+                        ActivePanel::Right => update.right_entries = true,
+                    }
+                }
+                Err(error) => {
+                    self.state.status = format!("{} refresh failed: {error}", panel.label());
+                }
+            }
+        }
+
+        update.selection = true;
+        update.status = true;
+        self.state.status = status.into();
+        update
+    }
+
     pub fn refresh_after_operation(&mut self, status: String) -> ViewUpdate {
         self.refresh_with_status(status)
     }

@@ -1,7 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeSet,
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 
@@ -30,6 +30,7 @@ pub struct FilePanelView {
     ignore_roots: Rc<Cell<bool>>,
     ignore_sort: Rc<Cell<bool>>,
     last_sort: Rc<RefCell<Option<(SortColumn, gtk::SortType)>>>,
+    current_entries_path: Rc<RefCell<Option<PathBuf>>>,
 }
 
 impl FilePanelView {
@@ -91,6 +92,7 @@ impl FilePanelView {
             ignore_roots: Rc::new(Cell::new(false)),
             ignore_sort: Rc::new(Cell::new(false)),
             last_sort: Rc::new(RefCell::new(None)),
+            current_entries_path: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -109,12 +111,8 @@ impl FilePanelView {
     pub fn set_entries(&self, base_path: &Path, entries: &[Entry], selected: BTreeSet<usize>) {
         let was_ignoring_sort = self.ignore_sort.replace(true);
         self.ignore_selection.set(true);
-        self.store.remove_all();
         let primary_selected = selected.iter().next().copied();
-
-        for entry in entries {
-            self.store.append(&FileRowObject::new(base_path, entry));
-        }
+        self.sync_store(base_path, entries);
 
         self.selection.unselect_all();
         for index in selected {
@@ -136,6 +134,68 @@ impl FilePanelView {
                 );
             });
         }
+    }
+
+    fn sync_store(&self, base_path: &Path, entries: &[Entry]) {
+        let mut current_entries_path = self.current_entries_path.borrow_mut();
+        if current_entries_path.as_deref() != Some(base_path) {
+            self.store.remove_all();
+            for entry in entries {
+                self.store.append(&FileRowObject::new(base_path, entry));
+            }
+            *current_entries_path = Some(base_path.to_path_buf());
+            return;
+        }
+
+        let mut index = 0usize;
+
+        while index < entries.len() {
+            let entry = &entries[index];
+            let Some(row) = self.row_at(index) else {
+                self.store
+                    .insert(index as u32, &FileRowObject::new(base_path, entry));
+                index += 1;
+                continue;
+            };
+
+            if row.matches_entry(base_path, entry) {
+                index += 1;
+                continue;
+            }
+
+            if let Some(existing_index) = self.find_matching_row(index + 1, base_path, entry) {
+                for _ in index..existing_index {
+                    self.store.remove(index as u32);
+                }
+                continue;
+            }
+
+            row.update(base_path, entry);
+            index += 1;
+        }
+
+        while self.store.n_items() > entries.len() as u32 {
+            self.store.remove(entries.len() as u32);
+        }
+    }
+
+    fn row_at(&self, index: usize) -> Option<FileRowObject> {
+        self.store
+            .item(index as u32)
+            .and_then(|object| object.downcast::<FileRowObject>().ok())
+    }
+
+    fn find_matching_row(
+        &self,
+        start_index: usize,
+        base_path: &Path,
+        entry: &Entry,
+    ) -> Option<usize> {
+        (start_index..self.store.n_items() as usize).find(|index| {
+            self.row_at(*index)
+                .map(|row| row.matches_entry(base_path, entry))
+                .unwrap_or(false)
+        })
     }
 
     pub fn set_roots(&self, roots: &[RootLocation], selected_index: Option<usize>) {

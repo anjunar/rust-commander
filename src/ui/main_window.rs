@@ -17,7 +17,7 @@ use crate::{
     },
     fs::{
         operations::{OperationHandle, start_operation},
-        watcher::{WatchCommand, start_file_watcher},
+        watcher::{WatchCommand, WatchEvent, start_file_watcher},
     },
     platform::assets::asset_path,
     ui::{
@@ -776,17 +776,28 @@ impl MainWindow {
         }
     }
 
-    fn install_watcher_poll(self: &Rc<Self>, watch_event_rx: std::sync::mpsc::Receiver<()>) {
+    fn install_watcher_poll(
+        self: &Rc<Self>,
+        watch_event_rx: std::sync::mpsc::Receiver<WatchEvent>,
+    ) {
         let this = Rc::clone(self);
         glib::timeout_add_local(Duration::from_millis(350), move || {
-            let mut has_changes = false;
-            while watch_event_rx.try_recv().is_ok() {
-                has_changes = true;
+            let mut changed_paths = Vec::new();
+            while let Ok(event) = watch_event_rx.try_recv() {
+                changed_paths.extend(event.paths);
             }
 
-            if has_changes && this.active_operation.borrow().is_none() {
-                this.run_command(|commander| commander.refresh_visible_panels());
-                this.sync_watched_paths();
+            if !changed_paths.is_empty() && this.active_operation.borrow().is_none() {
+                let affected_panels = this.affected_panels_for_paths(&changed_paths);
+                if !affected_panels.is_empty() {
+                    this.run_command(|commander| {
+                        Ok(commander.refresh_panels(
+                            &affected_panels,
+                            "File changes detected. View refreshed.",
+                        ))
+                    });
+                    this.sync_watched_paths();
+                }
             }
 
             glib::ControlFlow::Continue
@@ -869,6 +880,24 @@ impl MainWindow {
                 dialogs::show_error(&self.window, "Could not start terminal", &error);
             }
         }
+    }
+
+    fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {
+        let commander = self.commander.borrow();
+        let state = commander.state();
+        let mut affected = Vec::new();
+
+        for panel in [ActivePanel::Left, ActivePanel::Right] {
+            let panel_path = &state.panel(panel).path;
+            if changed_paths
+                .iter()
+                .any(|path| path == panel_path || path.parent() == Some(panel_path.as_path()))
+            {
+                affected.push(panel);
+            }
+        }
+
+        affected
     }
 
     fn set_navigation_busy(&self, busy: bool, message: &str) {
