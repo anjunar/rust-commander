@@ -11,7 +11,16 @@ pub struct AppConfig {
     #[serde(default)]
     pub window: WindowConfig,
     #[serde(default)]
+    pub panes: PaneConfig,
+    #[serde(default)]
     pub archive: ArchiveConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PaneConfig {
+    pub left_directory: Option<PathBuf>,
+    pub right_directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -108,7 +117,12 @@ fn config_base_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, ArchiveConfig, WindowConfig, WindowPosition, load_from_path, save_to_path};
+    use std::path::PathBuf;
+
+    use super::{
+        AppConfig, ArchiveConfig, PaneConfig, WindowConfig, WindowPosition, load_from_path,
+        save_to_path,
+    };
 
     #[test]
     fn config_roundtrip_preserves_window_state() {
@@ -123,6 +137,10 @@ mod tests {
                 position: Some(WindowPosition { x: 120, y: 80 }),
                 maximized: true,
             },
+            panes: PaneConfig {
+                left_directory: Some(PathBuf::from("/tmp/left")),
+                right_directory: Some(PathBuf::from("/tmp/right")),
+            },
             archive: ArchiveConfig::default(),
         };
 
@@ -135,5 +153,7 @@ mod tests {
         assert_eq!(loaded.window.position.as_ref().unwrap().x, 120);
         assert_eq!(loaded.window.position.as_ref().unwrap().y, 80);
         assert!(loaded.window.maximized);
+        assert_eq!(loaded.panes.left_directory, Some(PathBuf::from("/tmp/left")));
+        assert_eq!(loaded.panes.right_directory, Some(PathBuf::from("/tmp/right")));
     }
 }

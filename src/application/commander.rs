@@ -21,14 +21,18 @@ pub struct Commander {
 }
 
 impl Commander {
-    pub fn new(initial_path: PathBuf, _archive_config: ArchiveConfig) -> Result<Self> {
+    pub fn new(
+        left_initial_path: PathBuf,
+        right_initial_path: PathBuf,
+        _archive_config: ArchiveConfig,
+    ) -> Result<Self> {
         let left = Panel::new(
-            PanelLocation::filesystem(initial_path.clone()),
-            read_entries(&initial_path)?,
+            PanelLocation::filesystem(left_initial_path.clone()),
+            read_entries(&left_initial_path)?,
         );
         let right = Panel::new(
-            PanelLocation::filesystem(initial_path.clone()),
-            read_entries(&initial_path)?,
+            PanelLocation::filesystem(right_initial_path.clone()),
+            read_entries(&right_initial_path)?,
         );
         let roots = platform::available_roots();
         let archive_service = ArchiveService::with_default_backends();
@@ -41,6 +45,10 @@ impl Commander {
 
     pub fn state(&self) -> &AppState {
         &self.state
+    }
+
+    pub fn panel_directory(&self, panel: ActivePanel) -> PathBuf {
+        self.state.panel(panel).location.host_directory()
     }
 
     pub fn archive_service(&self) -> ArchiveService {

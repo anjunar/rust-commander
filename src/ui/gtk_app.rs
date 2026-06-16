@@ -22,7 +22,7 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let initial_path = match std::env::current_dir() {
+        let fallback_path = match std::env::current_dir() {
             Ok(path) => path,
             Err(error) => {
                 eprintln!("Could not determine current directory: {error}");
@@ -30,7 +30,24 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let commander = match Commander::new(initial_path, app_config.archive.clone()) {
+        let left_initial_path = app_config
+            .panes
+            .left_directory
+            .clone()
+            .filter(|path| path.is_dir())
+            .unwrap_or_else(|| fallback_path.clone());
+        let right_initial_path = app_config
+            .panes
+            .right_directory
+            .clone()
+            .filter(|path| path.is_dir())
+            .unwrap_or_else(|| fallback_path.clone());
+
+        let commander = match Commander::new(
+            left_initial_path,
+            right_initial_path,
+            app_config.archive.clone(),
+        ) {
             Ok(commander) => commander,
             Err(error) => {
                 eprintln!("Could not initialize RCommander: {error}");

@@ -176,7 +176,9 @@ impl FilePanelView {
                 continue;
             }
 
-            row.update(location, entry);
+            self.store.remove(index as u32);
+            self.store
+                .insert(index as u32, &FileRowObject::new(location, entry));
             index += 1;
         }
 

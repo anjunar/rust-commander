@@ -1175,8 +1175,18 @@ impl MainWindow {
     }
 
     fn install_window_state_persistence(self: &Rc<Self>) {
+        let commander = Rc::clone(&self.commander);
         let app_config_cache = Rc::clone(&self.app_config_cache);
         self.window.connect_close_request(move |_| {
+            {
+                let commander = commander.borrow();
+                let mut app_config = app_config_cache.borrow_mut();
+                app_config.panes.left_directory =
+                    Some(commander.panel_directory(ActivePanel::Left));
+                app_config.panes.right_directory =
+                    Some(commander.panel_directory(ActivePanel::Right));
+            }
+
             if let Err(error) = config::save(&app_config_cache.borrow().clone()) {
                 eprintln!("Could not save config: {error}");
             }
