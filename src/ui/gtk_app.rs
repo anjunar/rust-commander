@@ -1,0 +1,33 @@
+use anyhow::Result;
+use gtk::prelude::*;
+
+use crate::{application::Commander, ui::main_window::MainWindow};
+
+pub fn run() -> Result<()> {
+    let app = gtk::Application::builder()
+        .application_id("dev.rcommander.Gtk")
+        .build();
+
+    app.connect_activate(|app| {
+        let initial_path = match std::env::current_dir() {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("Could not determine current directory: {error}");
+                return;
+            }
+        };
+
+        let commander = match Commander::new(initial_path) {
+            Ok(commander) => commander,
+            Err(error) => {
+                eprintln!("Could not initialize RCommander: {error}");
+                return;
+            }
+        };
+
+        let _window = MainWindow::new(app, commander);
+    });
+
+    app.run();
+    Ok(())
+}
