@@ -1,7 +1,7 @@
 use std::{cell::RefCell, path::Path};
 
-use glib::subclass::prelude::*;
 use gtk::gdk;
+use gtk::glib::{self, subclass::prelude::*};
 
 use crate::{domain::entry::Entry, platform};
 

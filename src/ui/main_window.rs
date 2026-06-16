@@ -442,7 +442,7 @@ fn install_css() {
     }
 
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(
+    provider.load_from_string(
         "
         window,
         dialog,

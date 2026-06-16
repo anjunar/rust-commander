@@ -690,8 +690,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "gio",
- "glib",
  "gtk4",
  "notify",
  "windows-sys 0.61.2",

@@ -93,8 +93,8 @@ mod windows {
         slice,
     };
 
-    use glib::{Bytes, object::Cast};
     use gtk::gdk::{self, MemoryFormat, MemoryTexture};
+    use gtk::glib::{Bytes, object::Cast};
     use windows_sys::Win32::{
         Graphics::Gdi::{
             BI_BITFIELDS, BITMAPV5HEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
