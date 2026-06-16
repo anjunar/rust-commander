@@ -5,6 +5,7 @@ use gtk::{gio, prelude::*};
 use crate::ui::main_window::MainWindow;
 
 pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
+    add_action(window, "settings", MainWindow::handle_help);
     add_action(window, "view", MainWindow::handle_view);
     add_action(window, "rename", MainWindow::handle_rename);
     add_action(window, "console", MainWindow::handle_open_console);
@@ -27,6 +28,7 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     );
 
     app.set_accels_for_action("win.view", &["F3"]);
+    app.set_accels_for_action("win.settings", &["F1"]);
     app.set_accels_for_action("win.rename", &["F2"]);
     app.set_accels_for_action("win.edit", &["F4"]);
     app.set_accels_for_action("win.copy", &["F5"]);

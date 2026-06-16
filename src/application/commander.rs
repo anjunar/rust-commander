@@ -49,6 +49,17 @@ impl Commander {
         self.archive_service.clone()
     }
 
+    pub fn apply_archive_config(&mut self, archive_config: ArchiveConfig) -> ViewUpdate {
+        self.archive_service = ArchiveService::new(vec![Arc::new(
+            SevenZipBackend::from_optional_path(archive_config.seven_zip_path.clone()),
+        )]);
+        self.state.status = match archive_config.seven_zip_path {
+            Some(path) => format!("Archive settings updated. 7-Zip path: {}", path.display()),
+            None => "Archive settings updated. Using bundled/default 7-Zip path.".into(),
+        };
+        ViewUpdate::status()
+    }
+
     pub fn set_active_panel(&mut self, panel: ActivePanel) -> ViewUpdate {
         self.state.active_panel = panel;
         ViewUpdate {

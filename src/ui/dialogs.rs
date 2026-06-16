@@ -1,6 +1,9 @@
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
+
 use gtk::{glib, prelude::*};
 
 use crate::{
+    config::AppConfig,
     domain::operation::{
         ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict,
     },
@@ -213,6 +216,123 @@ where
     glib::idle_add_local_once(move || {
         window.present();
         entry.grab_focus();
+    });
+}
+
+pub fn show_settings<F>(parent: &gtk::ApplicationWindow, current_config: AppConfig, on_save: F)
+where
+    F: FnOnce(AppConfig) + 'static,
+{
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, "Application settings", 620, 220);
+
+    let title = gtk::Label::new(Some("Application settings"));
+    title.set_xalign(0.0);
+    title.add_css_class("dialog-title");
+    content.append(&title);
+
+    let description = gtk::Label::new(Some(
+        "Configure external tools used by RCommander.",
+    ));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    content.append(&description);
+
+    let field_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    content.append(&field_box);
+
+    let field_label = gtk::Label::new(Some("7-Zip executable"));
+    field_label.set_xalign(0.0);
+    field_box.append(&field_label);
+
+    let input_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    field_box.append(&input_row);
+
+    let seven_zip_entry = gtk::Entry::new();
+    seven_zip_entry.set_hexpand(true);
+    seven_zip_entry.set_placeholder_text(Some(
+        "Leave empty to use the bundled/default 7-Zip location",
+    ));
+    if let Some(path) = &current_config.archive.seven_zip_path {
+        seven_zip_entry.set_text(&path.display().to_string());
+    }
+    input_row.append(&seven_zip_entry);
+
+    let browse_button = gtk::Button::with_label("Browse...");
+    input_row.append(&browse_button);
+
+    let hint = gtk::Label::new(Some(
+        "Example on Windows: C:\\Program Files\\7-Zip\\7z.exe",
+    ));
+    hint.set_xalign(0.0);
+    hint.add_css_class("dim-label");
+    field_box.append(&hint);
+
+    let cancel_button = gtk::Button::with_label("Cancel");
+    let save_button = gtk::Button::with_label("Save");
+    save_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&save_button);
+    window.set_default_widget(Some(&save_button));
+
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+
+    {
+        let parent = parent.clone();
+        let entry = seven_zip_entry.clone();
+        browse_button.connect_clicked(move |_| {
+            let chooser = gtk::FileDialog::builder()
+                .title("Select 7-Zip executable")
+                .modal(true)
+                .build();
+            let entry = entry.clone();
+            chooser.open(
+                Some(&parent),
+                None::<&gtk::gio::Cancellable>,
+                move |result| {
+                    if let Ok(file) = result
+                        && let Some(path) = file.path()
+                    {
+                    entry.set_text(&path.display().to_string());
+                }
+                },
+            );
+        });
+    }
+
+    let callback = Rc::new(RefCell::new(Some(on_save)));
+    {
+        let window = window.clone();
+        let entry = seven_zip_entry.clone();
+        let callback = Rc::clone(&callback);
+        let current_config = current_config.clone();
+        save_button.connect_clicked(move |_| {
+            let mut next_config = current_config.clone();
+            let value = entry.text().trim().to_string();
+            next_config.archive.seven_zip_path = if value.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value))
+            };
+
+            if let Some(on_save) = callback.borrow_mut().take() {
+                on_save(next_config);
+            }
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
+        seven_zip_entry.grab_focus();
     });
 }
 

@@ -38,7 +38,7 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let _window = MainWindow::new(app, commander, app_config.window);
+        let _window = MainWindow::new(app, commander, app_config);
     });
 
     app.run();

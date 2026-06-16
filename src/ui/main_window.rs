@@ -41,7 +41,7 @@ pub struct MainWindow {
     active_operation: Rc<RefCell<Option<OperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
-    window_config_cache: Rc<RefCell<WindowConfig>>,
+    app_config_cache: Rc<RefCell<AppConfig>>,
 }
 
 struct DirectoryLoadResult {
@@ -55,9 +55,10 @@ impl MainWindow {
     pub fn new(
         app: &gtk::Application,
         commander: Commander,
-        window_config: WindowConfig,
+        app_config: AppConfig,
     ) -> Rc<Self> {
         install_css();
+        let window_config = app_config.window.clone();
 
         let window = gtk::ApplicationWindow::builder()
             .application(app)
@@ -136,7 +137,7 @@ impl MainWindow {
             active_operation: Rc::new(RefCell::new(None)),
             navigation_busy: Rc::new(Cell::new(false)),
             watch_command_tx,
-            window_config_cache: Rc::new(RefCell::new(window_config.clone())),
+            app_config_cache: Rc::new(RefCell::new(app_config.clone())),
         });
 
         this.apply_update(ViewUpdate::all());
@@ -334,13 +335,26 @@ impl MainWindow {
     }
 
     pub fn handle_help(self: &Rc<Self>) {
-        let update = {
-            let mut commander = self.commander.borrow_mut();
-            commander.set_status(
-                "F2 Rename, F3 View, F4 Edit, F5 Copy, F6 Move, F7 MkDir, F8 Delete, F9 Terminal, Tab Switch, Enter Open. F1 Help is a placeholder for an upcoming action.",
-            )
-        };
-        self.apply_update(update);
+        let current_config = self.app_config_cache.borrow().clone();
+        let this = Rc::clone(self);
+        dialogs::show_settings(&self.window, current_config, move |next_config| {
+            this.app_config_cache.replace(next_config.clone());
+
+            if let Err(error) = config::save(&next_config) {
+                dialogs::show_error(
+                    &this.window,
+                    "Could not save settings",
+                    &error.to_string(),
+                );
+                return;
+            }
+
+            let update = {
+                let mut commander = this.commander.borrow_mut();
+                commander.apply_archive_config(next_config.archive.clone())
+            };
+            this.apply_update(update);
+        });
     }
 
     pub fn handle_copy(self: &Rc<Self>) {
@@ -1015,12 +1029,9 @@ impl MainWindow {
     }
 
     fn install_window_state_persistence(self: &Rc<Self>) {
-        let window_config_cache = Rc::clone(&self.window_config_cache);
+        let app_config_cache = Rc::clone(&self.app_config_cache);
         self.window.connect_close_request(move |_| {
-            if let Err(error) = config::save(&AppConfig {
-                window: window_config_cache.borrow().clone(),
-                archive: config::ArchiveConfig::default(),
-            }) {
+            if let Err(error) = config::save(&app_config_cache.borrow().clone()) {
                 eprintln!("Could not save config: {error}");
             }
             glib::Propagation::Proceed
@@ -1029,9 +1040,10 @@ impl MainWindow {
 
     fn install_window_geometry_tracking(self: &Rc<Self>) {
         let window = self.window.clone();
-        let window_config_cache = Rc::clone(&self.window_config_cache);
+        let app_config_cache = Rc::clone(&self.app_config_cache);
         glib::timeout_add_local(Duration::from_millis(250), move || {
-            let mut config = window_config_cache.borrow_mut();
+            let mut app_config = app_config_cache.borrow_mut();
+            let config = &mut app_config.window;
             config.maximized = window.is_maximized();
             if let Some(placement) = current_window_placement(APP_WINDOW_TITLE) {
                 config.width = placement.width.max(1);
@@ -1107,7 +1119,7 @@ fn build_command_bar() -> gtk::Box {
     command_bar.set_homogeneous(true);
 
     for label in [
-        "F1 Help",
+        "F1 Settings",
         "F2 Rename",
         "F3 View",
         "F4 Edit",
