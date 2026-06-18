@@ -10,6 +10,7 @@ use crate::{
     },
     fs::{operations::progress_percent, reader::format_bytes},
     i18n,
+    presentation,
 };
 
 pub(crate) struct ModalWindow {
@@ -88,7 +89,7 @@ pub fn confirm_operation<F>(
                 target = target_label.as_str()
             )
             .into_owned(),
-            t!("operation.copy").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Copy),
         ),
         FileOperationKind::Move => (
             t!("dialog.move_confirmation_title").into_owned(),
@@ -98,7 +99,7 @@ pub fn confirm_operation<F>(
                 target = target_label.as_str()
             )
             .into_owned(),
-            t!("operation.move").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Move),
         ),
         FileOperationKind::Delete => (
             t!("dialog.delete_confirmation_title").into_owned(),
@@ -107,7 +108,7 @@ pub fn confirm_operation<F>(
                 source = source_label.as_str()
             )
             .into_owned(),
-            t!("operation.delete").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Delete),
         ),
     };
 
@@ -530,7 +531,13 @@ pub fn show_conflict<F>(
     );
     let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message(t!("dialog.conflict_title", kind = conflict.kind.label()).into_owned())
+        .message(
+            t!(
+                "dialog.conflict_title",
+                kind = presentation::file_operation_label(&conflict.kind)
+            )
+            .into_owned(),
+        )
         .detail(&detail)
         .buttons([
             t!("common.cancel").into_owned(),
@@ -617,8 +624,12 @@ impl ProgressDialog {
 
     pub fn update_progress(&self, snapshot: &crate::domain::operation::OperationSnapshot) {
         let fraction = progress_percent(snapshot);
-        self.title
-            .set_label(&t!("progress.in_progress", kind = snapshot.kind.label()));
+        self.title.set_label(
+            &t!(
+                "progress.in_progress",
+                kind = presentation::file_operation_label(&snapshot.kind)
+            ),
+        );
         self.detail.set_label(&t!(
             "progress.file_operation_detail",
             processed = format_bytes(snapshot.processed_bytes),

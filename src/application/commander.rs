@@ -14,6 +14,7 @@ use crate::{
     },
     fs::reader::{read_entries, rename_path},
     platform,
+    presentation,
 };
 
 pub struct Commander {
@@ -43,7 +44,7 @@ impl Commander {
         let archive_service = ArchiveService::with_default_backends();
 
         Ok(Self {
-            state: AppState::new(left, right, roots),
+            state: AppState::new(left, right, roots, presentation::ready_status()),
             archive_service,
             panel_settings,
         })
@@ -209,7 +210,7 @@ impl Commander {
             .navigate_to(PanelLocation::filesystem(root.path.clone()), entries);
         self.state.status = t!(
             "status.switched_panel",
-            panel = panel.label(),
+            panel = presentation::panel_label(panel),
             path = root.path.display().to_string()
         )
         .into_owned();
@@ -266,7 +267,7 @@ impl Commander {
                     failures.push(
                         t!(
                             "status.refresh_failed",
-                            panel = panel.label(),
+                            panel = presentation::panel_label(*panel),
                             error = error.to_string()
                         )
                         .into_owned(),
@@ -294,7 +295,7 @@ impl Commander {
             Err(error) => failures.push(
                 t!(
                     "status.refresh_failed",
-                    panel = t!("panel.left"),
+                    panel = presentation::panel_label(ActivePanel::Left),
                     error = error.to_string()
                 )
                 .into_owned(),
@@ -306,7 +307,7 @@ impl Commander {
             Err(error) => failures.push(
                 t!(
                     "status.refresh_failed",
-                    panel = t!("panel.right"),
+                    panel = presentation::panel_label(ActivePanel::Right),
                     error = error.to_string()
                 )
                 .into_owned(),
@@ -336,8 +337,8 @@ impl Commander {
             .set_sort_state(column, direction);
         self.state.status = t!(
             "status.sorted_panel",
-            panel = panel.label(),
-            column = sort_column_label(column)
+            panel = presentation::panel_label(panel),
+            column = presentation::sort_column_label(column)
         )
         .into_owned();
         ViewUpdate::panel_entries(panel)
@@ -465,15 +466,5 @@ impl Commander {
             }
             PanelLocation::Archive(_) => Ok(self.archive_service.entries_for_location(location)?),
         }
-    }
-}
-
-fn sort_column_label(column: SortColumn) -> String {
-    match column {
-        SortColumn::Name => t!("column.name").into_owned(),
-        SortColumn::Size => t!("column.size").into_owned(),
-        SortColumn::Type => t!("column.type").into_owned(),
-        SortColumn::Modified => t!("column.modified").into_owned(),
-        SortColumn::Attributes => t!("column.attributes").into_owned(),
     }
 }

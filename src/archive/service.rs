@@ -19,6 +19,7 @@ use crate::{
     archive::safe_join_extract_path,
     domain::{Entry, PanelLocation},
     fs::reader::format_bytes,
+    presentation,
 };
 
 #[derive(Clone, Debug)]
@@ -272,7 +273,7 @@ impl ArchiveService {
                     is_dir: true,
                     size_bytes: 0,
                     size_label: "-".into(),
-                    type_label: t!("entry.folder").into_owned(),
+                    type_label: presentation::filesystem_entry_type_label(true),
                     modified_at: None,
                     modified_label: "-".into(),
                     attributes_label: "D".into(),
@@ -283,7 +284,7 @@ impl ArchiveService {
         let mut entries = entries_by_name.into_values().collect::<Vec<_>>();
         entries.sort_by_key(|a| a.name.to_lowercase());
         if session.cached_entries().iter().any(|_| true) {
-            entries.insert(0, Entry::parent_link());
+            entries.insert(0, Entry::parent_link(presentation::parent_entry_type_label()));
         }
         entries
     }
@@ -307,12 +308,7 @@ fn archive_entry_to_panel_entry(entry: &ArchiveEntry) -> Entry {
         } else {
             format_bytes(entry.size)
         },
-        type_label: match entry.kind {
-            ArchiveEntryKind::Directory => t!("entry.folder").into_owned(),
-            ArchiveEntryKind::File => t!("entry.file").into_owned(),
-            ArchiveEntryKind::Symlink => t!("entry.symlink").into_owned(),
-            ArchiveEntryKind::Unknown => t!("entry.archive_item").into_owned(),
-        },
+        type_label: presentation::archive_entry_type_label(entry.kind),
         modified_at: entry.modified_time,
         modified_label: entry
             .modified_time

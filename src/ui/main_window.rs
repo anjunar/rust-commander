@@ -2,8 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     path::PathBuf,
     rc::Rc,
-    sync::mpsc::{self, TryRecvError},
-    thread,
+    sync::mpsc::TryRecvError,
     time::{Duration, Instant},
 };
 
@@ -15,20 +14,21 @@ use crate::platform::restore_window_placement;
 
 use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
-    archive::{ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
+    archive::ArchiveTaskEvent,
     config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
         sorting::SortDirection,
-        PanelLocation,
     },
     fs::{
-        operations::{start_operation, OperationHandle},
         watcher::{start_file_watcher, WatchCommand, WatchEvent},
     },
     platform::{assets::asset_path, current_window_placement, ContextMenuRequest},
+    presentation,
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
+        navigation::{self, NavigationRequest, SelectedNavigation},
+        operations::{self, ActiveOperationHandle, PreparedOperation, StartedOperation},
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
     },
 };
@@ -48,48 +48,6 @@ pub struct MainWindow {
     watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
-}
-
-struct DirectoryLoadResult {
-    panel: ActivePanel,
-    next_location: PanelLocation,
-    entries: Vec<crate::domain::Entry>,
-    status: String,
-}
-
-fn load_entries_for_location(
-    archive_service: &crate::archive::ArchiveService,
-    location: &PanelLocation,
-    show_hidden_files: bool,
-) -> Result<Vec<crate::domain::Entry>, crate::archive::ArchiveError> {
-    match location {
-        PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path, show_hidden_files)
-            .map_err(|error| crate::archive::ArchiveError::IoError {
-                detail: error.to_string(),
-            }),
-        PanelLocation::Archive(_) => archive_service.entries_for_location(location),
-    }
-}
-
-#[derive(Clone)]
-enum ActiveOperationHandle {
-    File(OperationHandle),
-    Archive(ArchiveTaskHandle),
-}
-
-impl ActiveOperationHandle {
-    fn cancel(&self) {
-        match self {
-            Self::File(handle) => handle.cancel(),
-            Self::Archive(handle) => handle.cancel(),
-        }
-    }
-
-    fn resolve_conflict(&self, resolution: crate::domain::operation::ConflictResolution) {
-        if let Self::File(handle) = self {
-            handle.resolve_conflict(resolution);
-        }
-    }
 }
 
 impl MainWindow {
@@ -572,150 +530,42 @@ impl MainWindow {
     }
 
     fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
-        let selected = {
+        let request = {
             let commander = self.commander.borrow();
-            commander.state().panel(panel).selected_item()
+            navigation::selected_navigation_request(&commander, panel)
         };
 
-        let Some(selected) = selected else {
-            self.run_command(|commander| commander.activate_selected(panel));
-            return;
-        };
-
-        if selected.is_parent_link {
-            let next_location = {
-                let commander = self.commander.borrow();
-                commander.state().panel(panel).location.parent()
-            };
-            if let Some(next_location) = next_location {
-                let status =
-                    t!("status.up_one_level", path = next_location.display_label()).into_owned();
-                self.start_directory_load(
-                    panel,
-                    next_location,
-                    status,
-                    &t!("status.loading_parent_directory"),
-                );
+        match request {
+            SelectedNavigation::Load(request) => self.start_directory_load(request),
+            SelectedNavigation::Activate => {
+                self.run_command(|commander| commander.activate_selected(panel));
             }
         }
-
-        if selected.is_dir {
-            let status =
-                t!("status.opened", path = selected.path.display().to_string()).into_owned();
-            let next_location = {
-                let commander = self.commander.borrow();
-                match commander.state().panel(panel).location.clone() {
-                    PanelLocation::Filesystem(_) => PanelLocation::filesystem(selected.path),
-                    PanelLocation::Archive(view) => {
-                        let Some(archive_path) = selected.archive_path else {
-                            return;
-                        };
-                        PanelLocation::archive(view.session, archive_path)
-                    }
-                }
-            };
-            self.start_directory_load(
-                panel,
-                next_location,
-                status,
-                &t!("status.loading_directory"),
-            );
-            return;
-        }
-
-        if selected.archive_path.is_none()
-            && self
-                .commander
-                .borrow()
-                .archive_service()
-                .is_archive_path(&selected.path)
-        {
-            let status = t!(
-                "status.opened_archive",
-                path = selected.path.display().to_string()
-            )
-            .into_owned();
-            self.start_directory_load(
-                panel,
-                PanelLocation::filesystem(selected.path),
-                status,
-                &t!("status.opening_archive"),
-            );
-            return;
-        }
-
-        self.run_command(|commander| commander.activate_selected(panel));
     }
 
     fn start_root_navigation(self: &Rc<Self>, panel: ActivePanel, index: usize) {
-        let target_path = {
+        let request = {
             let commander = self.commander.borrow();
-            commander
-                .state()
-                .roots
-                .get(index)
-                .map(|root| root.path.clone())
+            navigation::root_navigation_request(&commander, panel, index)
         };
 
-        let Some(target_path) = target_path else {
+        let Some(request) = request else {
             return;
         };
 
-        let status = t!(
-            "status.switched_panel",
-            panel = panel.label(),
-            path = target_path.display().to_string()
-        )
-        .into_owned();
-        self.start_directory_load(
-            panel,
-            PanelLocation::filesystem(target_path),
-            status,
-            &t!("status.loading_drive"),
-        );
+        self.start_directory_load(request);
     }
 
-    fn start_directory_load(
-        self: &Rc<Self>,
-        panel: ActivePanel,
-        next_location: PanelLocation,
-        status: String,
-        busy_message: &str,
-    ) {
+    fn start_directory_load(self: &Rc<Self>, request: NavigationRequest) {
         if self.navigation_busy.get() || self.active_operation.borrow().is_some() {
             return;
         }
 
-        self.set_navigation_busy(true, busy_message);
+        self.set_navigation_busy(true, &request.busy_message);
 
-        let (tx, rx) = mpsc::channel();
-        let worker_location = next_location.clone();
-        let worker_status = status.clone();
         let archive_service = self.commander.borrow().archive_service();
         let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
-        thread::spawn(move || {
-            let actual_location = match &worker_location {
-                PanelLocation::Filesystem(path)
-                    if archive_service.is_archive_path(path) && path.is_file() =>
-                {
-                    archive_service.archive_location_for_path(path)
-                }
-                _ => Ok(worker_location.clone()),
-            };
-            let result = actual_location
-                .and_then(|location| {
-                    load_entries_for_location(&archive_service, &location, show_hidden_files).map(
-                        |entries| DirectoryLoadResult {
-                            panel,
-                            next_location: location,
-                            entries,
-                            status: worker_status,
-                        },
-                    )
-                })
-                .map_err(|error| error.to_string());
-            let _ = tx.send(result);
-        });
+        let rx = navigation::spawn_directory_load(request, archive_service, show_hidden_files);
 
         let this = Rc::clone(self);
         glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
@@ -784,9 +634,12 @@ impl MainWindow {
             return;
         }
 
-        let is_delete = matches!(kind, FileOperationKind::Delete);
-        let request = match self.commander.borrow().operation_request(kind) {
-            Ok(request) => request,
+        let prepared = match operations::prepare_operation(
+            &self.commander.borrow(),
+            &self.app_config_cache.borrow().file_operations,
+            kind,
+        ) {
+            Ok(prepared) => prepared,
             Err(error) => {
                 dialogs::show_error(
                     &self.window,
@@ -797,38 +650,62 @@ impl MainWindow {
             }
         };
 
-        if is_delete
-            && !self
-                .app_config_cache
-                .borrow()
-                .file_operations
-                .confirm_delete
-        {
-            self.start_file_operation(request);
-            return;
+        match prepared {
+            PreparedOperation::Start(request) => self.start_file_operation(request),
+            PreparedOperation::Confirm(request) => {
+                let this = Rc::clone(self);
+                dialogs::confirm_operation(&self.window, request, move |request| {
+                    this.start_file_operation(request);
+                });
+            }
         }
-
-        let this = Rc::clone(self);
-        dialogs::confirm_operation(&self.window, request, move |request| {
-            this.start_file_operation(request);
-        });
     }
 
     fn start_file_operation(self: &Rc<Self>, request: FileOperationRequest) {
-        if request.archive_source.is_some() {
-            self.start_archive_extract_operation(request);
-            return;
+        let started = match operations::start_operation_task(&self.commander.borrow(), request) {
+            Ok(started) => started,
+            Err(error) => {
+                dialogs::show_error(
+                    &self.window,
+                    &t!("error.operation_unavailable"),
+                    &error.to_string(),
+                );
+                return;
+            }
+        };
+
+        match started {
+            StartedOperation::File {
+                handle,
+                receiver,
+                request,
+            } => {
+                self.active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::File(handle.clone()));
+                self.poll_file_operation(request, receiver);
+            }
+            StartedOperation::Archive { handle, receiver } => {
+                self.active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::Archive(handle.clone()));
+                self.poll_archive_extract_operation(receiver);
+            }
         }
+    }
 
-        let (handle, receiver) = start_operation(request.clone());
-        self.active_operation
-            .borrow_mut()
-            .replace(ActiveOperationHandle::File(handle.clone()));
-
+    fn poll_file_operation(
+        self: &Rc<Self>,
+        request: FileOperationRequest,
+        receiver: std::sync::mpsc::Receiver<OperationEvent>,
+    ) {
         let active_operation = Rc::clone(&self.active_operation);
         let progress_dialog = dialogs::ProgressDialog::new(
             &self.window,
-            &t!("progress.operation_title", kind = request.kind.label()),
+            &t!(
+                "progress.operation_title",
+                kind = presentation::file_operation_label(&request.kind)
+            ),
             move || {
                 if let Some(handle) = active_operation.borrow().as_ref() {
                     handle.cancel();
@@ -849,7 +726,7 @@ impl MainWindow {
                             commander.set_status(
                                 t!(
                                     "status.operation_current_item",
-                                    kind = snapshot.kind.label(),
+                                    kind = presentation::file_operation_label(&snapshot.kind),
                                     item = snapshot.current_item.as_str()
                                 )
                                 .into_owned(),
@@ -884,7 +761,7 @@ impl MainWindow {
                         this.active_operation.borrow_mut().take();
                         let status = t!(
                             "status.operation_completed",
-                            kind = summary.kind.label(),
+                            kind = presentation::file_operation_label(&summary.kind),
                             count = summary.total_entries,
                             size = crate::fs::reader::format_bytes(summary.total_bytes),
                             seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
@@ -903,7 +780,7 @@ impl MainWindow {
                         this.active_operation.borrow_mut().take();
                         let status = t!(
                             "status.operation_cancelled",
-                            kind = summary.kind.label(),
+                            kind = presentation::file_operation_label(&summary.kind),
                             count = summary.total_entries,
                             size = crate::fs::reader::format_bytes(summary.total_bytes)
                         )
@@ -945,29 +822,10 @@ impl MainWindow {
         });
     }
 
-    fn start_archive_extract_operation(self: &Rc<Self>, request: FileOperationRequest) {
-        let Some(archive_source) = request.archive_source.clone() else {
-            return;
-        };
-        let Some(target_dir) = request.target_directory.clone() else {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.archive_copy_unavailable"),
-                &t!("error.no_filesystem_target_directory"),
-            );
-            return;
-        };
-
-        let archive_service = self.commander.borrow().archive_service();
-        let (handle, receiver) = archive_service.start_task(ArchiveTaskRequest::ExtractSelection {
-            session: archive_source.session,
-            entry_paths: archive_source.entry_paths,
-            target_dir,
-        });
-        self.active_operation
-            .borrow_mut()
-            .replace(ActiveOperationHandle::Archive(handle.clone()));
-
+    fn poll_archive_extract_operation(
+        self: &Rc<Self>,
+        receiver: std::sync::mpsc::Receiver<ArchiveTaskEvent>,
+    ) {
         let active_operation = Rc::clone(&self.active_operation);
         let progress_dialog =
             dialogs::ProgressDialog::new(&self.window, &t!("progress.archive_copy"), move || {
@@ -1254,7 +1112,8 @@ impl MainWindow {
             self.commander_view.apply_active_panel(state.active_panel);
         }
         if update.status || update.selection || update.active_panel {
-            self.status_label.set_label(&state.status_line());
+            self.status_label
+                .set_label(&presentation::status_line(state));
         }
 
         self.terminal_dock
@@ -1405,7 +1264,7 @@ impl MainWindow {
             self.status_label.set_label(message);
         } else {
             self.status_label
-                .set_label(&self.commander.borrow().state().status_line());
+                .set_label(&presentation::status_line(self.commander.borrow().state()));
         }
     }
 

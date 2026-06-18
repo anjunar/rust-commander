@@ -1,7 +1,5 @@
 use std::{path::PathBuf, time::SystemTime};
 
-use rust_i18n::t;
-
 use crate::domain::panel_location::PanelLocation;
 
 #[derive(Clone, Debug)]
@@ -19,14 +17,14 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn parent_link() -> Self {
+    pub fn parent_link(type_label: impl Into<String>) -> Self {
         Self {
             name: "..".into(),
             archive_path: None,
             is_dir: true,
             size_bytes: 0,
             size_label: "-".into(),
-            type_label: t!("entry.parent").into_owned(),
+            type_label: type_label.into(),
             modified_at: None,
             modified_label: String::new(),
             attributes_label: "UP".into(),

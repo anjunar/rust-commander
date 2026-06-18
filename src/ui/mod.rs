@@ -7,6 +7,8 @@ pub mod file_row_object;
 pub mod file_viewer_dialog;
 pub mod gtk_app;
 pub mod main_window;
+pub mod navigation;
+pub mod operations;
 pub mod shortcuts;
 pub mod terminal_controller;
 pub mod terminal_dock;
