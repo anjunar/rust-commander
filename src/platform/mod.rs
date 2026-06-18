@@ -29,3 +29,5 @@ pub use windows::available_roots;
 
 #[cfg(not(target_os = "windows"))]
 pub use unix::available_roots;
+#[cfg(not(target_os = "windows"))]
+pub use unix::{chmod_paths, chown_paths};

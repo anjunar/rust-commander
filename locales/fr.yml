@@ -27,6 +27,8 @@ operation:
 common:
   close: Fermer
   cancel: Annuler
+  apply: Appliquer
+  open: Ouvrir
   rename: Renommer
   create: Creer
   save: Enregistrer
@@ -46,6 +48,14 @@ command:
   delete: F8 Supprimer
   terminal: F9 Terminal
   quit: F10 Quitter
+
+context:
+  open: Ouvrir
+  view: Voir
+  edit: Modifier
+  rename: Renommer
+  delete: Supprimer
+  open_terminal: Ouvrir le terminal
 
 settings:
   title: Parametres de l'application
@@ -83,6 +93,13 @@ dialog:
   rename_prompt: "Saisissez un nouveau nom :"
   mkdir_title: Creer un dossier
   mkdir_prompt: "Saisissez un nom pour le nouveau dossier :"
+  chmod_title: Chmod
+  chmod_prompt: "Definir le mode du fichier :"
+  chmod_placeholder: "Exemple : 755 ou u+rwX"
+  chown_title: Chown
+  chown_prompt: "Definir proprietaire ou proprietaire:groupe :"
+  chown_placeholder: "Exemple : root:users"
+  recursive_apply: Appliquer recursivement
   conflict_title: "Conflit de %{kind}"
   conflict_detail: "La cible existe deja.\n\nSource : %{source}\nCible : %{target}"
 
@@ -137,6 +154,7 @@ terminal:
   title: Terminal
   restart: Redemarrer
   title_windows_pending: Terminal (backend Windows en attente)
+  title_unsupported: Terminal (backend indisponible sur cette plateforme)
   panel_path: "Chemin du panneau : %{path}"
   unsupported_path_chars: "Le repertoire du terminal contient des caracteres non pris en charge : %{path}"
   windows_placeholder_title: Le terminal integre est actuellement disponible sur les builds Linux avec VTE.
@@ -181,6 +199,8 @@ status:
   archive_copy_cancelled: Copie d'archive annulee.
   archive_copy_failed: "Echec de la copie d'archive : %{error}"
   command_failed: "Commande echouee : %{error}"
+  permissions_updated: "Mode %{mode} applique a %{count} element(s)."
+  owner_updated: "Proprietaire %{owner} applique a %{count} element(s)."
 
 error:
   no_entry_selected: Aucune entree n'est selectionnee.

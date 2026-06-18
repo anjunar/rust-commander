@@ -7,9 +7,9 @@ use std::{
 use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 use gtk::{gio, pango};
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 use vte4::prelude::*;
 
 use crate::ui::terminal_state::TerminalState;
@@ -124,20 +124,20 @@ impl TerminalController {
 }
 
 enum TerminalBackend {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     Vte(LinuxTerminalBackend),
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     Unsupported(UnsupportedTerminalBackend),
 }
 
 impl TerminalBackend {
     fn new(state: Rc<RefCell<TerminalState>>) -> Self {
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
         {
             Self::Vte(LinuxTerminalBackend::new(state))
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             Self::Unsupported(UnsupportedTerminalBackend::new(state))
         }
@@ -145,45 +145,45 @@ impl TerminalBackend {
 
     fn widget(&self) -> gtk::Widget {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.widget.clone().upcast(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.widget.clone().upcast(),
         }
     }
 
     fn is_supported(&self) -> bool {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(_) => true,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(_) => false,
         }
     }
 
     fn spawn(&self, working_dir: &Path) -> Result<(), String> {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.spawn(working_dir),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.spawn(working_dir),
         }
     }
 
     fn clear(&self) {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.clear(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.clear(),
         }
     }
 
     fn grab_focus(&self) {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.grab_focus(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.grab_focus(),
         }
     }
@@ -193,30 +193,30 @@ impl TerminalBackend {
         F: Fn() + 'static,
     {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.connect_escape(f),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.connect_escape(f),
         }
     }
 
     fn has_focus(&self) -> bool {
         match self {
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.has_focus(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Self::Unsupported(backend) => backend.has_focus(),
         }
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 struct LinuxTerminalBackend {
     widget: vte4::Terminal,
     state: Rc<RefCell<TerminalState>>,
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 impl LinuxTerminalBackend {
     fn new(state: Rc<RefCell<TerminalState>>) -> Self {
         let widget = vte4::Terminal::new();
@@ -349,14 +349,14 @@ impl LinuxTerminalBackend {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 struct UnsupportedTerminalBackend {
     widget: gtk::Box,
     description: gtk::Label,
     state: Rc<RefCell<TerminalState>>,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 impl UnsupportedTerminalBackend {
     fn new(state: Rc<RefCell<TerminalState>>) -> Self {
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 12);

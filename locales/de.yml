@@ -27,6 +27,8 @@ operation:
 common:
   close: Schliessen
   cancel: Abbrechen
+  apply: Anwenden
+  open: Oeffnen
   rename: Umbenennen
   create: Erstellen
   save: Speichern
@@ -46,6 +48,14 @@ command:
   delete: F8 Loeschen
   terminal: F9 Terminal
   quit: F10 Beenden
+
+context:
+  open: Oeffnen
+  view: Anzeigen
+  edit: Bearbeiten
+  rename: Umbenennen
+  delete: Loeschen
+  open_terminal: Terminal oeffnen
 
 settings:
   title: Anwendungseinstellungen
@@ -83,6 +93,13 @@ dialog:
   rename_prompt: "Neuen Namen eingeben:"
   mkdir_title: Ordner erstellen
   mkdir_prompt: "Namen fuer den neuen Ordner eingeben:"
+  chmod_title: Chmod
+  chmod_prompt: "Dateimodus setzen:"
+  chmod_placeholder: "Beispiel: 755 oder u+rwX"
+  chown_title: Chown
+  chown_prompt: "Besitzer oder Besitzer:Gruppe setzen:"
+  chown_placeholder: "Beispiel: root:users"
+  recursive_apply: Rekursiv anwenden
   conflict_title: "%{kind}-Konflikt"
   conflict_detail: "Das Ziel existiert bereits.\n\nQuelle: %{source}\nZiel: %{target}"
 
@@ -137,6 +154,7 @@ terminal:
   title: Terminal
   restart: Neustart
   title_windows_pending: Terminal (Windows-Backend ausstehend)
+  title_unsupported: Terminal (Backend auf dieser Plattform nicht verfuegbar)
   panel_path: "Panel-Pfad: %{path}"
   unsupported_path_chars: "Das Terminalverzeichnis enthaelt nicht unterstuetzte Zeichen: %{path}"
   windows_placeholder_title: Das eingebettete Terminal ist derzeit auf Linux-Builds mit VTE verfuegbar.
@@ -181,6 +199,8 @@ status:
   archive_copy_cancelled: Archivkopie abgebrochen.
   archive_copy_failed: "Archivkopie fehlgeschlagen: %{error}"
   command_failed: "Befehl fehlgeschlagen: %{error}"
+  permissions_updated: "Modus fuer %{count} Element(e) auf %{mode} gesetzt."
+  owner_updated: "Besitzer fuer %{count} Element(e) auf %{owner} gesetzt."
 
 error:
   no_entry_selected: Kein Eintrag ist ausgewaehlt.

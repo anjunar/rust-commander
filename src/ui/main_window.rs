@@ -54,6 +54,7 @@ pub struct MainWindow {
     load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
+    unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
 impl MainWindow {
@@ -142,6 +143,7 @@ impl MainWindow {
             load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
+            unix_context_menu: Rc::new(RefCell::new(None)),
         });
 
         this.apply_update(ViewUpdate::all());
@@ -184,6 +186,7 @@ impl MainWindow {
         }
         this.restore_window_geometry(window_config);
         this.initialize_split_positions();
+        this.queue_initial_panel_loads();
 
         this
     }
@@ -240,10 +243,10 @@ impl MainWindow {
 
             {
                 let this = Rc::clone(self);
-                panel_view.connect_secondary_click(move |clicked_index| {
+                panel_view.connect_secondary_click(move |clicked_index, x, y| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
-                        this.handle_panel_context_menu(panel, clicked_index);
+                        this.handle_panel_context_menu(panel, clicked_index, x, y);
                     });
                 });
             }
@@ -503,6 +506,8 @@ impl MainWindow {
         self: &Rc<Self>,
         panel: ActivePanel,
         clicked_index: Option<usize>,
+        x: f64,
+        y: f64,
     ) {
         let (request, update) = {
             let mut commander = self.commander.borrow_mut();
@@ -545,12 +550,159 @@ impl MainWindow {
 
         self.apply_update(update);
 
-        if let Err(error) = crate::platform::show_context_menu(&request) {
-            self.show_command_failed(error);
-            return;
+        #[cfg(target_os = "windows")]
+        {
+            if let Err(error) = crate::platform::show_context_menu(&request) {
+                self.show_command_failed(error);
+                return;
+            }
+
+            self.queue_async_refresh_panels(&[panel], t!("status.view_refreshed").into_owned());
         }
 
-        self.queue_async_refresh_panels(&[panel], t!("status.view_refreshed").into_owned());
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.show_unix_context_menu(panel, request, x, y);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn show_unix_context_menu(
+        self: &Rc<Self>,
+        panel: ActivePanel,
+        request: ContextMenuRequest,
+        x: f64,
+        y: f64,
+    ) {
+        self.close_unix_context_menu();
+
+        let panel_view = self.commander_view.panel(panel);
+        let popover = gtk::Popover::new();
+        popover.set_has_arrow(false);
+        popover.set_autohide(true);
+        popover.set_parent(&panel_view.root);
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.set_margin_top(6);
+        content.set_margin_bottom(6);
+        content.set_margin_start(6);
+        content.set_margin_end(6);
+
+        if request.selected_paths.len() == 1 {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("common.open"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_open_active();
+            });
+            content.append(&button);
+        }
+
+        if request.selected_paths.len() == 1 {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("common.rename"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_rename();
+            });
+            content.append(&button);
+        }
+
+        if !request.selected_paths.is_empty() {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.copy"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_copy();
+            });
+            content.append(&button);
+
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.move"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_move();
+            });
+            content.append(&button);
+
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.delete"));
+            button.add_css_class("destructive-action");
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_delete();
+            });
+            content.append(&button);
+        }
+
+        {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("command.mkdir"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_make_directory();
+            });
+            content.append(&button);
+        }
+
+        if !request.selected_paths.is_empty() {
+            content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+            let chmod_paths = request.selected_paths.clone();
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("dialog.chmod_title"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_unix_chmod(chmod_paths.clone());
+            });
+            content.append(&button);
+
+            let chown_paths = request.selected_paths.clone();
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("dialog.chown_title"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_unix_chown(chown_paths.clone());
+            });
+            content.append(&button);
+        }
+
+        popover.set_child(Some(&content));
+        popover.popup();
+        self.unix_context_menu.replace(Some(popover));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn close_unix_context_menu(&self) {
+        if let Some(popover) = self.unix_context_menu.borrow_mut().take() {
+            popover.popdown();
+            popover.unparent();
+        }
     }
 
     fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {
@@ -700,6 +852,14 @@ impl MainWindow {
                 vertical.set_position(vertical_height / 2);
             }
         });
+    }
+
+    fn queue_initial_panel_loads(self: &Rc<Self>) {
+        self.load_scheduler.borrow_mut().queue_refresh(
+            &[ActivePanel::Left, ActivePanel::Right],
+            t!("status.view_refreshed").into_owned(),
+        );
+        self.refresh_dirty_panels_if_idle();
     }
 
     fn refresh_localized_labels(&self) {

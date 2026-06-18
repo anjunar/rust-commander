@@ -179,8 +179,12 @@ impl TerminalDock {
             let cwd = self.controller.current_working_dir();
             self.cwd_label.set_label(&cwd.display().to_string());
         } else {
+            #[cfg(target_os = "windows")]
             self.title_label
                 .set_label(&t!("terminal.title_windows_pending"));
+            #[cfg(target_os = "macos")]
+            self.title_label
+                .set_label(&t!("terminal.title_unsupported"));
             let cwd = self.state().borrow().last_panel_dir.clone();
             self.cwd_label
                 .set_label(&t!("terminal.panel_path", path = cwd.display().to_string()));

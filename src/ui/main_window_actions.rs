@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{path::PathBuf, rc::Rc};
 
 use gtk::prelude::*;
 use rust_i18n::t;
@@ -328,6 +328,75 @@ impl MainWindow {
 
     pub fn handle_delete(self: &Rc<Self>) {
         self.handle_operation(FileOperationKind::Delete);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn handle_unix_chmod(self: &Rc<Self>, selected_paths: Vec<PathBuf>) {
+        let this = Rc::clone(self);
+        dialogs::prompt_unix_chmod(
+            &self.window,
+            selected_paths.clone(),
+            move |mode, recursive| {
+                if let Err(error) = crate::platform::chmod_paths(&selected_paths, &mode, recursive)
+                {
+                    this.show_command_failed(error);
+                    return;
+                }
+
+                this.set_status_message(
+                    t!(
+                        "status.permissions_updated",
+                        count = selected_paths.len(),
+                        mode = mode.trim()
+                    )
+                    .into_owned(),
+                );
+                this.queue_async_refresh_for_paths(
+                    &selected_paths,
+                    t!(
+                        "status.permissions_updated",
+                        count = selected_paths.len(),
+                        mode = mode.trim()
+                    )
+                    .into_owned(),
+                );
+            },
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn handle_unix_chown(self: &Rc<Self>, selected_paths: Vec<PathBuf>) {
+        let this = Rc::clone(self);
+        dialogs::prompt_unix_chown(
+            &self.window,
+            selected_paths.clone(),
+            move |owner_spec, recursive| {
+                if let Err(error) =
+                    crate::platform::chown_paths(&selected_paths, &owner_spec, recursive)
+                {
+                    this.show_command_failed(error);
+                    return;
+                }
+
+                this.set_status_message(
+                    t!(
+                        "status.owner_updated",
+                        count = selected_paths.len(),
+                        owner = owner_spec.trim()
+                    )
+                    .into_owned(),
+                );
+                this.queue_async_refresh_for_paths(
+                    &selected_paths,
+                    t!(
+                        "status.owner_updated",
+                        count = selected_paths.len(),
+                        owner = owner_spec.trim()
+                    )
+                    .into_owned(),
+                );
+            },
+        );
     }
 
     pub fn handle_make_directory(self: &Rc<Self>) {

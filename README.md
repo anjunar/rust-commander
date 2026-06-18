@@ -85,6 +85,8 @@ You need a working Rust toolchain and GTK4 development files.
 
 On Windows, make sure the GTK4 runtime and development files are installed and visible to `pkg-config` before building from source.
 
+On macOS, install the MacPorts GTK stack and packaging tools before building from source.
+
 On Linux, install the GTK4 and VTE development packages provided by your distribution.
 
 ### Build from Source
@@ -151,6 +153,46 @@ Then build and run normally:
 ```bash
 cargo check
 cargo run
+```
+
+## macOS Notes
+
+On macOS, the desktop UI uses GTK4 and GtkSourceView from MacPorts. The terminal dock is currently packaged as unavailable on macOS; the rest of the application remains native GTK.
+
+### MacPorts Setup
+
+Install the required build and runtime packages:
+
+```bash
+sudo port install \
+  pkgconfig \
+  gtk4 \
+  gtksourceview5 \
+  adwaita-icon-theme \
+  unrar
+```
+
+Then build and run normally:
+
+```bash
+cargo check
+cargo run
+```
+
+### macOS Distribution
+
+The macOS packaging scripts stage the `.app` bundle and final `.dmg` under `target/packages/`.
+
+Create the staged app bundle:
+
+```bash
+./packaging/macos/stage-runtime.sh
+```
+
+Create the distributable DMG:
+
+```bash
+./packaging/macos/build-dmg.sh
 ```
 
 ## Archive Support

@@ -11,7 +11,7 @@ use crate::{
         sorting::{SortColumn, SortDirection},
         Entry, Panel, PanelLocation,
     },
-    fs::reader::{read_entries, rename_path},
+    fs::reader::rename_path,
     platform, presentation,
 };
 
@@ -29,12 +29,12 @@ impl Commander {
     ) -> Result<Self> {
         let left = Panel::new(
             PanelLocation::filesystem(left_initial_path.clone()),
-            read_entries(&left_initial_path, panel_settings.show_hidden_files)?,
+            Vec::new(),
             panel_settings.folders_first,
         );
         let right = Panel::new(
             PanelLocation::filesystem(right_initial_path.clone()),
-            read_entries(&right_initial_path, panel_settings.show_hidden_files)?,
+            Vec::new(),
             panel_settings.folders_first,
         );
         let roots = platform::available_roots();
