@@ -194,10 +194,8 @@ impl Panel {
             return;
         };
 
-        self.selected_history.insert(
-            self.location.history_key(),
-            entry.key(),
-        );
+        self.selected_history
+            .insert(self.location.history_key(), entry.key());
     }
 
     fn preserved_selection(&self) -> PreservedSelection {
@@ -298,7 +296,10 @@ mod tests {
         assert_eq!(selected, vec!["beta".to_string(), "delta".to_string()]);
         assert_eq!(panel.selected_entry().unwrap().name, "delta");
         assert_eq!(panel.selection.focus_index(), Some(2));
-        assert_eq!(panel.selection.anchor_index(), panel.selection.focus_index());
+        assert_eq!(
+            panel.selection.anchor_index(),
+            panel.selection.focus_index()
+        );
     }
 
     #[test]

@@ -9,8 +9,7 @@ use crate::{
         ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict,
     },
     fs::{operations::progress_percent, reader::format_bytes},
-    i18n,
-    presentation,
+    i18n, presentation,
 };
 
 pub(crate) struct ModalWindow {
@@ -624,12 +623,10 @@ impl ProgressDialog {
 
     pub fn update_progress(&self, snapshot: &crate::domain::operation::OperationSnapshot) {
         let fraction = progress_percent(snapshot);
-        self.title.set_label(
-            &t!(
-                "progress.in_progress",
-                kind = presentation::file_operation_label(&snapshot.kind)
-            ),
-        );
+        self.title.set_label(&t!(
+            "progress.in_progress",
+            kind = presentation::file_operation_label(&snapshot.kind)
+        ));
         self.detail.set_label(&t!(
             "progress.file_operation_detail",
             processed = format_bytes(snapshot.processed_bytes),

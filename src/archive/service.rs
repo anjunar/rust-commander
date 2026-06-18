@@ -284,7 +284,10 @@ impl ArchiveService {
         let mut entries = entries_by_name.into_values().collect::<Vec<_>>();
         entries.sort_by_key(|a| a.name.to_lowercase());
         if session.cached_entries().iter().any(|_| true) {
-            entries.insert(0, Entry::parent_link(presentation::parent_entry_type_label()));
+            entries.insert(
+                0,
+                Entry::parent_link(presentation::parent_entry_type_label()),
+            );
         }
         entries
     }

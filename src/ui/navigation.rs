@@ -11,8 +11,13 @@ use crate::{
 
 pub enum SelectedNavigation {
     Load(NavigationRequest),
-    OpenPath { path: std::path::PathBuf, status: String },
-    Unsupported { message: String },
+    OpenPath {
+        path: std::path::PathBuf,
+        status: String,
+    },
+    Unsupported {
+        message: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -98,8 +103,11 @@ pub fn selected_navigation_request(
             panel,
             generation: 0,
             action: LoadAction::Navigate,
-            status: t!("status.opened_archive", path = selected.path.display().to_string())
-                .into_owned(),
+            status: t!(
+                "status.opened_archive",
+                path = selected.path.display().to_string()
+            )
+            .into_owned(),
             next_location: PanelLocation::filesystem(selected.path),
             busy_message: t!("status.opening_archive").into_owned(),
         });
@@ -142,7 +150,11 @@ pub fn root_navigation_request(
     })
 }
 
-pub fn refresh_request(commander: &Commander, panel: ActivePanel, status: String) -> NavigationRequest {
+pub fn refresh_request(
+    commander: &Commander,
+    panel: ActivePanel,
+    status: String,
+) -> NavigationRequest {
     NavigationRequest {
         panel,
         generation: 0,

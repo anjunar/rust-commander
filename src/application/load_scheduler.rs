@@ -1,7 +1,4 @@
-use crate::{
-    application::ActivePanel,
-    ui::navigation::NavigationRequest,
-};
+use crate::{application::ActivePanel, ui::navigation::NavigationRequest};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct PanelLoadRuntime {
@@ -74,10 +71,7 @@ impl LoadScheduler {
     }
 }
 
-fn panel_runtime_mut(
-    scheduler: &mut LoadScheduler,
-    panel: ActivePanel,
-) -> &mut PanelLoadRuntime {
+fn panel_runtime_mut(scheduler: &mut LoadScheduler, panel: ActivePanel) -> &mut PanelLoadRuntime {
     match panel {
         ActivePanel::Left => &mut scheduler.left,
         ActivePanel::Right => &mut scheduler.right,

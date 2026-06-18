@@ -12,8 +12,7 @@ use crate::{
         Entry, Panel, PanelLocation,
     },
     fs::reader::{read_entries, rename_path},
-    platform,
-    presentation,
+    platform, presentation,
 };
 
 pub struct Commander {

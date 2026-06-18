@@ -37,7 +37,10 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
     }
 
     if path.parent().is_some() {
-        entries.insert(0, Entry::parent_link(presentation::parent_entry_type_label()));
+        entries.insert(
+            0,
+            Entry::parent_link(presentation::parent_entry_type_label()),
+        );
     }
 
     Ok(entries)

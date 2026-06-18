@@ -9,6 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::platform::context_menu::ContextMenuRequest;
 
 use crate::domain::roots::RootLocation;
+use crate::platform::assets::asset_path;
 
 pub fn available_roots() -> Vec<RootLocation> {
     let mut roots = Vec::new();
@@ -79,6 +80,48 @@ pub fn open_console(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn apply_runtime_window_icon(window_title: &str) -> Result<()> {
+    use std::ffi::OsStr;
+
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        FindWindowW, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_LOADFROMFILE,
+        WM_SETICON,
+    };
+
+    let title_w = to_wide(OsStr::new(window_title));
+    let hwnd = unsafe { FindWindowW(std::ptr::null(), title_w.as_ptr()) };
+    if hwnd.is_null() {
+        return Ok(());
+    }
+
+    let ico_path = asset_path("assets/icons/app_icon.ico");
+    if !ico_path.exists() {
+        return Ok(());
+    }
+
+    let wide = to_wide(ico_path.as_os_str());
+    let hicon = unsafe {
+        LoadImageW(
+            std::ptr::null_mut(),
+            wide.as_ptr(),
+            IMAGE_ICON,
+            0,
+            0,
+            LR_LOADFROMFILE,
+        )
+    };
+    if hicon.is_null() {
+        return Ok(());
+    }
+
+    unsafe {
+        let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_BIG as usize, hicon as isize);
+        let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_SMALL as usize, hicon as isize);
+    }
+
+    Ok(())
+}
+
 pub fn show_context_menu(request: &ContextMenuRequest) -> Result<()> {
     use anyhow::bail;
     use windows::Win32::System::Com::{
@@ -99,11 +142,7 @@ pub fn show_context_menu(request: &ContextMenuRequest) -> Result<()> {
     }
 
     unsafe {
-        CoInitializeEx(
-            None,
-            COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE,
-        )
-        .ok()?;
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).ok()?;
     }
 
     let result = unsafe { show_context_menu_impl(request) };
@@ -126,13 +165,13 @@ unsafe fn show_context_menu_impl(request: &ContextMenuRequest) -> Result<()> {
             System::Com::CoTaskMemFree,
             UI::{
                 Shell::{
-                    IContextMenu, IShellFolder, SEE_MASK_UNICODE, CMINVOKECOMMANDINFOEX,
-                    CMF_NORMAL, SHBindToParent, SHParseDisplayName,
+                    IContextMenu, IShellFolder, SHBindToParent, SHParseDisplayName, CMF_NORMAL,
+                    CMINVOKECOMMANDINFOEX, SEE_MASK_UNICODE,
                 },
                 WindowsAndMessaging::{
-                    CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow,
-                    PostMessageW, SetForegroundWindow, TPM_LEFTALIGN, TPM_RETURNCMD,
-                    TPM_RIGHTBUTTON, TrackPopupMenu, WM_NULL,
+                    CreatePopupMenu, DestroyMenu, GetCursorPos, GetForegroundWindow, PostMessageW,
+                    SetForegroundWindow, TrackPopupMenu, TPM_LEFTALIGN, TPM_RETURNCMD,
+                    TPM_RIGHTBUTTON, WM_NULL,
                 },
             },
         },
@@ -160,8 +199,10 @@ unsafe fn show_context_menu_impl(request: &ContextMenuRequest) -> Result<()> {
                 .with_context(|| format!("Could not resolve {}", path.display()))?;
 
             let mut child_relative = null_mut();
-            let bound_parent: IShellFolder = SHBindToParent(absolute_pidl, Some(&mut child_relative))
-                .with_context(|| format!("Could not bind shell parent for {}", path.display()))?;
+            let bound_parent: IShellFolder =
+                SHBindToParent(absolute_pidl, Some(&mut child_relative)).with_context(|| {
+                    format!("Could not bind shell parent for {}", path.display())
+                })?;
 
             if parent_folder.is_none() {
                 parent_folder = Some(bound_parent);

@@ -101,11 +101,19 @@ mod tests {
         let previous = PanelSelection::single(Some(EntryKey::FilesystemName("missing".into())));
         let history_cursor = EntryKey::FilesystemName("gamma".into());
 
-        let restored =
-            restore_panel_selection(&previous, Some(&history_cursor), &[entry("alpha"), entry("gamma")]);
+        let restored = restore_panel_selection(
+            &previous,
+            Some(&history_cursor),
+            &[entry("alpha"), entry("gamma")],
+        );
 
         assert_eq!(restored.cursor, Some(history_cursor));
-        assert_eq!(restored.selected, [EntryKey::FilesystemName("gamma".into())].into_iter().collect());
+        assert_eq!(
+            restored.selected,
+            [EntryKey::FilesystemName("gamma".into())]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]
@@ -118,7 +126,10 @@ mod tests {
         );
 
         assert_eq!(restored.cursor, Some(EntryKey::ParentLink));
-        assert_eq!(restored.selected, [EntryKey::ParentLink].into_iter().collect());
+        assert_eq!(
+            restored.selected,
+            [EntryKey::ParentLink].into_iter().collect()
+        );
     }
 
     fn entry(name: &str) -> Entry {
@@ -136,4 +147,3 @@ mod tests {
         }
     }
 }
-

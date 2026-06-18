@@ -6,7 +6,9 @@ use crate::{
     application::Commander,
     archive::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
     config::FileOperationsConfig,
-    domain::operation::{ConflictResolution, FileOperationKind, FileOperationRequest, OperationEvent},
+    domain::operation::{
+        ConflictResolution, FileOperationKind, FileOperationRequest, OperationEvent,
+    },
     fs::operations::{start_operation, OperationHandle},
 };
 
