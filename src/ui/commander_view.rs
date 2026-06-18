@@ -56,11 +56,14 @@ impl CommanderView {
         );
     }
 
+    pub fn apply_root(&self, state: &AppState, panel: ActivePanel) {
+        self.panel(panel)
+            .set_roots(&state.roots, state.selected_root_index(panel));
+    }
+
     pub fn apply_roots(&self, state: &AppState) {
-        self.left
-            .set_roots(&state.roots, state.selected_root_index(ActivePanel::Left));
-        self.right
-            .set_roots(&state.roots, state.selected_root_index(ActivePanel::Right));
+        self.apply_root(state, ActivePanel::Left);
+        self.apply_root(state, ActivePanel::Right);
     }
 
     pub fn apply_active_panel(&self, active_panel: ActivePanel) {

@@ -5,7 +5,6 @@ use rust_i18n::t;
 
 use crate::{
     application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
-    archive::ArchiveService,
     config::{ArchiveConfig, PanelSettings},
     domain::{
         operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
@@ -19,7 +18,6 @@ use crate::{
 
 pub struct Commander {
     state: AppState,
-    archive_service: ArchiveService,
     panel_settings: PanelSettings,
 }
 
@@ -41,11 +39,8 @@ impl Commander {
             panel_settings.folders_first,
         );
         let roots = platform::available_roots();
-        let archive_service = ArchiveService::with_default_backends();
-
         Ok(Self {
             state: AppState::new(left, right, roots, presentation::ready_status()),
-            archive_service,
             panel_settings,
         })
     }
@@ -58,13 +53,8 @@ impl Commander {
         self.state.panel(panel).location.host_directory()
     }
 
-    pub fn archive_service(&self) -> ArchiveService {
-        self.archive_service.clone()
-    }
-
     pub fn apply_archive_config(&mut self, archive_config: ArchiveConfig) -> ViewUpdate {
         let _ = archive_config;
-        self.archive_service = ArchiveService::with_default_backends();
         self.state.status = t!("status.archive_settings_updated").into_owned();
         ViewUpdate::status()
     }
@@ -77,7 +67,8 @@ impl Commander {
         self.state
             .right
             .set_folders_first(self.panel_settings.folders_first);
-        Ok(self.refresh_with_status(t!("status.view_refreshed").into_owned()))
+        self.state.status = t!("status.view_refreshed").into_owned();
+        Ok(ViewUpdate::both_panels())
     }
 
     pub fn set_active_panel(&mut self, panel: ActivePanel) -> ViewUpdate {
@@ -116,107 +107,6 @@ impl Commander {
         ViewUpdate::selection(panel)
     }
 
-    pub fn activate_index(&mut self, panel: ActivePanel, index: usize) -> Result<ViewUpdate> {
-        self.select_single(panel, index);
-        self.activate_selected(panel)
-    }
-
-    pub fn activate_selected(&mut self, panel: ActivePanel) -> Result<ViewUpdate> {
-        self.state.active_panel = panel;
-        let selected = self
-            .state
-            .panel(panel)
-            .selected_item()
-            .context("No entry selected")?;
-
-        if selected.is_parent_link {
-            return self.go_parent(panel);
-        }
-
-        let current_location = self.state.panel(panel).location.clone();
-
-        match current_location {
-            PanelLocation::Filesystem(_) if selected.is_dir => {
-                let entries = read_entries(&selected.path, self.panel_settings.show_hidden_files)?;
-                self.state
-                    .panel_mut(panel)
-                    .navigate_to(PanelLocation::filesystem(selected.path.clone()), entries);
-                self.state.status = format!("Opened: {}", selected.path.display());
-                Ok(ViewUpdate::panel_entries(panel))
-            }
-            PanelLocation::Filesystem(_)
-                if self.archive_service.is_archive_path(&selected.path) =>
-            {
-                let archive_location = self
-                    .archive_service
-                    .archive_location_for_path(&selected.path)?;
-                let entries = self
-                    .archive_service
-                    .entries_for_location(&archive_location)?;
-                self.state
-                    .panel_mut(panel)
-                    .navigate_to(archive_location, entries);
-                self.state.status = format!("Opened archive: {}", selected.path.display());
-                Ok(ViewUpdate::panel_entries(panel))
-            }
-            PanelLocation::Archive(view) if selected.is_dir => {
-                let archive_path = selected
-                    .archive_path
-                    .context("Archive entry is missing its path")?;
-                let next_location = PanelLocation::archive(view.session, archive_path);
-                let entries = self.archive_service.entries_for_location(&next_location)?;
-                self.state
-                    .panel_mut(panel)
-                    .navigate_to(next_location, entries);
-                self.state.status = format!("Opened archive folder: {}", selected.path.display());
-                Ok(ViewUpdate::panel_entries(panel))
-            }
-            PanelLocation::Archive(_) => {
-                bail!("Opening archive files in the viewer is not wired yet")
-            }
-            PanelLocation::Filesystem(_) => {
-                platform::open_path(&selected.path)?;
-                self.state.status = format!("Opened with default app: {}", selected.path.display());
-                Ok(ViewUpdate::status())
-            }
-        }
-    }
-
-    pub fn go_parent(&mut self, panel: ActivePanel) -> Result<ViewUpdate> {
-        self.state.active_panel = panel;
-        let next_location = self
-            .state
-            .panel(panel)
-            .location
-            .parent()
-            .context("No parent location available")?;
-        let entries = self.archive_service.entries_for_location(&next_location)?;
-        self.state
-            .panel_mut(panel)
-            .navigate_to(next_location.clone(), entries);
-        self.state.status = format!("Up one level: {}", next_location.display_label());
-        Ok(ViewUpdate::panel_entries(panel))
-    }
-
-    pub fn change_root(&mut self, panel: ActivePanel, index: usize) -> Result<ViewUpdate> {
-        let Some(root) = self.state.roots.get(index).cloned() else {
-            return Ok(ViewUpdate::default());
-        };
-
-        self.state.active_panel = panel;
-        let entries = read_entries(&root.path, self.panel_settings.show_hidden_files)?;
-        self.state
-            .panel_mut(panel)
-            .navigate_to(PanelLocation::filesystem(root.path.clone()), entries);
-        self.state.status = t!(
-            "status.switched_panel",
-            panel = presentation::panel_label(panel),
-            path = root.path.display().to_string()
-        )
-        .into_owned();
-        Ok(ViewUpdate::panel_entries(panel))
-    }
-
     pub fn navigate_to_loaded(
         &mut self,
         panel: ActivePanel,
@@ -232,97 +122,15 @@ impl Commander {
         ViewUpdate::panel_entries(panel)
     }
 
-    pub fn refresh_visible_panels(&mut self) -> Result<ViewUpdate> {
-        self.state.roots = platform::available_roots();
-        let left_entries = self.load_entries_for_location(&self.state.left.location)?;
-        let right_entries = self.load_entries_for_location(&self.state.right.location)?;
-        self.state.left.replace_entries(left_entries);
-        self.state.right.replace_entries(right_entries);
-        self.state.status = t!("status.view_refreshed").into_owned();
-        Ok(ViewUpdate {
-            roots: true,
-            ..ViewUpdate::both_panels()
-        })
-    }
-
-    pub fn refresh_panels(
+    pub fn refresh_panel_loaded(
         &mut self,
-        panels: &[ActivePanel],
-        status: impl Into<String>,
+        panel: ActivePanel,
+        entries: Vec<Entry>,
+        status: String,
     ) -> ViewUpdate {
-        let status = status.into();
-        let mut update = ViewUpdate::default();
-        let mut failures = Vec::new();
-
-        for panel in panels {
-            match self.load_entries_for_location(&self.state.panel(*panel).location) {
-                Ok(entries) => {
-                    self.state.panel_mut(*panel).replace_entries(entries);
-                    match panel {
-                        ActivePanel::Left => update.left_entries = true,
-                        ActivePanel::Right => update.right_entries = true,
-                    }
-                }
-                Err(error) => {
-                    failures.push(
-                        t!(
-                            "status.refresh_failed",
-                            panel = presentation::panel_label(*panel),
-                            error = error.to_string()
-                        )
-                        .into_owned(),
-                    );
-                }
-            }
-        }
-
-        update.selection = true;
-        update.status = true;
-        self.state.status = if failures.is_empty() {
-            status
-        } else {
-            failures.join(" | ")
-        };
-        update
-    }
-
-    pub fn refresh_with_status(&mut self, status: String) -> ViewUpdate {
-        self.state.roots = platform::available_roots();
-        let mut failures = Vec::new();
-
-        match self.load_entries_for_location(&self.state.left.location) {
-            Ok(entries) => self.state.left.replace_entries(entries),
-            Err(error) => failures.push(
-                t!(
-                    "status.refresh_failed",
-                    panel = presentation::panel_label(ActivePanel::Left),
-                    error = error.to_string()
-                )
-                .into_owned(),
-            ),
-        }
-
-        match self.load_entries_for_location(&self.state.right.location) {
-            Ok(entries) => self.state.right.replace_entries(entries),
-            Err(error) => failures.push(
-                t!(
-                    "status.refresh_failed",
-                    panel = presentation::panel_label(ActivePanel::Right),
-                    error = error.to_string()
-                )
-                .into_owned(),
-            ),
-        }
-
-        self.state.status = if failures.is_empty() {
-            status
-        } else {
-            failures.join(" | ")
-        };
-        ViewUpdate {
-            roots: true,
-            ..ViewUpdate::both_panels()
-        }
+        self.state.panel_mut(panel).replace_entries(entries);
+        self.state.status = status;
+        ViewUpdate::panel_entries(panel)
     }
 
     pub fn sort_panel(
@@ -363,11 +171,9 @@ impl Commander {
         self.state
             .panel_mut(panel)
             .update_history_after_rename(&old_name, new_name.trim());
-        let entries = self.load_entries_for_location(&self.state.panel(panel).location)?;
-        self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = t!("status.renamed", path = target.display().to_string()).into_owned();
 
-        Ok(ViewUpdate::panel_entries(panel))
+        Ok(ViewUpdate::status())
     }
 
     pub fn create_directory_in_active(&mut self, name: &str) -> Result<ViewUpdate> {
@@ -393,15 +199,13 @@ impl Commander {
         fs::create_dir(&target)
             .with_context(|| format!("Could not create directory {}", target.display()))?;
 
-        let entries = self.load_entries_for_location(&self.state.panel(panel).location)?;
-        self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = t!(
             "status.created_directory",
             path = target.display().to_string()
         )
         .into_owned();
 
-        Ok(ViewUpdate::panel_entries(panel))
+        Ok(ViewUpdate::status())
     }
 
     pub fn operation_request(&self, kind: FileOperationKind) -> Result<FileOperationRequest> {
@@ -457,14 +261,5 @@ impl Commander {
     pub fn set_status(&mut self, status: impl Into<String>) -> ViewUpdate {
         self.state.status = status.into();
         ViewUpdate::status()
-    }
-
-    fn load_entries_for_location(&self, location: &PanelLocation) -> Result<Vec<Entry>> {
-        match location {
-            PanelLocation::Filesystem(path) => {
-                Ok(read_entries(path, self.panel_settings.show_hidden_files)?)
-            }
-            PanelLocation::Archive(_) => Ok(self.archive_service.entries_for_location(location)?),
-        }
     }
 }

@@ -13,8 +13,8 @@ use rust_i18n::t;
 use crate::platform::restore_window_placement;
 
 use crate::{
-    application::{ActivePanel, Commander, ViewUpdate},
-    archive::ArchiveTaskEvent,
+    application::{ActivePanel, Commander, LoadScheduler, ViewUpdate},
+    archive::{ArchiveService, ArchiveTaskEvent},
     config::{self, AppConfig, WindowConfig, WindowPosition},
     domain::{
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
@@ -27,7 +27,7 @@ use crate::{
     presentation,
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
-        navigation::{self, NavigationRequest, SelectedNavigation},
+        navigation::{self, LoadAction, NavigationRequest, SelectedNavigation},
         operations::{self, ActiveOperationHandle, PreparedOperation, StartedOperation},
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
     },
@@ -43,9 +43,11 @@ pub struct MainWindow {
     busy_spinner: gtk::Spinner,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
+    archive_service: Rc<RefCell<ArchiveService>>,
     active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
     watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
+    load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
 }
@@ -118,6 +120,7 @@ impl MainWindow {
         window.set_child(Some(&shell));
 
         let commander = Rc::new(RefCell::new(commander));
+        let archive_service = Rc::new(RefCell::new(ArchiveService::with_default_backends()));
         let (watch_command_tx, watch_event_rx) = start_file_watcher();
 
         let this = Rc::new(Self {
@@ -128,9 +131,11 @@ impl MainWindow {
             busy_spinner,
             status_label,
             commander,
+            archive_service,
             active_operation: Rc::new(RefCell::new(None)),
             navigation_busy: Rc::new(Cell::new(false)),
             watcher_refresh_cooldown_until: Rc::new(Cell::new(None)),
+            load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
         });
@@ -325,7 +330,41 @@ impl MainWindow {
 
         let this = Rc::clone(self);
         dialogs::prompt_rename(&self.window, selected.display_name, move |new_name| {
-            this.run_command(|commander| commander.rename_active(&new_name));
+            let refresh_paths = [selected.path.clone()];
+            let result = {
+                let mut commander = this.commander.borrow_mut();
+                commander.rename_active(&new_name)
+            };
+            match result {
+                Ok(update) => this.apply_update(update),
+                Err(error) => {
+                    let update = {
+                        let mut commander = this.commander.borrow_mut();
+                        commander.set_status(
+                            t!("status.command_failed", error = error.to_string()).into_owned(),
+                        )
+                    };
+                    this.apply_update(update);
+                    dialogs::show_error(
+                        &this.window,
+                        &t!("error.command_failed"),
+                        &error.to_string(),
+                    );
+                    return;
+                }
+            }
+            this.queue_async_refresh_for_paths(
+                &refresh_paths,
+                t!(
+                    "status.renamed",
+                    path = selected
+                        .path
+                        .with_file_name(new_name.trim())
+                        .display()
+                        .to_string()
+                )
+                .into_owned(),
+            );
         });
     }
 
@@ -375,6 +414,8 @@ impl MainWindow {
 
             let previous_config = this.app_config_cache.borrow().clone();
             this.app_config_cache.replace(next_config.clone());
+            this.archive_service
+                .replace(ArchiveService::with_default_backends());
             let selected_locale = crate::i18n::apply_locale(next_config.locale.language.as_deref());
 
             let update = {
@@ -402,6 +443,10 @@ impl MainWindow {
                 update
             };
             this.apply_update(update);
+            this.queue_async_refresh_panels(
+                &[ActivePanel::Left, ActivePanel::Right],
+                t!("status.view_refreshed").into_owned(),
+            );
             this.refresh_localized_labels();
             if previous_config.general.theme != next_config.general.theme {
                 dialogs::show_error(
@@ -491,14 +536,10 @@ impl MainWindow {
         let this = Rc::clone(self);
         if let Err(error) =
             editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
-                let update = {
-                    let mut commander = this.commander.borrow_mut();
-                    commander.refresh_with_status(
-                        t!("status.saved", path = path.display().to_string()).into_owned(),
-                    )
-                };
-                this.apply_update(update);
-                this.trigger_manual_refresh_cooldown();
+                this.queue_async_refresh_for_paths(
+                    std::slice::from_ref(&path),
+                    t!("status.saved", path = path.display().to_string()).into_owned(),
+                );
             })
         {
             dialogs::show_error(
@@ -520,8 +561,37 @@ impl MainWindow {
     pub fn handle_make_directory(self: &Rc<Self>) {
         let this = Rc::clone(self);
         dialogs::prompt_new_directory(&self.window, move |name| {
-            this.run_command(|commander| commander.create_directory_in_active(&name));
-            this.trigger_manual_refresh_cooldown();
+            let changed_paths = [this.active_panel_path().join(name.trim())];
+            let result = {
+                let mut commander = this.commander.borrow_mut();
+                commander.create_directory_in_active(&name)
+            };
+            match result {
+                Ok(update) => this.apply_update(update),
+                Err(error) => {
+                    let update = {
+                        let mut commander = this.commander.borrow_mut();
+                        commander.set_status(
+                            t!("status.command_failed", error = error.to_string()).into_owned(),
+                        )
+                    };
+                    this.apply_update(update);
+                    dialogs::show_error(
+                        &this.window,
+                        &t!("error.command_failed"),
+                        &error.to_string(),
+                    );
+                    return;
+                }
+            }
+            this.queue_async_refresh_for_paths(
+                &changed_paths,
+                t!(
+                    "status.created_directory",
+                    path = changed_paths[0].display().to_string()
+                )
+                .into_owned(),
+            );
         });
     }
 
@@ -532,13 +602,43 @@ impl MainWindow {
     fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
         let request = {
             let commander = self.commander.borrow();
-            navigation::selected_navigation_request(&commander, panel)
+            let archive_service = self.archive_service.borrow();
+            navigation::selected_navigation_request(&commander, &archive_service, panel)
         };
 
         match request {
             SelectedNavigation::Load(request) => self.start_directory_load(request),
-            SelectedNavigation::Activate => {
-                self.run_command(|commander| commander.activate_selected(panel));
+            SelectedNavigation::OpenPath { path, status } => {
+                if let Err(error) = crate::platform::open_path(&path) {
+                    dialogs::show_error(
+                        &self.window,
+                        &t!("error.command_failed"),
+                        &error.to_string(),
+                    );
+                    let update = {
+                        let mut commander = self.commander.borrow_mut();
+                        commander.set_status(
+                            t!("status.command_failed", error = error.to_string()).into_owned(),
+                        )
+                    };
+                    self.apply_update(update);
+                    return;
+                }
+                let update = {
+                    let mut commander = self.commander.borrow_mut();
+                    commander.set_status(status)
+                };
+                self.apply_update(update);
+            }
+            SelectedNavigation::Unsupported { message } => {
+                let update = {
+                    let mut commander = self.commander.borrow_mut();
+                    commander.set_status(
+                        t!("status.command_failed", error = message.as_str()).into_owned(),
+                    )
+                };
+                self.apply_update(update);
+                dialogs::show_error(&self.window, &t!("error.command_failed"), &message);
             }
         }
     }
@@ -561,10 +661,12 @@ impl MainWindow {
             return;
         }
 
+        let request = self.prepare_navigation_request(request);
         self.set_navigation_busy(true, &request.busy_message);
 
-        let archive_service = self.commander.borrow().archive_service();
+        let archive_service = self.archive_service.borrow().clone();
         let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
+        let request_for_tracking = request.clone();
         let rx = navigation::spawn_directory_load(request, archive_service, show_hidden_files);
 
         let this = Rc::clone(self);
@@ -573,22 +675,35 @@ impl MainWindow {
                 this.set_navigation_busy(false, "");
                 match result {
                     Ok(load) => {
+                        if !this.commit_loaded_generation(load.panel, load.generation) {
+                            return glib::ControlFlow::Break;
+                        }
                         let update = {
                             let mut commander = this.commander.borrow_mut();
-                            commander.navigate_to_loaded(
-                                load.panel,
-                                load.next_location,
-                                load.entries,
-                                load.status,
-                            )
+                            match load.action {
+                                LoadAction::Navigate => commander.navigate_to_loaded(
+                                    load.panel,
+                                    load.next_location,
+                                    load.entries,
+                                    load.status,
+                                ),
+                                LoadAction::Refresh => {
+                                    commander.refresh_panel_loaded(load.panel, load.entries, load.status)
+                                }
+                            }
                         };
                         this.apply_update(update);
                         this.commander_view
-                            .apply_roots(this.commander.borrow().state());
+                            .apply_root(this.commander.borrow().state(), load.panel);
                         this.focus_active_panel();
                         this.trigger_manual_refresh_cooldown();
+                        this.refresh_dirty_panels_if_idle();
                     }
                     Err(error) => {
+                        this.finish_in_flight_load(
+                            request_for_tracking.panel,
+                            request_for_tracking.generation,
+                        );
                         let update = {
                             let mut commander = this.commander.borrow_mut();
                             commander.set_status(
@@ -596,8 +711,6 @@ impl MainWindow {
                             )
                         };
                         this.apply_update(update);
-                        this.commander_view
-                            .apply_roots(this.commander.borrow().state());
                         this.focus_active_panel();
                         dialogs::show_error(
                             &this.window,
@@ -611,13 +724,15 @@ impl MainWindow {
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
                 this.set_navigation_busy(false, "");
+                this.finish_in_flight_load(
+                    request_for_tracking.panel,
+                    request_for_tracking.generation,
+                );
                 let update = {
                     let mut commander = this.commander.borrow_mut();
                     commander.set_status(t!("status.navigation_loader_disconnected").into_owned())
                 };
                 this.apply_update(update);
-                this.commander_view
-                    .apply_roots(this.commander.borrow().state());
                 this.focus_active_panel();
                 glib::ControlFlow::Break
             }
@@ -662,7 +777,7 @@ impl MainWindow {
     }
 
     fn start_file_operation(self: &Rc<Self>, request: FileOperationRequest) {
-        let started = match operations::start_operation_task(&self.commander.borrow(), request) {
+        let started = match operations::start_operation_task(&self.archive_service.borrow(), request) {
             Ok(started) => started,
             Err(error) => {
                 dialogs::show_error(
@@ -767,12 +882,10 @@ impl MainWindow {
                             seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
                         )
                         .into_owned();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(status)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
+                        this.queue_async_refresh_panels(
+                            &[ActivePanel::Left, ActivePanel::Right],
+                            status,
+                        );
                         keep_running = false;
                     }
                     OperationEvent::Cancelled(summary) => {
@@ -785,12 +898,10 @@ impl MainWindow {
                             size = crate::fs::reader::format_bytes(summary.total_bytes)
                         )
                         .into_owned();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(status)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
+                        this.queue_async_refresh_panels(
+                            &[ActivePanel::Left, ActivePanel::Right],
+                            status,
+                        );
                         keep_running = false;
                     }
                     OperationEvent::Failed(error) => {
@@ -860,25 +971,19 @@ impl MainWindow {
                     ArchiveTaskEvent::Finished(message) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(message)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
+                        this.queue_async_refresh_panels(
+                            &[ActivePanel::Left, ActivePanel::Right],
+                            message,
+                        );
                         keep_running = false;
                     }
                     ArchiveTaskEvent::Cancelled => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(
-                                t!("status.archive_copy_cancelled").into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
+                        this.queue_async_refresh_panels(
+                            &[ActivePanel::Left, ActivePanel::Right],
+                            t!("status.archive_copy_cancelled").into_owned(),
+                        );
                         keep_running = false;
                     }
                     ArchiveTaskEvent::Failed(error) => {
@@ -1046,53 +1151,15 @@ impl MainWindow {
                 changed_paths.extend(event.paths);
             }
 
-            if !changed_paths.is_empty()
-                && this.active_operation.borrow().is_none()
-                && !this.navigation_busy.get()
-                && !this.is_watcher_refresh_suppressed()
-            {
+            if !changed_paths.is_empty() {
                 let affected_panels = this.affected_panels_for_paths(&changed_paths);
-                if !affected_panels.is_empty() {
-                    this.run_command(|commander| {
-                        Ok(commander.refresh_panels(
-                            &affected_panels,
-                            t!("status.view_refreshed").into_owned(),
-                        ))
-                    });
-                    this.trigger_manual_refresh_cooldown();
-                }
+                this.mark_panels_dirty(&affected_panels);
             }
+
+            this.refresh_dirty_panels_if_idle();
 
             glib::ControlFlow::Continue
         });
-    }
-
-    fn run_command<F>(self: &Rc<Self>, command: F)
-    where
-        F: FnOnce(&mut Commander) -> anyhow::Result<ViewUpdate>,
-    {
-        let result = {
-            let mut commander = self.commander.borrow_mut();
-            command(&mut commander)
-        };
-
-        match result {
-            Ok(update) => self.apply_update(update),
-            Err(error) => {
-                let update = {
-                    let mut commander = self.commander.borrow_mut();
-                    commander.set_status(
-                        t!("status.command_failed", error = error.to_string()).into_owned(),
-                    )
-                };
-                self.apply_update(update);
-                dialogs::show_error(
-                    &self.window,
-                    &t!("error.command_failed"),
-                    &error.to_string(),
-                );
-            }
-        }
     }
 
     fn apply_update(&self, update: ViewUpdate) {
@@ -1124,6 +1191,77 @@ impl MainWindow {
     fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
         let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
+    }
+
+    fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
+        self.load_scheduler.borrow_mut().prepare_request(request)
+    }
+
+    fn commit_loaded_generation(&self, panel: ActivePanel, generation: u64) -> bool {
+        self.load_scheduler
+            .borrow_mut()
+            .commit_loaded(panel, generation)
+    }
+
+    fn finish_in_flight_load(&self, panel: ActivePanel, generation: u64) {
+        self.load_scheduler
+            .borrow_mut()
+            .finish_in_flight(panel, generation);
+    }
+
+    fn mark_panels_dirty(&self, panels: &[ActivePanel]) {
+        self.load_scheduler
+            .borrow_mut()
+            .queue_refresh(panels, t!("status.view_refreshed").into_owned());
+    }
+
+    fn refresh_dirty_panels_if_idle(self: &Rc<Self>) {
+        if self.active_operation.borrow().is_some()
+            || self.navigation_busy.get()
+            || self.is_watcher_refresh_suppressed()
+        {
+            return;
+        }
+
+        let Some((panel, status)) = self
+            .load_scheduler
+            .borrow_mut()
+            .take_next_refresh(&t!("status.view_refreshed").into_owned())
+        else {
+            return;
+        };
+        let request = {
+            let commander = self.commander.borrow();
+            navigation::refresh_request(&commander, panel, status)
+        };
+        self.start_directory_load(request);
+    }
+
+    fn queue_async_refresh_panels(
+        self: &Rc<Self>,
+        panels: &[ActivePanel],
+        status: impl Into<String>,
+    ) {
+        if panels.is_empty() {
+            return;
+        }
+
+        self.load_scheduler
+            .borrow_mut()
+            .queue_refresh(panels, status.into());
+        self.refresh_dirty_panels_if_idle();
+    }
+
+    fn queue_async_refresh_for_paths(
+        self: &Rc<Self>,
+        changed_paths: &[PathBuf],
+        status: impl Into<String>,
+    ) {
+        let panels = self.affected_panels_for_paths(changed_paths);
+        if panels.is_empty() {
+            return;
+        }
+        self.queue_async_refresh_panels(&panels, status);
     }
 
     fn trigger_manual_refresh_cooldown(&self) {
@@ -1225,13 +1363,7 @@ impl MainWindow {
             return;
         }
 
-        self.run_command(|commander| {
-            Ok(commander.refresh_panels(
-                &[panel],
-                t!("status.view_refreshed").into_owned(),
-            ))
-        });
-        self.trigger_manual_refresh_cooldown();
+        self.queue_async_refresh_panels(&[panel], t!("status.view_refreshed").into_owned());
     }
 
     fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {

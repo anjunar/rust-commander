@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 
 use crate::{
     application::Commander,
-    archive::{ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
+    archive::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
     config::FileOperationsConfig,
     domain::operation::{ConflictResolution, FileOperationKind, FileOperationRequest, OperationEvent},
     fs::operations::{start_operation, OperationHandle},
@@ -72,7 +72,7 @@ pub fn prepare_operation(
 }
 
 pub fn start_operation_task(
-    commander: &Commander,
+    archive_service: &ArchiveService,
     request: FileOperationRequest,
 ) -> Result<StartedOperation> {
     if let Some(archive_source) = request.archive_source.clone() {
@@ -80,7 +80,6 @@ pub fn start_operation_task(
             bail!("No filesystem target directory available for archive copy");
         };
 
-        let archive_service = commander.archive_service();
         let (handle, receiver) = archive_service.start_task(ArchiveTaskRequest::ExtractSelection {
             session: archive_source.session,
             entry_paths: archive_source.entry_paths,

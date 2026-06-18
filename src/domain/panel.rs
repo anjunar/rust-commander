@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::PathBuf,
 };
 
@@ -7,7 +7,9 @@ use anyhow::{bail, Result};
 
 use crate::domain::{
     entry::Entry,
+    entry_key::EntryKey,
     panel_location::PanelLocation,
+    panel_selection::{restore_panel_selection, PanelSelection},
     selection::SelectionModel,
     sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
@@ -22,19 +24,13 @@ pub struct SelectedEntry {
 }
 
 #[derive(Clone, Debug)]
-struct SelectedPosition {
-    name: String,
-    is_parent_link: bool,
-}
-
-#[derive(Clone, Debug)]
 pub struct Panel {
     pub location: PanelLocation,
     pub entries: Vec<Entry>,
     pub selection: SelectionModel,
     pub sort_state: SortState,
     folders_first: bool,
-    selected_history: HashMap<String, SelectedPosition>,
+    selected_history: HashMap<String, EntryKey>,
 }
 
 impl Panel {
@@ -182,8 +178,10 @@ impl Panel {
 
     pub fn update_history_after_rename(&mut self, old_name: &str, new_name: &str) {
         if let Some(saved) = self.selected_history.get_mut(&self.location.history_key()) {
-            if !saved.is_parent_link && saved.name == old_name {
-                saved.name = new_name.to_string();
+            if let EntryKey::FilesystemName(name) = saved {
+                if name == &std::ffi::OsString::from(old_name) {
+                    *name = new_name.into();
+                }
             }
         }
     }
@@ -198,51 +196,25 @@ impl Panel {
 
         self.selected_history.insert(
             self.location.history_key(),
-            SelectedPosition {
-                name: entry.name.clone(),
-                is_parent_link: entry.is_parent_link,
-            },
+            entry.key(),
         );
     }
 
-    fn restore_selection_for_current_path(&self) -> Option<usize> {
-        if self.entries.is_empty() {
-            return None;
-        }
-
-        if let Some(saved) = self.selected_history.get(&self.location.history_key()) {
-            if let Some(index) = self.entries.iter().position(|entry| {
-                entry.name == saved.name && entry.is_parent_link == saved.is_parent_link
-            }) {
-                return Some(index);
-            }
-        }
-
-        Some(0)
-    }
-
     fn preserved_selection(&self) -> PreservedSelection {
-        let focused = self
-            .selection
-            .focus_index()
-            .and_then(|index| self.entries.get(index))
-            .map(|entry| (entry.name.clone(), entry.is_parent_link));
-        let anchor = self
-            .selection
-            .anchor_index()
-            .and_then(|index| self.entries.get(index))
-            .map(|entry| (entry.name.clone(), entry.is_parent_link));
-        let selected = self
-            .selection
-            .selected_indices()
-            .filter_map(|index| self.entries.get(index))
-            .map(|entry| entry.name.clone())
-            .collect();
-
         PreservedSelection {
-            focused,
-            anchor,
-            selected,
+            selection: PanelSelection {
+                cursor: self
+                    .selection
+                    .focus_index()
+                    .and_then(|index| self.entries.get(index))
+                    .map(Entry::key),
+                selected: self
+                    .selection
+                    .selected_indices()
+                    .filter_map(|index| self.entries.get(index))
+                    .map(Entry::key)
+                    .collect(),
+            },
         }
     }
 
@@ -251,51 +223,37 @@ impl Panel {
             return SelectionModel::default();
         }
 
+        let restored = restore_panel_selection(
+            &preserved.selection,
+            self.selected_history.get(&self.location.history_key()),
+            &self.entries,
+        );
         let mut selected_indices = self
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, entry)| preserved.selected.contains(&entry.name))
+            .filter(|(_, entry)| restored.selected.contains(&entry.key()))
             .map(|(index, _)| index)
             .collect::<BTreeSet<_>>();
-
-        let focused_index = preserved
-            .focused
+        let focused_index = restored
+            .cursor
             .as_ref()
-            .and_then(|(name, is_parent_link)| {
-                self.entries.iter().position(|entry| {
-                    entry.name == *name && entry.is_parent_link == *is_parent_link
-                })
-            })
-            .or_else(|| self.restore_selection_for_current_path())
+            .and_then(|key| self.entries.iter().position(|entry| entry.key() == *key))
             .or_else(|| selected_indices.iter().next().copied())
             .or(Some(0));
-
-        let anchor_index = preserved
-            .anchor
-            .as_ref()
-            .and_then(|(name, is_parent_link)| {
-                self.entries.iter().position(|entry| {
-                    entry.name == *name && entry.is_parent_link == *is_parent_link
-                })
-            })
-            .or(focused_index);
-
         if selected_indices.is_empty() {
             if let Some(index) = focused_index {
                 selected_indices.insert(index);
             }
         }
 
-        SelectionModel::new(selected_indices, focused_index, anchor_index)
+        SelectionModel::from_cursor(selected_indices, focused_index)
     }
 }
 
 #[derive(Default)]
 struct PreservedSelection {
-    focused: Option<(String, bool)>,
-    anchor: Option<(String, bool)>,
-    selected: HashSet<String>,
+    selection: PanelSelection,
 }
 
 #[cfg(test)]
@@ -311,7 +269,7 @@ mod tests {
     };
 
     #[test]
-    fn replace_entries_restores_focus_anchor_and_selection_by_name() {
+    fn replace_entries_restores_focus_and_selection_by_key() {
         let mut panel = Panel::new(
             PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
             vec![
@@ -339,13 +297,8 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(selected, vec!["beta".to_string(), "delta".to_string()]);
         assert_eq!(panel.selected_entry().unwrap().name, "delta");
-        assert_eq!(
-            panel
-                .selection
-                .anchor_index()
-                .map(|index| panel.entries[index].name.clone()),
-            Some("beta".to_string())
-        );
+        assert_eq!(panel.selection.focus_index(), Some(2));
+        assert_eq!(panel.selection.anchor_index(), panel.selection.focus_index());
     }
 
     #[test]

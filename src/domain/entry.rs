@@ -1,6 +1,7 @@
 use std::{path::PathBuf, time::SystemTime};
 
 use crate::domain::panel_location::PanelLocation;
+use crate::domain::EntryKey;
 
 #[derive(Clone, Debug)]
 pub struct Entry {
@@ -17,6 +18,10 @@ pub struct Entry {
 }
 
 impl Entry {
+    pub fn key(&self) -> EntryKey {
+        EntryKey::for_entry(self)
+    }
+
     pub fn parent_link(type_label: impl Into<String>) -> Self {
         Self {
             name: "..".into(),

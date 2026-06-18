@@ -25,9 +25,17 @@ impl SelectionModel {
             Some(index) => {
                 let mut selected_indices = BTreeSet::new();
                 selected_indices.insert(index);
-                Self::new(selected_indices, Some(index), Some(index))
+                Self::from_cursor(selected_indices, Some(index))
             }
             None => Self::default(),
+        }
+    }
+
+    pub fn from_cursor(selected_indices: BTreeSet<usize>, focused_index: Option<usize>) -> Self {
+        Self {
+            anchor_index: focused_index,
+            focused_index,
+            selected_indices,
         }
     }
 
