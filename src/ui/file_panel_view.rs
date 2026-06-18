@@ -309,8 +309,9 @@ impl FilePanelView {
 
     pub fn connect_secondary_click<F>(&self, f: F)
     where
-        F: Fn(Option<usize>) + 'static,
+        F: Fn(Option<usize>, f64, f64) + 'static,
     {
+        let root = self.root.clone();
         let column_view = self.column_view.clone();
         let gesture = gtk::GestureClick::new();
         gesture.set_button(gdk::BUTTON_SECONDARY);
@@ -318,7 +319,10 @@ impl FilePanelView {
             let clicked_position = column_view
                 .pick(x, y, gtk::PickFlags::DEFAULT)
                 .and_then(|widget| find_row_position(&widget, &column_view));
-            f(clicked_position);
+            let point = column_view
+                .compute_point(&root, &gtk::graphene::Point::new(x as f32, y as f32))
+                .unwrap_or_else(|| gtk::graphene::Point::new(x as f32, y as f32));
+            f(clicked_position, point.x() as f64, point.y() as f64);
         });
         self.column_view.add_controller(gesture);
     }

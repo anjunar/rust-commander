@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::mpsc, thread};
 
-use notify::{RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 
 pub enum WatchCommand {
     SetPaths(Vec<PathBuf>),
@@ -20,6 +20,9 @@ pub fn start_file_watcher() -> (mpsc::Sender<WatchCommand>, mpsc::Receiver<Watch
         let watcher_result = notify::recommended_watcher(
             move |result: notify::Result<notify::Event>| match result {
                 Ok(event) => {
+                    if !is_relevant_event(&event) {
+                        return;
+                    }
                     let paths = dedupe_paths(event.paths);
                     if !paths.is_empty() {
                         let _ = callback_tx.send(WatchEvent { paths });
@@ -82,4 +85,11 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     }
 
     unique_paths
+}
+
+fn is_relevant_event(event: &Event) -> bool {
+    matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    )
 }

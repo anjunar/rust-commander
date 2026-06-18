@@ -27,6 +27,8 @@ operation:
 common:
   close: Close
   cancel: Cancel
+  apply: Apply
+  open: Open
   rename: Rename
   create: Create
   save: Save
@@ -83,6 +85,13 @@ dialog:
   rename_prompt: "Enter a new name:"
   mkdir_title: Create directory
   mkdir_prompt: "Enter a name for the new directory:"
+  chmod_title: Chmod
+  chmod_prompt: "Set file mode:"
+  chmod_placeholder: "Example: 755 or u+rwX"
+  chown_title: Chown
+  chown_prompt: "Set owner or owner:group:"
+  chown_placeholder: "Example: root:users"
+  recursive_apply: Apply recursively
   conflict_title: "%{kind} conflict"
   conflict_detail: "The target already exists.\n\nSource: %{source}\nTarget: %{target}"
 
@@ -181,6 +190,8 @@ status:
   archive_copy_cancelled: Archive copy cancelled.
   archive_copy_failed: "Archive copy failed: %{error}"
   command_failed: "Command failed: %{error}"
+  permissions_updated: "Updated mode to %{mode} for %{count} item(s)."
+  owner_updated: "Updated owner to %{owner} for %{count} item(s)."
 
 error:
   no_entry_selected: No entry is selected.
