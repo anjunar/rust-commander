@@ -12,7 +12,9 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "edit", MainWindow::handle_edit);
     add_action(window, "copy", MainWindow::handle_copy);
     add_action(window, "move-files", MainWindow::handle_move);
+    add_action(window, "make-directory", MainWindow::handle_make_directory);
     add_action(window, "delete", MainWindow::handle_delete);
+    add_action(window, "quit", MainWindow::handle_quit);
     add_action(window, "switch-panel", MainWindow::handle_switch_panel);
     add_action(window, "open", MainWindow::handle_open_active);
     add_action(
@@ -33,8 +35,10 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     app.set_accels_for_action("win.edit", &["F4"]);
     app.set_accels_for_action("win.copy", &["F5"]);
     app.set_accels_for_action("win.move-files", &["F6"]);
+    app.set_accels_for_action("win.make-directory", &["F7"]);
     app.set_accels_for_action("win.delete", &["F8"]);
     app.set_accels_for_action("win.toggle-terminal", &["F9"]);
+    app.set_accels_for_action("win.quit", &["F10"]);
     app.set_accels_for_action("win.focus-terminal", &["<Primary>grave"]);
     app.set_accels_for_action("win.restart-terminal", &["<Primary><Shift>grave"]);
     app.set_accels_for_action("win.switch-panel", &["Tab"]);
