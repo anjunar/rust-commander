@@ -6,6 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 
 use crate::domain::roots::RootLocation;
+use crate::platform::context_menu::ContextMenuRequest;
 
 pub fn available_roots() -> Vec<RootLocation> {
     let mut roots = Vec::new();
@@ -114,4 +115,8 @@ pub fn open_console(path: &Path) -> Result<()> {
         "No supported terminal application was found for {}",
         path.display()
     )
+}
+
+pub fn show_context_menu(_request: &ContextMenuRequest) -> Result<()> {
+    anyhow::bail!("Native context menus are not implemented for this platform yet")
 }

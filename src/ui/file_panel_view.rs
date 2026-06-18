@@ -12,7 +12,7 @@ use crate::{
     application::ActivePanel,
     domain::{sorting::SortColumn, Entry, PanelLocation, RootLocation},
     ui::{
-        columns::{append_file_columns, FileColumnBinding},
+        columns::{append_file_columns, FileColumnBinding, ROW_POSITION_DATA_KEY},
         file_row_object::FileRowObject,
     },
 };
@@ -67,6 +67,7 @@ impl FilePanelView {
         column_view.set_show_row_separators(false);
         column_view.set_show_column_separators(false);
         column_view.set_single_click_activate(false);
+        column_view.set_enable_rubberband(true);
         column_view.add_css_class("file-table");
 
         let columns = append_file_columns(&column_view);
@@ -304,6 +305,22 @@ impl FilePanelView {
         });
     }
 
+    pub fn connect_secondary_click<F>(&self, f: F)
+    where
+        F: Fn(Option<usize>) + 'static,
+    {
+        let column_view = self.column_view.clone();
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gdk::BUTTON_SECONDARY);
+        gesture.connect_pressed(move |_, _, x, y| {
+            let clicked_position = column_view
+                .pick(x, y, gtk::PickFlags::DEFAULT)
+                .and_then(|widget| find_row_position(&widget, &column_view));
+            f(clicked_position);
+        });
+        self.column_view.add_controller(gesture);
+    }
+
     pub fn connect_sort_changed<F>(&self, f: F)
     where
         F: Fn(SortColumn, gtk::SortType) + 'static,
@@ -339,4 +356,21 @@ impl FilePanelView {
             }
         });
     }
+}
+
+fn find_row_position(widget: &gtk::Widget, root: &gtk::ColumnView) -> Option<usize> {
+    let mut current = Some(widget.clone());
+    while let Some(candidate) = current {
+        unsafe {
+            if let Some(position) = candidate.data::<usize>(ROW_POSITION_DATA_KEY) {
+                return Some(*position.as_ref());
+            }
+        }
+
+        if candidate == *root.upcast_ref::<gtk::Widget>() {
+            break;
+        }
+        current = candidate.parent();
+    }
+    None
 }

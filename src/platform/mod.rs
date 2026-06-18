@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod context_menu;
 pub mod icons;
 pub mod open;
 pub mod terminal;
@@ -14,6 +15,7 @@ pub mod x11_window_icon;
 pub mod windows;
 
 pub use icons::icon_for_entry;
+pub use context_menu::{show_context_menu, ContextMenuRequest};
 pub use open::open_path;
 pub use terminal::open_console;
 pub use window_geometry::{

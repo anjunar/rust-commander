@@ -26,7 +26,7 @@ use crate::{
         operations::{start_operation, OperationHandle},
         watcher::{start_file_watcher, WatchCommand, WatchEvent},
     },
-    platform::{assets::asset_path, current_window_placement},
+    platform::{assets::asset_path, current_window_placement, ContextMenuRequest},
     ui::{
         commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
         terminal_controller::TerminalAction, terminal_dock::TerminalDock,
@@ -1104,6 +1104,16 @@ impl MainWindow {
 
             {
                 let this = Rc::clone(self);
+                panel_view.connect_secondary_click(move |clicked_index| {
+                    let this = Rc::clone(&this);
+                    glib::idle_add_local_once(move || {
+                        this.handle_panel_context_menu(panel, clicked_index);
+                    });
+                });
+            }
+
+            {
+                let this = Rc::clone(self);
                 panel_view.connect_sort_changed(move |column, sort_type| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
@@ -1303,6 +1313,66 @@ impl MainWindow {
                 dialogs::show_error(&self.window, &t!("error.could_not_start_terminal"), &error);
             }
         }
+    }
+
+    fn handle_panel_context_menu(self: &Rc<Self>, panel: ActivePanel, clicked_index: Option<usize>) {
+        let (request, update) = {
+            let mut commander = self.commander.borrow_mut();
+            let mut update = commander.set_active_panel(panel);
+            if let Some(index) = clicked_index {
+                let keep_multi_selection = commander
+                    .state()
+                    .panel(panel)
+                    .selection_indices()
+                    .contains(&index);
+                if !keep_multi_selection {
+                    update = commander.select_single(panel, index);
+                }
+            }
+            let panel_state = commander.state().panel(panel);
+            let Some(directory) = panel_state.location.filesystem_path().map(PathBuf::from) else {
+                dialogs::show_error(
+                    &self.window,
+                    &t!("error.command_failed"),
+                    "The native context menu is currently only available in filesystem views.",
+                );
+                return;
+            };
+
+            let selected_paths = panel_state
+                .selected_items()
+                .into_iter()
+                .filter(|item| item.archive_path.is_none())
+                .map(|item| item.path)
+                .collect::<Vec<_>>();
+
+            (
+                ContextMenuRequest {
+                    directory,
+                    selected_paths,
+                },
+                update,
+            )
+        };
+
+        self.apply_update(update);
+
+        if let Err(error) = crate::platform::show_context_menu(&request) {
+            dialogs::show_error(
+                &self.window,
+                &t!("error.command_failed"),
+                &error.to_string(),
+            );
+            return;
+        }
+
+        self.run_command(|commander| {
+            Ok(commander.refresh_panels(
+                &[panel],
+                t!("status.view_refreshed").into_owned(),
+            ))
+        });
+        self.trigger_manual_refresh_cooldown();
     }
 
     fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {

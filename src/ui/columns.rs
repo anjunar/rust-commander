@@ -5,6 +5,8 @@ use rust_i18n::t;
 
 use crate::{domain::sorting::SortColumn, ui::file_row_object::FileRowObject};
 
+pub const ROW_POSITION_DATA_KEY: &str = "rcommander-row-position";
+
 #[derive(Clone)]
 pub struct FileColumnBinding {
     pub column: gtk::ColumnViewColumn,
@@ -126,6 +128,8 @@ fn name_factory() -> gtk::SignalListItemFactory {
                 label.remove_css_class("parent-link");
             }
         }
+
+        bind_row_position(&container, list_item.position() as usize);
     });
 
     factory
@@ -166,9 +170,16 @@ fn text_factory(column: SortColumn) -> gtk::SignalListItemFactory {
         };
 
         label.set_label(&text_for_column(&row_object, column));
+        bind_row_position(&label, list_item.position() as usize);
     });
 
     factory
+}
+
+fn bind_row_position(widget: &impl IsA<gtk::Widget>, position: usize) {
+    unsafe {
+        widget.as_ref().set_data(ROW_POSITION_DATA_KEY, position);
+    }
 }
 
 fn row_object(list_item: &gtk::ListItem) -> Option<FileRowObject> {
