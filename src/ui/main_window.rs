@@ -1,8 +1,4 @@
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, rc::Rc};
 
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
@@ -11,16 +7,15 @@ use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, LoadScheduler, ViewUpdate},
+    application::{ActivePanel, Commander, ViewUpdate},
     archive::ArchiveService,
     config::AppConfig,
-    fs::watcher::{start_file_watcher, WatchCommand, WatchEvent},
+    fs::watcher::start_file_watcher,
     platform::assets::asset_path,
     presentation,
     ui::{
         commander_view::CommanderView,
         dialogs,
-        operations::ActiveOperationHandle,
         shortcuts,
         terminal_dock::TerminalDock,
         theme::ThemeController,
@@ -43,16 +38,22 @@ mod operations_controller;
 mod terminal_wiring;
 #[path = "main_window_window_chrome.rs"]
 mod window_chrome;
+#[path = "main_window_window_state.rs"]
+mod window_state_controller;
 
 const APP_WINDOW_TITLE: &str = "RCommander";
 
 use hosts::{NavigationHost, OperationsHost, ViewHost};
 use context_menu::ContextMenuController;
-use navigation_controller::NavigationController;
-use operations_controller::OperationsController;
+#[cfg(not(target_os = "windows"))]
+use context_menu::UnixContextMenuActions;
+use context_menu::ContextMenuRuntime;
+use navigation_controller::{NavigationController, NavigationRuntime};
+use operations_controller::{OperationRuntime, OperationsController};
 use panel_wiring::PanelWiring;
 use terminal_wiring::TerminalController;
 use window_chrome::{install_custom_window_controls, WindowChromeController};
+use window_state_controller::WindowStateController;
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
@@ -63,15 +64,11 @@ pub struct MainWindow {
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
-    active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
-    navigation_busy: Rc<Cell<bool>>,
-    watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
-    load_scheduler: Rc<RefCell<LoadScheduler>>,
-    watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
+    operation_runtime: OperationRuntime,
+    navigation_runtime: NavigationRuntime,
+    context_menu_runtime: ContextMenuRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
     theme_controller: Rc<ThemeController>,
-    #[cfg(not(target_os = "windows"))]
-    unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
 impl MainWindow {
@@ -147,6 +144,9 @@ impl MainWindow {
         let commander = Rc::new(RefCell::new(commander));
         let archive_service = Rc::new(RefCell::new(ArchiveService::with_default_backends()));
         let (watch_command_tx, watch_event_rx) = start_file_watcher();
+        let navigation_runtime = NavigationRuntime::new(watch_command_tx);
+        let operation_runtime = OperationRuntime::new();
+        let context_menu_runtime = ContextMenuRuntime::new();
 
         let this = Rc::new(Self {
             window,
@@ -157,28 +157,25 @@ impl MainWindow {
             status_label,
             commander,
             archive_service,
-            active_operation: Rc::new(RefCell::new(None)),
-            navigation_busy: Rc::new(Cell::new(false)),
-            watcher_refresh_cooldown_until: Rc::new(Cell::new(None)),
-            load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
-            watch_command_tx,
+            operation_runtime,
+            navigation_runtime,
+            context_menu_runtime,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
             theme_controller,
-            #[cfg(not(target_os = "windows"))]
-            unix_context_menu: Rc::new(RefCell::new(None)),
         });
 
         this.apply_update(ViewUpdate::all());
         this.window_chrome().apply_theme();
         this.window_chrome()
             .refresh_localized_labels(&this.commander_view, &this.terminal_dock);
-        this.sync_watched_paths();
+        this.navigation_controller().sync_watched_paths();
         this.panel_wiring().connect_panels(&this.commander_view);
         this.connect_command_bar(&command_bar);
         this.terminal_controller().connect_terminal_dock();
-        this.install_watcher_poll(watch_event_rx);
-        this.window_chrome().install_window_state_persistence();
-        this.window_chrome().install_window_geometry_tracking();
+        this.navigation_controller()
+            .install_watcher_poll(watch_event_rx);
+        this.window_state_controller().install_window_state_persistence();
+        this.window_state_controller().install_window_geometry_tracking();
         this.window_chrome().install_system_theme_tracking();
         shortcuts::install(&this, app);
 
@@ -209,9 +206,10 @@ impl MainWindow {
                 }
             });
         }
-        this.window_chrome().restore_window_geometry(window_config);
-        this.window_chrome().initialize_split_positions();
-        this.queue_initial_panel_loads();
+        this.window_state_controller()
+            .restore_window_geometry(window_config);
+        this.window_state_controller().initialize_split_positions();
+        this.navigation_controller().queue_initial_panel_loads();
 
         this
     }
@@ -245,28 +243,6 @@ impl MainWindow {
         }
     }
 
-    fn install_watcher_poll(
-        self: &Rc<Self>,
-        watch_event_rx: std::sync::mpsc::Receiver<WatchEvent>,
-    ) {
-        let navigation = self.navigation_controller();
-        glib::timeout_add_local(Duration::from_millis(350), move || {
-            let mut changed_paths = Vec::new();
-            while let Ok(event) = watch_event_rx.try_recv() {
-                changed_paths.extend(event.paths);
-            }
-
-            if !changed_paths.is_empty() {
-                let affected_panels = navigation.affected_panels_for_paths(&changed_paths);
-                navigation.mark_panels_dirty(&affected_panels);
-            }
-
-            navigation.refresh_dirty_panels_if_idle();
-
-            glib::ControlFlow::Continue
-        });
-    }
-
     fn apply_update(&self, update: ViewUpdate) {
         let commander = self.commander.borrow();
         let state = commander.state();
@@ -291,11 +267,6 @@ impl MainWindow {
         self.terminal_dock
             .set_panel_dir(state.active_panel().location.host_directory());
         self.terminal_dock.refresh_toolbar();
-    }
-
-    fn sync_watched_paths(&self) {
-        let paths = self.commander.borrow().state().visible_paths();
-        let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
     }
 
     fn active_panel_path(&self) -> std::path::PathBuf {
@@ -327,7 +298,7 @@ impl MainWindow {
     }
 
     fn set_navigation_busy(&self, busy: bool, message: &str) {
-        self.navigation_busy.set(busy);
+        self.navigation_runtime.navigation_busy.set(busy);
         self.busy_spinner.set_visible(busy);
         self.busy_spinner.set_spinning(busy);
         self.commander_view.set_interaction_enabled(!busy);
@@ -340,10 +311,6 @@ impl MainWindow {
         }
     }
 
-    fn queue_initial_panel_loads(self: &Rc<Self>) {
-        self.navigation_controller().queue_initial_panel_loads();
-    }
-
     fn navigation_controller(self: &Rc<Self>) -> NavigationController {
         let host: Rc<dyn NavigationHost> = self.clone();
         NavigationController::new(
@@ -351,11 +318,8 @@ impl MainWindow {
             self.window.clone(),
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
-            Rc::clone(&self.active_operation),
-            Rc::clone(&self.navigation_busy),
-            Rc::clone(&self.watcher_refresh_cooldown_until),
-            Rc::clone(&self.load_scheduler),
-            self.watch_command_tx.clone(),
+            self.operation_runtime.clone(),
+            self.navigation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
         )
     }
@@ -377,47 +341,6 @@ impl MainWindow {
 
     fn context_menu_controller(self: &Rc<Self>) -> ContextMenuController {
         let host: Rc<dyn ViewHost> = self.clone();
-        #[cfg(not(target_os = "windows"))]
-        let open_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_open_active()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let rename_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_rename()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let copy_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_copy()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let move_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_move()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let delete_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_delete()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let mkdir_action = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_make_directory()) as Rc<dyn Fn()>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let chmod_action = {
-            let this = Rc::clone(self);
-            Rc::new(move |paths| this.handle_unix_chmod(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
-        };
-        #[cfg(not(target_os = "windows"))]
-        let chown_action = {
-            let this = Rc::clone(self);
-            Rc::new(move |paths| this.handle_unix_chown(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
-        };
-
         ContextMenuController::new(
             host,
             self.window.clone(),
@@ -426,25 +349,57 @@ impl MainWindow {
             #[cfg(not(target_os = "windows"))]
             self.commander_view.right.root.clone(),
             Rc::clone(&self.commander),
+            self.context_menu_runtime.clone(),
             #[cfg(not(target_os = "windows"))]
-            Rc::clone(&self.unix_context_menu),
-            #[cfg(not(target_os = "windows"))]
-            open_action,
-            #[cfg(not(target_os = "windows"))]
-            rename_action,
-            #[cfg(not(target_os = "windows"))]
-            copy_action,
-            #[cfg(not(target_os = "windows"))]
-            move_action,
-            #[cfg(not(target_os = "windows"))]
-            delete_action,
-            #[cfg(not(target_os = "windows"))]
-            mkdir_action,
-            #[cfg(not(target_os = "windows"))]
-            chmod_action,
-            #[cfg(not(target_os = "windows"))]
-            chown_action,
+            self.unix_context_menu_actions(),
         )
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn unix_context_menu_actions(self: &Rc<Self>) -> UnixContextMenuActions {
+        let open = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_open_active()) as Rc<dyn Fn()>
+        };
+        let rename = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_rename()) as Rc<dyn Fn()>
+        };
+        let copy = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_copy()) as Rc<dyn Fn()>
+        };
+        let move_entry = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_move()) as Rc<dyn Fn()>
+        };
+        let delete = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_delete()) as Rc<dyn Fn()>
+        };
+        let mkdir = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_make_directory()) as Rc<dyn Fn()>
+        };
+        let chmod = {
+            let this = Rc::clone(self);
+            Rc::new(move |paths| this.handle_unix_chmod(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
+        };
+        let chown = {
+            let this = Rc::clone(self);
+            Rc::new(move |paths| this.handle_unix_chown(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
+        };
+
+        UnixContextMenuActions {
+            open,
+            rename,
+            copy,
+            move_entry,
+            delete,
+            mkdir,
+            chmod,
+            chown,
+        }
     }
 
     fn operations_controller(self: &Rc<Self>) -> OperationsController {
@@ -454,7 +409,7 @@ impl MainWindow {
             self.window.clone(),
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
-            Rc::clone(&self.active_operation),
+            self.operation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
             self.navigation_controller(),
         )
@@ -472,20 +427,19 @@ impl MainWindow {
     fn window_chrome(&self) -> WindowChromeController {
         WindowChromeController::new(
             self.window.clone(),
-            self.commander_view.root.clone(),
-            self.content_paned.clone(),
-            Rc::clone(&self.commander),
             Rc::clone(&self.app_config_cache),
             Rc::clone(&self.theme_controller),
         )
     }
 
-    fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
-        self.navigation_controller().start_selected_navigation(panel);
-    }
-
-    fn handle_operation(self: &Rc<Self>, kind: crate::domain::operation::FileOperationKind) {
-        self.operations_controller().handle_operation(kind);
+    fn window_state_controller(&self) -> WindowStateController {
+        WindowStateController::new(
+            self.window.clone(),
+            self.commander_view.root.clone(),
+            self.content_paned.clone(),
+            Rc::clone(&self.commander),
+            Rc::clone(&self.app_config_cache),
+        )
     }
 
     fn handle_terminal_action(

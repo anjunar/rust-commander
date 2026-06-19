@@ -15,6 +15,34 @@ use crate::{
 use super::hosts::ViewHost;
 
 #[derive(Clone)]
+pub struct ContextMenuRuntime {
+    #[cfg(not(target_os = "windows"))]
+    pub unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
+}
+
+impl ContextMenuRuntime {
+    pub fn new() -> Self {
+        Self {
+            #[cfg(not(target_os = "windows"))]
+            unix_context_menu: Rc::new(RefCell::new(None)),
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[derive(Clone)]
+pub struct UnixContextMenuActions {
+    pub open: Rc<dyn Fn()>,
+    pub rename: Rc<dyn Fn()>,
+    pub copy: Rc<dyn Fn()>,
+    pub move_entry: Rc<dyn Fn()>,
+    pub delete: Rc<dyn Fn()>,
+    pub mkdir: Rc<dyn Fn()>,
+    pub chmod: Rc<dyn Fn(Vec<PathBuf>)>,
+    pub chown: Rc<dyn Fn(Vec<PathBuf>)>,
+}
+
+#[derive(Clone)]
 pub struct ContextMenuController {
     host: Rc<dyn ViewHost>,
     window: gtk::ApplicationWindow,
@@ -24,27 +52,12 @@ pub struct ContextMenuController {
     right_panel_root: gtk::Box,
     commander: Rc<RefCell<Commander>>,
     #[cfg(not(target_os = "windows"))]
-    unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
+    runtime: ContextMenuRuntime,
     #[cfg(not(target_os = "windows"))]
-    open_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    rename_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    copy_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    move_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    delete_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    mkdir_action: Rc<dyn Fn()>,
-    #[cfg(not(target_os = "windows"))]
-    chmod_action: Rc<dyn Fn(Vec<PathBuf>)>,
-    #[cfg(not(target_os = "windows"))]
-    chown_action: Rc<dyn Fn(Vec<PathBuf>)>,
+    actions: UnixContextMenuActions,
 }
 
 impl ContextMenuController {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         host: Rc<dyn ViewHost>,
         window: gtk::ApplicationWindow,
@@ -53,21 +66,8 @@ impl ContextMenuController {
         #[cfg(not(target_os = "windows"))]
         right_panel_root: gtk::Box,
         commander: Rc<RefCell<Commander>>,
-        #[cfg(not(target_os = "windows"))] unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
-        #[cfg(not(target_os = "windows"))]
-        open_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))]
-        rename_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))]
-        copy_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))]
-        move_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))]
-        delete_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))]
-        mkdir_action: Rc<dyn Fn()>,
-        #[cfg(not(target_os = "windows"))] chmod_action: Rc<dyn Fn(Vec<PathBuf>)>,
-        #[cfg(not(target_os = "windows"))] chown_action: Rc<dyn Fn(Vec<PathBuf>)>,
+        _runtime: ContextMenuRuntime,
+        #[cfg(not(target_os = "windows"))] actions: UnixContextMenuActions,
     ) -> Self {
         Self {
             host,
@@ -78,23 +78,9 @@ impl ContextMenuController {
             right_panel_root,
             commander,
             #[cfg(not(target_os = "windows"))]
-            unix_context_menu,
+            runtime: _runtime,
             #[cfg(not(target_os = "windows"))]
-            open_action,
-            #[cfg(not(target_os = "windows"))]
-            rename_action,
-            #[cfg(not(target_os = "windows"))]
-            copy_action,
-            #[cfg(not(target_os = "windows"))]
-            move_action,
-            #[cfg(not(target_os = "windows"))]
-            delete_action,
-            #[cfg(not(target_os = "windows"))]
-            mkdir_action,
-            #[cfg(not(target_os = "windows"))]
-            chmod_action,
-            #[cfg(not(target_os = "windows"))]
-            chown_action,
+            actions,
         }
     }
 
@@ -187,7 +173,7 @@ impl ContextMenuController {
 
         if request.selected_paths.len() == 1 {
             let menu = popover.clone();
-            let open_action = Rc::clone(&self.open_action);
+            let open_action = Rc::clone(&self.actions.open);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("common.open"));
             button.set_halign(gtk::Align::Fill);
@@ -201,7 +187,7 @@ impl ContextMenuController {
 
         if request.selected_paths.len() == 1 {
             let menu = popover.clone();
-            let rename_action = Rc::clone(&self.rename_action);
+            let rename_action = Rc::clone(&self.actions.rename);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("common.rename"));
             button.set_halign(gtk::Align::Fill);
@@ -215,7 +201,7 @@ impl ContextMenuController {
 
         if !request.selected_paths.is_empty() {
             let menu = popover.clone();
-            let copy_action = Rc::clone(&self.copy_action);
+            let copy_action = Rc::clone(&self.actions.copy);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("operation.copy"));
             button.set_halign(gtk::Align::Fill);
@@ -227,7 +213,7 @@ impl ContextMenuController {
             content.append(&button);
 
             let menu = popover.clone();
-            let move_action = Rc::clone(&self.move_action);
+            let move_action = Rc::clone(&self.actions.move_entry);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("operation.move"));
             button.set_halign(gtk::Align::Fill);
@@ -239,7 +225,7 @@ impl ContextMenuController {
             content.append(&button);
 
             let menu = popover.clone();
-            let delete_action = Rc::clone(&self.delete_action);
+            let delete_action = Rc::clone(&self.actions.delete);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("operation.delete"));
             button.add_css_class("destructive-action");
@@ -254,7 +240,7 @@ impl ContextMenuController {
 
         {
             let menu = popover.clone();
-            let mkdir_action = Rc::clone(&self.mkdir_action);
+            let mkdir_action = Rc::clone(&self.actions.mkdir);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("command.mkdir"));
             button.set_halign(gtk::Align::Fill);
@@ -271,7 +257,7 @@ impl ContextMenuController {
 
             let chmod_paths = request.selected_paths.clone();
             let menu = popover.clone();
-            let chmod_action = Rc::clone(&self.chmod_action);
+            let chmod_action = Rc::clone(&self.actions.chmod);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("dialog.chmod_title"));
             button.set_halign(gtk::Align::Fill);
@@ -284,7 +270,7 @@ impl ContextMenuController {
 
             let chown_paths = request.selected_paths.clone();
             let menu = popover.clone();
-            let chown_action = Rc::clone(&self.chown_action);
+            let chown_action = Rc::clone(&self.actions.chown);
             let controller = self.clone();
             let button = gtk::Button::with_label(&t!("dialog.chown_title"));
             button.set_halign(gtk::Align::Fill);
@@ -298,12 +284,12 @@ impl ContextMenuController {
 
         popover.set_child(Some(&content));
         popover.popup();
-        self.unix_context_menu.replace(Some(popover));
+        self.runtime.unix_context_menu.replace(Some(popover));
     }
 
     #[cfg(not(target_os = "windows"))]
     fn close_unix_context_menu(&self) {
-        if let Some(popover) = self.unix_context_menu.borrow_mut().take() {
+        if let Some(popover) = self.runtime.unix_context_menu.borrow_mut().take() {
             popover.popdown();
             popover.unparent();
         }

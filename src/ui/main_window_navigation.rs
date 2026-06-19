@@ -2,7 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     path::PathBuf,
     rc::Rc,
-    sync::mpsc::{Sender, TryRecvError},
+    sync::mpsc::{Receiver, Sender, TryRecvError},
     time::{Duration, Instant},
 };
 
@@ -13,15 +13,33 @@ use crate::{
     application::{ActivePanel, Commander, LoadScheduler},
     archive::ArchiveService,
     config::AppConfig,
-    fs::watcher::WatchCommand,
+    fs::watcher::{WatchCommand, WatchEvent},
     ui::{
         dialogs,
         navigation::{self, LoadAction, NavigationRequest, SelectedNavigation},
-        operations::ActiveOperationHandle,
     },
 };
 
-use super::hosts::NavigationHost;
+use super::{hosts::NavigationHost, operations_controller::OperationRuntime};
+
+#[derive(Clone)]
+pub struct NavigationRuntime {
+    pub navigation_busy: Rc<Cell<bool>>,
+    pub watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
+    pub load_scheduler: Rc<RefCell<LoadScheduler>>,
+    pub watch_command_tx: Sender<WatchCommand>,
+}
+
+impl NavigationRuntime {
+    pub fn new(watch_command_tx: Sender<WatchCommand>) -> Self {
+        Self {
+            navigation_busy: Rc::new(Cell::new(false)),
+            watcher_refresh_cooldown_until: Rc::new(Cell::new(None)),
+            load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
+            watch_command_tx,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct NavigationController {
@@ -29,26 +47,19 @@ pub struct NavigationController {
     window: gtk::ApplicationWindow,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
-    active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
-    navigation_busy: Rc<Cell<bool>>,
-    watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
-    load_scheduler: Rc<RefCell<LoadScheduler>>,
-    watch_command_tx: Sender<WatchCommand>,
+    operation_runtime: OperationRuntime,
+    runtime: NavigationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
 }
 
 impl NavigationController {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         host: Rc<dyn NavigationHost>,
         window: gtk::ApplicationWindow,
         commander: Rc<RefCell<Commander>>,
         archive_service: Rc<RefCell<ArchiveService>>,
-        active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
-        navigation_busy: Rc<Cell<bool>>,
-        watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
-        load_scheduler: Rc<RefCell<LoadScheduler>>,
-        watch_command_tx: Sender<WatchCommand>,
+        operation_runtime: OperationRuntime,
+        runtime: NavigationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
     ) -> Self {
         Self {
@@ -56,11 +67,8 @@ impl NavigationController {
             window,
             commander,
             archive_service,
-            active_operation,
-            navigation_busy,
-            watcher_refresh_cooldown_until,
-            load_scheduler,
-            watch_command_tx,
+            operation_runtime,
+            runtime,
             app_config_cache,
         }
     }
@@ -150,7 +158,9 @@ impl NavigationController {
     }
 
     pub fn start_directory_load(&self, request: NavigationRequest) {
-        if self.navigation_busy.get() || self.active_operation.borrow().is_some() {
+        if self.runtime.navigation_busy.get()
+            || self.operation_runtime.active_operation.borrow().is_some()
+        {
             return;
         }
 
@@ -234,20 +244,22 @@ impl NavigationController {
     }
 
     pub fn mark_panels_dirty(&self, panels: &[ActivePanel]) {
-        self.load_scheduler
+        self.runtime
+            .load_scheduler
             .borrow_mut()
             .queue_refresh(panels, t!("status.view_refreshed").into_owned());
     }
 
     pub fn refresh_dirty_panels_if_idle(&self) {
-        if self.active_operation.borrow().is_some()
-            || self.navigation_busy.get()
+        if self.operation_runtime.active_operation.borrow().is_some()
+            || self.runtime.navigation_busy.get()
             || self.is_watcher_refresh_suppressed()
         {
             return;
         }
 
         let Some((panel, status)) = self
+            .runtime
             .load_scheduler
             .borrow_mut()
             .take_next_refresh(&t!("status.view_refreshed").into_owned())
@@ -262,11 +274,35 @@ impl NavigationController {
     }
 
     pub fn queue_initial_panel_loads(&self) {
-        self.load_scheduler.borrow_mut().queue_refresh(
+        self.runtime.load_scheduler.borrow_mut().queue_refresh(
             &[ActivePanel::Left, ActivePanel::Right],
             t!("status.view_refreshed").into_owned(),
         );
         self.refresh_dirty_panels_if_idle();
+    }
+
+    pub fn sync_watched_paths(&self) {
+        let paths = self.commander.borrow().state().visible_paths();
+        let _ = self.runtime.watch_command_tx.send(WatchCommand::SetPaths(paths));
+    }
+
+    pub fn install_watcher_poll(&self, watch_event_rx: Receiver<WatchEvent>) {
+        let controller = self.clone();
+        glib::timeout_add_local(Duration::from_millis(350), move || {
+            let mut changed_paths = Vec::new();
+            while let Ok(event) = watch_event_rx.try_recv() {
+                changed_paths.extend(event.paths);
+            }
+
+            if !changed_paths.is_empty() {
+                let affected_panels = controller.affected_panels_for_paths(&changed_paths);
+                controller.mark_panels_dirty(&affected_panels);
+            }
+
+            controller.refresh_dirty_panels_if_idle();
+
+            glib::ControlFlow::Continue
+        });
     }
 
     pub fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {
@@ -289,38 +325,36 @@ impl NavigationController {
         affected
     }
 
-    fn sync_watched_paths(&self) {
-        let paths = self.commander.borrow().state().visible_paths();
-        let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
-    }
-
     fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
-        self.load_scheduler.borrow_mut().prepare_request(request)
+        self.runtime.load_scheduler.borrow_mut().prepare_request(request)
     }
 
     fn commit_loaded_generation(&self, panel: ActivePanel, generation: u64) -> bool {
-        self.load_scheduler
+        self.runtime
+            .load_scheduler
             .borrow_mut()
             .commit_loaded(panel, generation)
     }
 
     fn finish_in_flight_load(&self, panel: ActivePanel, generation: u64) {
-        self.load_scheduler
+        self.runtime
+            .load_scheduler
             .borrow_mut()
             .finish_in_flight(panel, generation);
     }
 
     fn trigger_manual_refresh_cooldown(&self) {
-        self.watcher_refresh_cooldown_until
+        self.runtime
+            .watcher_refresh_cooldown_until
             .set(Some(Instant::now() + Duration::from_millis(900)));
         self.sync_watched_paths();
     }
 
     fn is_watcher_refresh_suppressed(&self) -> bool {
-        match self.watcher_refresh_cooldown_until.get() {
+        match self.runtime.watcher_refresh_cooldown_until.get() {
             Some(until) if Instant::now() < until => true,
             Some(_) => {
-                self.watcher_refresh_cooldown_until.set(None);
+                self.runtime.watcher_refresh_cooldown_until.set(None);
                 false
             }
             None => false,

@@ -216,6 +216,11 @@ scrollbar slider {
     background: #2b2b2b;
 }
 
+scrollbar,
+scrollbar trough {
+    background: #141414;
+}
+
 popover contents,
 dialog > box,
 messagedialog box,

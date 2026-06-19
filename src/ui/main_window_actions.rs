@@ -27,7 +27,8 @@ impl MainWindow {
             return;
         }
         let active_panel = self.commander.borrow().state().active_panel;
-        self.start_selected_navigation(active_panel);
+        self.navigation_controller()
+            .start_selected_navigation(active_panel);
     }
 
     pub fn handle_view(self: &Rc<Self>) {
@@ -221,7 +222,8 @@ impl MainWindow {
     }
 
     pub fn handle_copy(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Copy);
+        self.operations_controller()
+            .handle_operation(FileOperationKind::Copy);
     }
 
     pub fn handle_toggle_terminal(self: &Rc<Self>) {
@@ -312,11 +314,13 @@ impl MainWindow {
     }
 
     pub fn handle_move(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Move);
+        self.operations_controller()
+            .handle_operation(FileOperationKind::Move);
     }
 
     pub fn handle_delete(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Delete);
+        self.operations_controller()
+            .handle_operation(FileOperationKind::Delete);
     }
 
     #[cfg(not(target_os = "windows"))]
