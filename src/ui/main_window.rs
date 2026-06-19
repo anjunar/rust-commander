@@ -27,6 +27,7 @@ use crate::{
         shortcuts,
         terminal_controller::TerminalAction,
         terminal_dock::TerminalDock,
+        theme::ThemeController,
     },
 };
 
@@ -54,13 +55,15 @@ pub struct MainWindow {
     load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
+    theme_controller: ThemeController,
     #[cfg(not(target_os = "windows"))]
     unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
 impl MainWindow {
     pub fn new(app: &gtk::Application, commander: Commander, app_config: AppConfig) -> Rc<Self> {
-        install_css();
+        let theme_controller = ThemeController::new();
+        theme_controller.apply(app_config.general.theme);
         let window_config = app_config.window.clone();
 
         let window = gtk::ApplicationWindow::builder()
@@ -144,11 +147,13 @@ impl MainWindow {
             load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
+            theme_controller,
             #[cfg(not(target_os = "windows"))]
             unix_context_menu: Rc::new(RefCell::new(None)),
         });
 
         this.apply_update(ViewUpdate::all());
+        this.apply_theme();
         this.refresh_localized_labels();
         this.sync_watched_paths();
         this.connect_panel_events();
@@ -157,6 +162,7 @@ impl MainWindow {
         this.install_watcher_poll(watch_event_rx);
         this.install_window_state_persistence();
         this.install_window_geometry_tracking();
+        this.install_system_theme_tracking();
         shortcuts::install(&this, app);
 
         // Initialize Windows tray icon (no-op on other platforms)
@@ -364,6 +370,25 @@ impl MainWindow {
         self.terminal_dock
             .set_panel_dir(state.active_panel().location.host_directory());
         self.terminal_dock.refresh_toolbar();
+    }
+
+    fn apply_theme(&self) {
+        let preference = self.app_config_cache.borrow().general.theme;
+        self.theme_controller.apply(preference);
+    }
+
+    fn install_system_theme_tracking(self: &Rc<Self>) {
+        let Some(settings) = gtk::Settings::default() else {
+            return;
+        };
+
+        let this = Rc::clone(self);
+        settings.connect_gtk_application_prefer_dark_theme_notify(move |_| {
+            if this.app_config_cache.borrow().general.theme == crate::config::ThemePreference::System
+            {
+                this.apply_theme();
+            }
+        });
     }
 
     fn sync_watched_paths(&self) {
@@ -933,284 +958,3 @@ fn command_bar_labels() -> Vec<String> {
     ]
 }
 
-fn install_css() {
-    if let Some(settings) = gtk::Settings::default() {
-        settings.set_gtk_application_prefer_dark_theme(true);
-    }
-
-    let provider = gtk::CssProvider::new();
-    provider.load_from_string(
-        "
-        /* Darker IntelliJ Darcula variant */
-        window,
-        dialog,
-        popover,
-        menupopover,
-        .background {
-            background: #181818; /* darker main window */
-            color: #a9b7c6; /* main text */
-        }
-
-        headerbar {
-            background: #262626; /* darker header */
-            color: #a9b7c6;
-            border-bottom: 1px solid #2c2c2c;
-            box-shadow: none;
-        }
-
-        headerbar:backdrop {
-            background: #262626;
-            color: #a9b7c6;
-        }
-
-        /* Make minimize/maximize/close titlebuttons match the window background */
-        headerbar .titlebutton,
-        window .titlebutton,
-        .titlebutton {
-            background: #181818;
-            background-color: #181818; /* match main window background */
-            border: none;
-            box-shadow: none;
-            color: inherit;
-        }
-
-        /* Ensure hover/active use the same background (no contrasting highlight) */
-        headerbar .titlebutton:hover,
-        window .titlebutton:hover,
-        .titlebutton:hover,
-        headerbar .titlebutton:active,
-        .titlebutton:active {
-            background: #181818;
-            background-color: #181818;
-            box-shadow: none;
-        }
-
-        .app-title {
-            font-weight: 700;
-            letter-spacing: 0.06em;
-        }
-
-        .commander-view {
-            background: linear-gradient(135deg, #181818, #121212);
-        }
-
-        .file-panel {
-            padding: 10px;
-            border: 1px solid #2b2b2b;
-            border-radius: 10px;
-            background: #1f1f20;
-        }
-
-        .active-panel {
-            border-color: #2a7fd1; /* keep selection accent */
-            box-shadow: 0 0 0 1px rgba(42,127,209,0.24);
-        }
-
-        .path-row {
-            padding: 2px 0 6px 0;
-        }
-
-        dropdown,
-        dropdown button,
-        entry,
-        dialog entry,
-        button,
-        menubutton button {
-            background: #141414;
-            color: #a9b7c6;
-            border-color: #2b2b2b;
-        }
-
-        dropdown button:hover,
-        button:hover,
-        menubutton button:hover {
-            background: #1f1f1f;
-        }
-
-        .root-selector,
-        .root-selector button {
-            border-radius: 8px;
-        }
-
-        dropdown button:focus,
-        button:focus,
-        entry:focus {
-            box-shadow: 0 0 0 1px rgba(42,127,209,0.24);
-            border-color: #2a7fd1;
-        }
-
-        .path-label {
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-            font-size: 0.95em;
-            color: #bdbdbd;
-            padding: 7px 10px;
-            border-radius: 8px;
-            background: #141414;
-            border: 1px solid #232323;
-        }
-
-        scrolledwindow,
-        scrolledwindow > viewport,
-        .file-table,
-        columnview,
-        listview,
-        listview.view,
-        widget.view {
-            background: #141414;
-            color: #a9b7c6;
-        }
-
-        columnview header,
-        columnview header button,
-        columnview columnheader,
-        columnview columnheader button {
-            background: #1d1d1d;
-            color: #c8d6e5;
-            border-color: #252525;
-            box-shadow: none;
-            font-weight: 700;
-        }
-
-        columnview row {
-            color: #a9b7c6;
-        }
-
-        columnview row:nth-child(even) {
-            background: rgba(255,255,255,0.01);
-        }
-
-        columnview row:hover {
-            background: rgba(255,255,255,0.02);
-        }
-
-        columnview row:selected,
-        listview row:selected,
-        treeexpander row:selected {
-            background: #214283; /* keep selection */
-            color: #ffffff;
-        }
-
-        .parent-link {
-            color: #6296c9;
-            font-style: italic;
-        }
-
-        separator {
-            background: #232323;
-        }
-
-        .panel-scroller {
-            border: 1px solid #232323;
-            border-radius: 8px;
-            background: #141414;
-        }
-
-        .panel-scroller > viewport {
-            border-radius: 8px;
-        }
-
-        .editor-view,
-        .editor-view text,
-        .editor-view border,
-        .editor-view gutter {
-            background: #141414;
-            color: #a9b7c6;
-            font-family: 'Fira Code', 'Cascadia Code', 'Source Code Pro', monospace;
-            font-size: 13px;
-        }
-
-        .editor-status {
-            color: #9fb1c3;
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-        }
-
-        .terminal-dock {
-            border: 1px solid #1f1f1f;
-            border-radius: 10px;
-            background: #0f0f0f;
-        }
-
-        .terminal-toolbar {
-            border-bottom: 1px solid #1a1a1a;
-            background: rgba(20,20,20,0.95);
-        }
-
-        .terminal-title {
-            font-weight: 700;
-            letter-spacing: 0.04em;
-        }
-
-        .terminal-cwd {
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-            color: #9fb1c3;
-        }
-
-        .terminal-button {
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-        }
-
-        .terminal-placeholder {
-            background: #141414;
-        }
-
-        .terminal-placeholder-title {
-            font-weight: 700;
-        }
-
-        .terminal-placeholder-copy {
-            color: #9eaec0;
-        }
-
-        scrollbar slider {
-            background: #2b2b2b;
-            border-radius: 999px;
-            min-width: 10px;
-            min-height: 10px;
-        }
-
-        popover contents,
-        dialog > box,
-        messagedialog box,
-        .dialog-action-area {
-            background: #141414;
-            color: #a9b7c6;
-        }
-
-        .status-line {
-            padding: 6px 10px;
-            border-radius: 8px;
-            background: #131313;
-            color: #d0d6db;
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-            border: 1px solid #1f1f1f;
-        }
-
-        .command-bar {
-            padding-top: 2px;
-        }
-
-        .command-button {
-            font-family: 'Cascadia Code', 'Consolas', monospace;
-            font-weight: 700;
-            background: #1d1d1d;
-            color: #a9b7c6;
-            border: 1px solid #232323;
-            border-radius: 8px;
-            padding: 10px 14px;
-        }
-
-        .dialog-title {
-            font-weight: 700;
-            font-size: 1.1em;
-        }
-        ",
-    );
-
-    if let Some(display) = gtk::gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(
-            &display,
-            &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
-    }
-}

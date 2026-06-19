@@ -1,0 +1,192 @@
+window,
+dialog,
+popover,
+menupopover,
+.background {
+    background: #f4f1ea;
+    color: #24303d;
+}
+
+headerbar {
+    background: #ece6db;
+    color: #24303d;
+    border-bottom: 1px solid #d8cfbf;
+    box-shadow: none;
+}
+
+headerbar:backdrop {
+    background: #ece6db;
+    color: #24303d;
+}
+
+headerbar .titlebutton,
+window .titlebutton,
+.titlebutton,
+headerbar .titlebutton:hover,
+window .titlebutton:hover,
+.titlebutton:hover,
+headerbar .titlebutton:active,
+.titlebutton:active {
+    background: #f4f1ea;
+    background-color: #f4f1ea;
+    border: none;
+    box-shadow: none;
+    color: inherit;
+}
+
+.commander-view {
+    background: linear-gradient(145deg, #f7f4ee, #ede7db);
+}
+
+.file-panel {
+    padding: 10px;
+    border: 1px solid #d3c8b8;
+    border-radius: 10px;
+    background: #fffdf8;
+}
+
+.active-panel {
+    border-color: #1d6fd1;
+    box-shadow: 0 0 0 1px rgba(29, 111, 209, 0.18);
+}
+
+dropdown,
+dropdown button,
+entry,
+dialog entry,
+button,
+menubutton button {
+    background: #fffdf8;
+    color: #24303d;
+    border-color: #ccbfae;
+}
+
+dropdown button:hover,
+button:hover,
+menubutton button:hover {
+    background: #f0e8dc;
+}
+
+dropdown button:focus,
+button:focus,
+entry:focus {
+    box-shadow: 0 0 0 1px rgba(29, 111, 209, 0.22);
+    border-color: #1d6fd1;
+}
+
+.path-label {
+    color: #425466;
+    background: #f8f4ec;
+    border-color: #d7ccbf;
+}
+
+scrolledwindow,
+scrolledwindow > viewport,
+.file-table,
+columnview,
+listview,
+listview.view,
+widget.view {
+    background: #fffdf9;
+    color: #24303d;
+}
+
+columnview header,
+columnview header button,
+columnview columnheader,
+columnview columnheader button {
+    background: #efe8dc;
+    color: #314152;
+    border-color: #d8cebf;
+}
+
+columnview row {
+    color: #24303d;
+}
+
+columnview row:nth-child(even) {
+    background: rgba(36, 48, 61, 0.025);
+}
+
+columnview row:hover {
+    background: rgba(29, 111, 209, 0.08);
+}
+
+columnview row:selected,
+listview row:selected,
+treeexpander row:selected {
+    background: #cfe2ff;
+    color: #0f2236;
+}
+
+.parent-link {
+    color: #2d73b9;
+}
+
+separator {
+    background: #ddd3c5;
+}
+
+.panel-scroller {
+    border: 1px solid #ddd3c5;
+    background: #fffdf9;
+}
+
+.editor-view,
+.editor-view text,
+.editor-view border,
+.editor-view gutter {
+    background: #fffdf9;
+    color: #24303d;
+}
+
+.editor-status {
+    color: #5f7183;
+}
+
+.terminal-dock {
+    border: 1px solid #d6cbbb;
+    border-radius: 10px;
+    background: #f7f2e9;
+}
+
+.terminal-toolbar {
+    border-bottom: 1px solid #ddd3c5;
+    background: rgba(244, 239, 231, 0.96);
+}
+
+.terminal-cwd {
+    color: #5a6f84;
+}
+
+.terminal-placeholder {
+    background: #fbf8f2;
+}
+
+.terminal-placeholder-copy {
+    color: #6d8091;
+}
+
+scrollbar slider {
+    background: #cdbfaa;
+}
+
+popover contents,
+dialog > box,
+messagedialog box,
+.dialog-action-area {
+    background: #fbf8f2;
+    color: #24303d;
+}
+
+.status-line {
+    background: #f5f0e7;
+    color: #2a3744;
+    border-color: #d9cebe;
+}
+
+.command-button {
+    background: #f0e8dc;
+    color: #24303d;
+    border: 1px solid #d6cbba;
+}

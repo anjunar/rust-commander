@@ -1,0 +1,95 @@
+.app-title {
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.path-row {
+    padding: 2px 0 6px 0;
+}
+
+.root-selector,
+.root-selector button,
+dropdown,
+dropdown button,
+entry,
+dialog entry,
+button,
+menubutton button {
+    border-radius: 8px;
+}
+
+.path-label {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.95em;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+columnview header,
+columnview header button,
+columnview columnheader,
+columnview columnheader button {
+    box-shadow: none;
+    font-weight: 700;
+}
+
+.parent-link {
+    font-style: italic;
+}
+
+.panel-scroller,
+.panel-scroller > viewport {
+    border-radius: 8px;
+}
+
+.editor-view,
+.editor-view text,
+.editor-view border,
+.editor-view gutter {
+    font-family: 'Fira Code', 'Cascadia Code', 'Source Code Pro', monospace;
+    font-size: 13px;
+}
+
+.editor-status,
+.status-line,
+.terminal-cwd,
+.terminal-button,
+.path-label {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+
+.terminal-title,
+.dialog-title,
+.command-button {
+    font-weight: 700;
+}
+
+.terminal-title {
+    letter-spacing: 0.04em;
+}
+
+scrollbar slider {
+    border-radius: 999px;
+    min-width: 10px;
+    min-height: 10px;
+}
+
+.status-line {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid;
+}
+
+.command-bar {
+    padding-top: 2px;
+}
+
+.command-button {
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.dialog-title {
+    font-size: 1.1em;
+}

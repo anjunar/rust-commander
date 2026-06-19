@@ -187,7 +187,6 @@ impl MainWindow {
                 return;
             }
 
-            let previous_config = this.app_config_cache.borrow().clone();
             this.app_config_cache.replace(next_config.clone());
             this.archive_service
                 .replace(ArchiveService::with_default_backends());
@@ -218,18 +217,12 @@ impl MainWindow {
                 update
             };
             this.apply_update(update);
+            this.apply_theme();
             this.queue_async_refresh_panels(
                 &[ActivePanel::Left, ActivePanel::Right],
                 t!("status.view_refreshed").into_owned(),
             );
             this.refresh_localized_labels();
-            if previous_config.general.theme != next_config.general.theme {
-                dialogs::show_error(
-                    &this.window,
-                    &t!("settings.title"),
-                    &t!("settings.restart_notice"),
-                );
-            }
         });
     }
 
