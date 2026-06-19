@@ -151,3 +151,21 @@ dialog .button {
     padding: 12px;
     border-radius: 18px;
 }
+
+.navigation-overlay {
+    padding: 18px 22px;
+    border-radius: 16px;
+    border: 1px solid;
+    min-width: 220px;
+}
+
+.navigation-overlay-spinner {
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.navigation-overlay-label {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}

@@ -281,3 +281,10 @@ messagedialog box,
 .splash-card {
     background: rgba(20, 20, 20, 0.72);
 }
+
+.navigation-overlay {
+    background: rgba(20, 20, 20, 0.94);
+    color: #d0d6db;
+    border-color: #2b2b2b;
+    box-shadow: 0 14px 42px rgba(0, 0, 0, 0.38);
+}

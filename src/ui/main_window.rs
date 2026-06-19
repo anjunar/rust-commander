@@ -82,6 +82,9 @@ pub struct MainWindow {
     commander_view: CommanderView,
     terminal_dock: TerminalDock,
     content_paned: gtk::Paned,
+    navigation_overlay: gtk::Box,
+    navigation_overlay_spinner: gtk::Spinner,
+    navigation_overlay_label: gtk::Label,
     busy_spinner: gtk::Spinner,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
@@ -162,7 +165,32 @@ impl MainWindow {
         content_paned.set_shrink_end_child(false);
         content_paned.set_start_child(Some(&commander_view.root));
         content_paned.set_end_child(Some(&terminal_dock.root));
-        shell.append(&content_paned);
+
+        let content_overlay = gtk::Overlay::new();
+        content_overlay.set_hexpand(true);
+        content_overlay.set_vexpand(true);
+        content_overlay.set_child(Some(&content_paned));
+
+        let navigation_overlay = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        navigation_overlay.set_halign(gtk::Align::Center);
+        navigation_overlay.set_valign(gtk::Align::Center);
+        navigation_overlay.add_css_class("navigation-overlay");
+        navigation_overlay.set_opacity(0.0);
+        navigation_overlay.set_can_target(false);
+        navigation_overlay.set_sensitive(false);
+
+        let navigation_overlay_spinner = gtk::Spinner::new();
+        navigation_overlay_spinner.stop();
+        navigation_overlay_spinner.set_visible(true);
+        navigation_overlay_spinner.add_css_class("navigation-overlay-spinner");
+        navigation_overlay.append(&navigation_overlay_spinner);
+
+        let navigation_overlay_label = gtk::Label::new(Some(""));
+        navigation_overlay_label.add_css_class("navigation-overlay-label");
+        navigation_overlay.append(&navigation_overlay_label);
+
+        content_overlay.add_overlay(&navigation_overlay);
+        shell.append(&content_overlay);
 
         let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let busy_spinner = gtk::Spinner::new();
@@ -196,6 +224,9 @@ impl MainWindow {
             commander_view,
             terminal_dock,
             content_paned,
+            navigation_overlay,
+            navigation_overlay_spinner,
+            navigation_overlay_label,
             busy_spinner,
             status_label,
             commander,
@@ -374,7 +405,16 @@ impl MainWindow {
         self.navigation_runtime.navigation_busy.set(busy);
         self.busy_spinner.set_visible(busy);
         self.busy_spinner.set_spinning(busy);
+        self.navigation_overlay.set_opacity(if busy { 1.0 } else { 0.0 });
+        self.navigation_overlay.set_sensitive(busy);
+        if busy {
+            self.navigation_overlay_spinner.start();
+        } else {
+            self.navigation_overlay_spinner.stop();
+        }
+        self.navigation_overlay_label.set_label(message);
         self.commander_view.set_interaction_enabled(!busy);
+        self.content_paned.set_sensitive(!busy);
 
         if busy {
             self.status_label.set_label(message);
