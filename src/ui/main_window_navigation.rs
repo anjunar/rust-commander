@@ -202,6 +202,7 @@ impl NavigationController {
                         controller.host.apply_update(update);
                         controller.host.apply_panel_root(load.panel);
                         controller.host.focus_active_panel();
+                        controller.host.notify_initial_panel_loaded(load.panel);
                         controller.trigger_manual_refresh_cooldown();
                         controller.refresh_dirty_panels_if_idle();
                     }
@@ -218,6 +219,9 @@ impl NavigationController {
                         };
                         controller.host.apply_update(update);
                         controller.host.focus_active_panel();
+                        controller
+                            .host
+                            .notify_initial_panel_loaded(request_for_tracking.panel);
                         controller
                             .host
                             .show_error(&t!("error.could_not_open_directory"), &error);
@@ -238,6 +242,9 @@ impl NavigationController {
                 };
                 controller.host.apply_update(update);
                 controller.host.focus_active_panel();
+                controller
+                    .host
+                    .notify_initial_panel_loaded(request_for_tracking.panel);
                 glib::ControlFlow::Break
             }
         });

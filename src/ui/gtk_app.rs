@@ -1,7 +1,14 @@
+use std::rc::Rc;
+
 use anyhow::Result;
 use gtk::prelude::*;
 
-use crate::{application::Commander, config, i18n, ui::main_window::MainWindow};
+use crate::{
+    application::Commander,
+    config,
+    i18n,
+    ui::{main_window::MainWindow, startup_splash::StartupSplash},
+};
 
 pub const APP_ID: &str = "dev.rcommander.Gtk";
 
@@ -56,7 +63,18 @@ pub fn run() -> Result<()> {
             }
         };
 
-        let _window = MainWindow::new(app, commander, app_config);
+        let splash = Rc::new(StartupSplash::new(app));
+        splash.present();
+
+        let window = MainWindow::new_hidden(app, commander, app_config);
+        {
+            let splash = Rc::clone(&splash);
+            let window_ref = Rc::clone(&window);
+            window.on_initial_panels_ready(Rc::new(move || {
+                splash.close();
+                window_ref.present_window();
+            }));
+        }
     });
 
     app.run();

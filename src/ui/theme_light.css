@@ -230,3 +230,7 @@ messagedialog box,
     border-color: transparent;
     box-shadow: none;
 }
+
+.splash-card {
+    background: rgba(255, 255, 255, 0.72);
+}

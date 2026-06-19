@@ -128,3 +128,13 @@ dialog .button {
     font-family: 'Cascadia Code', 'Consolas', monospace;
     font-weight: 700;
 }
+
+.splash-overlay {
+    background: transparent;
+    background-color: transparent;
+}
+
+.splash-card {
+    padding: 12px;
+    border-radius: 18px;
+}

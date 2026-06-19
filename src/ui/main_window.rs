@@ -55,6 +55,28 @@ use terminal_wiring::TerminalController;
 use window_chrome::{install_custom_window_controls, WindowChromeController};
 use window_state_controller::WindowStateController;
 
+struct StartupLoadState {
+    wait_for_initial_panels: bool,
+    left_done: bool,
+    right_done: bool,
+    on_ready: Option<Rc<dyn Fn()>>,
+}
+
+impl StartupLoadState {
+    fn new(wait_for_initial_panels: bool) -> Self {
+        Self {
+            wait_for_initial_panels,
+            left_done: false,
+            right_done: false,
+            on_ready: None,
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.left_done && self.right_done
+    }
+}
+
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
     commander_view: CommanderView,
@@ -67,12 +89,30 @@ pub struct MainWindow {
     operation_runtime: OperationRuntime,
     navigation_runtime: NavigationRuntime,
     context_menu_runtime: ContextMenuRuntime,
+    startup_load_state: Rc<RefCell<StartupLoadState>>,
     app_config_cache: Rc<RefCell<AppConfig>>,
     theme_controller: Rc<ThemeController>,
 }
 
 impl MainWindow {
     pub fn new(app: &gtk::Application, commander: Commander, app_config: AppConfig) -> Rc<Self> {
+        Self::new_with_visibility(app, commander, app_config, true)
+    }
+
+    pub fn new_hidden(
+        app: &gtk::Application,
+        commander: Commander,
+        app_config: AppConfig,
+    ) -> Rc<Self> {
+        Self::new_with_visibility(app, commander, app_config, false)
+    }
+
+    fn new_with_visibility(
+        app: &gtk::Application,
+        commander: Commander,
+        app_config: AppConfig,
+        present_immediately: bool,
+    ) -> Rc<Self> {
         let theme_controller = Rc::new(ThemeController::new());
         theme_controller.apply(app_config.general.theme);
         let window_config = app_config.window.clone();
@@ -147,6 +187,7 @@ impl MainWindow {
         let navigation_runtime = NavigationRuntime::new(watch_command_tx);
         let operation_runtime = OperationRuntime::new();
         let context_menu_runtime = ContextMenuRuntime::new();
+        let startup_load_state = Rc::new(RefCell::new(StartupLoadState::new(!present_immediately)));
 
         let this = Rc::new(Self {
             window,
@@ -160,6 +201,7 @@ impl MainWindow {
             operation_runtime,
             navigation_runtime,
             context_menu_runtime,
+            startup_load_state,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
             theme_controller,
         });
@@ -196,15 +238,8 @@ impl MainWindow {
             });
         }
 
-        this.window.present();
-        #[cfg(all(unix, not(target_os = "macos")))]
-        {
-            let window = this.window.clone();
-            glib::idle_add_local_once(move || {
-                if let Err(error) = crate::platform::x11_window_icon::apply_window_icon(&window) {
-                    eprintln!("Could not apply X11 window icon: {error}");
-                }
-            });
+        if present_immediately {
+            this.present_window();
         }
         this.window_state_controller()
             .restore_window_geometry(window_config);
@@ -212,6 +247,37 @@ impl MainWindow {
         this.navigation_controller().queue_initial_panel_loads();
 
         this
+    }
+
+    pub fn present_window(self: &Rc<Self>) {
+        self.window.present();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let window = self.window.clone();
+            glib::idle_add_local_once(move || {
+                if let Err(error) = crate::platform::x11_window_icon::apply_window_icon(&window) {
+                    eprintln!("Could not apply X11 window icon: {error}");
+                }
+            });
+        }
+    }
+
+    pub fn on_initial_panels_ready(self: &Rc<Self>, callback: Rc<dyn Fn()>) {
+        let should_run_now = {
+            let mut state = self.startup_load_state.borrow_mut();
+            if !state.wait_for_initial_panels || state.is_complete() {
+                true
+            } else {
+                state.on_ready = Some(callback.clone());
+                false
+            }
+        };
+
+        if should_run_now {
+            glib::idle_add_local_once(move || {
+                callback();
+            });
+        }
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
@@ -476,6 +542,33 @@ impl NavigationHost for MainWindow {
     fn apply_panel_root(&self, panel: ActivePanel) {
         self.commander_view
             .apply_root(self.commander.borrow().state(), panel);
+    }
+
+    fn notify_initial_panel_loaded(&self, panel: ActivePanel) {
+        let callback = {
+            let mut state = self.startup_load_state.borrow_mut();
+            if !state.wait_for_initial_panels {
+                return;
+            }
+
+            match panel {
+                ActivePanel::Left => state.left_done = true,
+                ActivePanel::Right => state.right_done = true,
+            }
+
+            if !state.is_complete() {
+                return;
+            }
+
+            state.wait_for_initial_panels = false;
+            state.on_ready.take()
+        };
+
+        if let Some(callback) = callback {
+            glib::idle_add_local_once(move || {
+                callback();
+            });
+        }
     }
 }
 
