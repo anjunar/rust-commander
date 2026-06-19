@@ -13,7 +13,7 @@ use rust_i18n::t;
 
 use super::{
     ArchiveBackendRegistry, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveOperation,
-    ArchiveProgress, ArchiveSession,
+    ArchiveProbe, ArchiveProgress, ArchiveSession,
 };
 use crate::{
     archive::safe_join_extract_path,
@@ -75,6 +75,10 @@ impl ArchiveService {
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
         self.registry.is_archive_path(path)
+    }
+
+    pub fn probe_path(&self, path: &Path) -> Option<ArchiveProbe> {
+        self.registry.probe_path(path)
     }
 
     pub fn open_archive(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {

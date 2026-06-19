@@ -1,8 +1,9 @@
 use std::{cmp::Reverse, path::Path, sync::Arc};
 
 use super::{
-    ArchiveBackend, ArchiveError, ArchiveFormatDetector, IsoBackend, LibArchiveBackend,
-    PluginArchiveBackend, UnrarBackend, ZipBackend,
+    probe::{archive_family_for_format, probe_multipart_zip},
+    ArchiveBackend, ArchiveError, ArchiveFormatDetector, ArchiveProbe, ArchiveSupport, IsoBackend,
+    LibArchiveBackend, PluginArchiveBackend, UnrarBackend, ZipBackend,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -29,16 +30,37 @@ impl ArchiveBackendRegistry {
     }
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
-        ArchiveFormatDetector::is_supported_archive(path)
+        self.probe_path(path).is_some()
+    }
+
+    pub fn probe_path(&self, path: &Path) -> Option<ArchiveProbe> {
+        if let Some(probe) = probe_multipart_zip(path) {
+            return Some(probe);
+        }
+
+        let detected_format = ArchiveFormatDetector::detect(path)?;
+        Some(ArchiveProbe::supported(
+            archive_family_for_format(detected_format),
+            Some(detected_format),
+        ))
     }
 
     pub fn resolve_for_path(&self, path: &Path) -> Result<Arc<dyn ArchiveBackend>, ArchiveError> {
+        if let Some(probe) = self.probe_path(path) {
+            if let ArchiveSupport::NotSupportedYet { reason } = probe.support {
+                return Err(ArchiveError::FeatureNotSupported {
+                    backend: "archive probe".into(),
+                    feature: reason,
+                });
+            }
+        }
+
         self.backends
             .iter()
             .find(|backend| backend.can_open(path))
             .cloned()
             .ok_or_else(|| {
-                if ArchiveFormatDetector::is_supported_archive(path) {
+                if self.probe_path(path).is_some() {
                     ArchiveError::BackendNotFound {
                         backend: "registered archive backend".into(),
                         path: Some(path.to_path_buf()),

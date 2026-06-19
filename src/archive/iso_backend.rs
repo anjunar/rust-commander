@@ -24,9 +24,14 @@ impl IsoBackend {
             detail: format!("Could not open ISO {}: {error}", path.display()),
         })?;
 
-        ISO9660::from_device(IsoFileDevice(file)).ok_or_else(|| ArchiveError::InvalidArchive {
-            path: path.to_path_buf(),
-            detail: Some("Could not parse ISO9660 volume descriptors".into()),
+        ISO9660::from_device(IsoFileDevice(file)).ok_or_else(|| {
+            ArchiveError::FeatureNotSupported {
+                backend: self.name().into(),
+                feature: format!(
+                    "Opening non-ISO9660 or Apple/macOS hybrid ISO images like {}",
+                    path.display()
+                ),
+            }
         })
     }
 

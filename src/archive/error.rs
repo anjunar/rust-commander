@@ -87,7 +87,7 @@ impl fmt::Display for ArchiveError {
                 write!(f, "Library backend failed ({library}): {detail}")
             }
             Self::FeatureNotSupported { backend, feature } => {
-                write!(f, "Feature not supported by {backend}: {feature}")
+                write!(f, "{feature} is not supported yet ({backend})")
             }
         }
     }
