@@ -38,6 +38,10 @@ headerbar .titlebutton:active,
     background: linear-gradient(145deg, #f7f4ee, #ede7db);
 }
 
+.commander-view > separator {
+    background: #eee7db;
+}
+
 .file-panel {
     padding: 10px;
     border: 1px solid #d3c8b8;

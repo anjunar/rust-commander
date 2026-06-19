@@ -40,6 +40,10 @@ impl FilePanelView {
         root.set_hexpand(true);
         root.set_vexpand(true);
         root.add_css_class("file-panel");
+        match panel {
+            ActivePanel::Left => root.add_css_class("file-panel-left"),
+            ActivePanel::Right => root.add_css_class("file-panel-right"),
+        }
 
         let path_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         path_row.add_css_class("path-row");

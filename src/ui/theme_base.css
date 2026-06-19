@@ -38,6 +38,19 @@ columnview columnheader button {
     font-style: italic;
 }
 
+.file-panel-left {
+    margin-end: 4px;
+}
+
+.file-panel-right {
+    margin-start: 4px;
+}
+
+paned.horizontal > separator {
+    min-width: 10px;
+    background: transparent;
+}
+
 .panel-scroller,
 .panel-scroller > viewport {
     border-radius: 8px;

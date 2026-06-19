@@ -21,6 +21,7 @@ impl CommanderView {
         root.set_resize_end_child(true);
         root.set_shrink_start_child(false);
         root.set_shrink_end_child(false);
+        root.set_wide_handle(true);
 
         let left = FilePanelView::new(ActivePanel::Left);
         let right = FilePanelView::new(ActivePanel::Right);
