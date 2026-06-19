@@ -151,6 +151,10 @@ impl MainWindow {
                     OperationEvent::Finished(summary) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
+                        {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.queue_selection_after_file_operation(&request);
+                        }
                         let status = t!(
                             "status.operation_completed",
                             kind = presentation::file_operation_label(&summary.kind),
@@ -166,6 +170,10 @@ impl MainWindow {
                     OperationEvent::Cancelled(summary) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
+                        {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.queue_selection_after_file_operation(&request);
+                        }
                         let status = t!(
                             "status.operation_cancelled",
                             kind = presentation::file_operation_label(&summary.kind),

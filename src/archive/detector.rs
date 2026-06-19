@@ -57,8 +57,7 @@ impl ArchiveFormatDetector {
             return Some(ArchiveFormat::Zip);
         }
 
-        if header.starts_with(b"Rar!\x1A\x07\x00") || header.starts_with(b"Rar!\x1A\x07\x01\x00")
-        {
+        if header.starts_with(b"Rar!\x1A\x07\x00") || header.starts_with(b"Rar!\x1A\x07\x01\x00") {
             return Some(ArchiveFormat::Rar);
         }
 
@@ -228,7 +227,10 @@ mod tests {
         let path = temp_test_file("archive_signature", "");
         fs::write(&path, b"PK\x03\x04test-payload").unwrap();
 
-        assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Zip));
+        assert_eq!(
+            ArchiveFormatDetector::detect(&path),
+            Some(ArchiveFormat::Zip)
+        );
 
         fs::remove_file(path).unwrap();
     }
@@ -250,7 +252,10 @@ mod tests {
         content[257..262].copy_from_slice(b"ustar");
         fs::write(&path, content).unwrap();
 
-        assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Tar));
+        assert_eq!(
+            ArchiveFormatDetector::detect(&path),
+            Some(ArchiveFormat::Tar)
+        );
 
         fs::remove_file(path).unwrap();
     }

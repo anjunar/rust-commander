@@ -1,11 +1,11 @@
 use std::path::Path;
 
+#[cfg(not(target_os = "windows"))]
+use super::{safe_join_extract_path, ArchiveEntryKind};
 use super::{
     ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveError, ArchiveFormat,
     ArchiveFormatDetector, ArchiveSession,
 };
-#[cfg(not(target_os = "windows"))]
-use super::{ArchiveEntryKind, safe_join_extract_path};
 
 #[derive(Clone, Debug, Default)]
 pub struct LibArchiveBackend;
@@ -58,27 +58,26 @@ mod native {
     use super::*;
 
     impl LibArchiveBackend {
-        fn open_reader(
-            &self,
-            path: &Path,
-        ) -> Result<libarchive::reader::FileReader, ArchiveError> {
+        fn open_reader(&self, path: &Path) -> Result<libarchive::reader::FileReader, ArchiveError> {
             let mut builder = Builder::new();
-            builder
-                .support_filter(ReadFilter::All)
-                .map_err(|error| ArchiveError::LibraryError {
+            builder.support_filter(ReadFilter::All).map_err(|error| {
+                ArchiveError::LibraryError {
                     library: "libarchive".into(),
                     detail: error.to_string(),
-                })?;
-            builder
-                .support_format(ReadFormat::All)
-                .map_err(|error| ArchiveError::LibraryError {
+                }
+            })?;
+            builder.support_format(ReadFormat::All).map_err(|error| {
+                ArchiveError::LibraryError {
                     library: "libarchive".into(),
                     detail: error.to_string(),
-                })?;
-            builder.open_file(path).map_err(|error| ArchiveError::InvalidArchive {
-                path: path.to_path_buf(),
-                detail: Some(error.to_string()),
-            })
+                }
+            })?;
+            builder
+                .open_file(path)
+                .map_err(|error| ArchiveError::InvalidArchive {
+                    path: path.to_path_buf(),
+                    detail: Some(error.to_string()),
+                })
         }
 
         fn list_archive_entries(&self, path: &Path) -> Result<Vec<ArchiveEntry>, ArchiveError> {
@@ -162,12 +161,14 @@ mod native {
                             }
                         })?;
 
-                        while let Some(block) = reader.read_block().map_err(|error| {
-                            ArchiveError::ExtractionFailed {
-                                path: session.archive_path().to_path_buf(),
-                                detail: error.to_string(),
-                            }
-                        })? {
+                        while let Some(block) =
+                            reader
+                                .read_block()
+                                .map_err(|error| ArchiveError::ExtractionFailed {
+                                    path: session.archive_path().to_path_buf(),
+                                    detail: error.to_string(),
+                                })?
+                        {
                             output.write_all(block).map_err(|error| {
                                 ArchiveError::ExtractionFailed {
                                     path: session.archive_path().to_path_buf(),
@@ -320,12 +321,14 @@ mod native {
         fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
             let mut reader = self.open_reader(session.archive_path())?;
             while let Some(_header) = reader.next_header() {
-                while let Some(_block) = reader.read_block().map_err(|error| {
-                    ArchiveError::InvalidArchive {
-                        path: session.archive_path().to_path_buf(),
-                        detail: Some(error.to_string()),
-                    }
-                })? {}
+                while let Some(_block) =
+                    reader
+                        .read_block()
+                        .map_err(|error| ArchiveError::InvalidArchive {
+                            path: session.archive_path().to_path_buf(),
+                            detail: Some(error.to_string()),
+                        })?
+                {}
             }
             Ok(())
         }

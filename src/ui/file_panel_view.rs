@@ -274,11 +274,12 @@ impl FilePanelView {
                 f();
             }
         });
-        self.root_dropdown.connect_has_focus_notify(move |dropdown| {
-            if dropdown.has_focus() {
-                root_dropdown_callback();
-            }
-        });
+        self.root_dropdown
+            .connect_has_focus_notify(move |dropdown| {
+                if dropdown.has_focus() {
+                    root_dropdown_callback();
+                }
+            });
     }
 
     pub fn connect_primary_click<F>(&self, f: F)

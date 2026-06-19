@@ -8,6 +8,7 @@ use crate::{
     config::{ArchiveConfig, PanelSettings},
     domain::{
         operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
+        selection::SelectionIntent,
         sorting::{SortColumn, SortDirection},
         Entry, Panel, PanelLocation,
     },
@@ -126,7 +127,11 @@ impl Commander {
         panel: ActivePanel,
         entries: Vec<Entry>,
         status: String,
+        selection_intent: Option<SelectionIntent>,
     ) -> ViewUpdate {
+        if let Some(intent) = selection_intent {
+            self.state.panel_mut(panel).queue_selection_intent(intent);
+        }
         self.state.panel_mut(panel).replace_entries(entries);
         self.state.status = status;
         ViewUpdate::panel_entries(panel)
@@ -153,11 +158,9 @@ impl Commander {
 
     pub fn rename_active(&mut self, new_name: &str) -> Result<ViewUpdate> {
         let panel = self.state.active_panel;
-        let old_name = self
-            .state
+        self.state
             .panel(panel)
             .selected_entry()
-            .map(|entry| entry.name.clone())
             .context("No entry selected for rename")?;
         let (source, target) = self.state.panel(panel).rename_target(new_name.trim())?;
 
@@ -169,10 +172,10 @@ impl Commander {
         rename_path(&source, &target)?;
         self.state
             .panel_mut(panel)
-            .update_history_after_rename(&old_name, new_name.trim());
+            .rename_selected_entry(new_name.trim())?;
         self.state.status = t!("status.renamed", path = target.display().to_string()).into_owned();
 
-        Ok(ViewUpdate::status())
+        Ok(ViewUpdate::panel_entries(panel))
     }
 
     pub fn create_directory_in_active(&mut self, name: &str) -> Result<ViewUpdate> {
@@ -260,5 +263,36 @@ impl Commander {
     pub fn set_status(&mut self, status: impl Into<String>) -> ViewUpdate {
         self.state.status = status.into();
         ViewUpdate::status()
+    }
+
+    pub fn queue_selection_after_file_operation(&mut self, request: &FileOperationRequest) {
+        if !matches!(
+            request.kind,
+            FileOperationKind::Delete | FileOperationKind::Move
+        ) {
+            return;
+        }
+
+        let Some(source_directory) = request
+            .sources
+            .first()
+            .and_then(|source| source.parent().map(std::path::Path::to_path_buf))
+        else {
+            return;
+        };
+
+        for panel in [ActivePanel::Left, ActivePanel::Right] {
+            let matches_source_directory = self
+                .state
+                .panel(panel)
+                .location
+                .filesystem_path()
+                .map(|path| path == source_directory.as_path())
+                .unwrap_or(false);
+            if matches_source_directory {
+                self.state.panel_mut(panel).queue_delete_selection();
+                break;
+            }
+        }
     }
 }

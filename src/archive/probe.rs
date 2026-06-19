@@ -14,17 +14,13 @@ pub enum ArchiveFamily {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArchiveLayout {
     SingleFile,
-    MultiPart {
-        first_part: PathBuf,
-    },
+    MultiPart { first_part: PathBuf },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArchiveSupport {
     Supported,
-    NotSupportedYet {
-        reason: String,
-    },
+    NotSupportedYet { reason: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -76,7 +72,10 @@ pub fn archive_family_for_format(format: ArchiveFormat) -> ArchiveFamily {
         | ArchiveFormat::Cab
         | ArchiveFormat::Wim
         | ArchiveFormat::Cpio => ArchiveFamily::TarLike,
-        ArchiveFormat::Arj | ArchiveFormat::Lha | ArchiveFormat::Dmg | ArchiveFormat::Chm
+        ArchiveFormat::Arj
+        | ArchiveFormat::Lha
+        | ArchiveFormat::Dmg
+        | ArchiveFormat::Chm
         | ArchiveFormat::Msi => ArchiveFamily::Other,
     }
 }

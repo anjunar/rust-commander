@@ -5,7 +5,7 @@ use rust_i18n::t;
 use crate::{
     application::{ActivePanel, Commander, EntryLoader},
     archive::ArchiveService,
-    domain::{Entry, PanelLocation},
+    domain::{Entry, PanelLocation, SelectionIntent},
     presentation,
 };
 
@@ -35,6 +35,7 @@ pub struct NavigationRequest {
     pub generation: u64,
     pub action: LoadAction,
     pub next_location: PanelLocation,
+    pub selection_intent: Option<SelectionIntent>,
     pub status: String,
     pub busy_message: String,
 }
@@ -46,6 +47,7 @@ pub struct DirectoryLoadResult {
     pub action: LoadAction,
     pub next_location: PanelLocation,
     pub entries: Vec<Entry>,
+    pub selection_intent: Option<SelectionIntent>,
     pub status: String,
 }
 
@@ -69,6 +71,7 @@ pub fn selected_navigation_request(
                 status: t!("status.up_one_level", path = next_location.display_label())
                     .into_owned(),
                 next_location,
+                selection_intent: None,
                 busy_message: t!("status.loading_parent_directory").into_owned(),
             });
         }
@@ -97,6 +100,7 @@ pub fn selected_navigation_request(
             action: LoadAction::Navigate,
             status: t!("status.opened", path = selected.path.display().to_string()).into_owned(),
             next_location,
+            selection_intent: None,
             busy_message: t!("status.loading_directory").into_owned(),
         });
     }
@@ -140,6 +144,7 @@ pub fn root_navigation_request(
         )
         .into_owned(),
         next_location: PanelLocation::filesystem(target_path),
+        selection_intent: None,
         busy_message: t!("status.loading_drive").into_owned(),
     })
 }
@@ -154,6 +159,7 @@ pub fn refresh_request(
         generation: 0,
         action: LoadAction::Refresh,
         next_location: commander.state().panel(panel).location.clone(),
+        selection_intent: Some(commander.state().panel(panel).refresh_selection_intent()),
         busy_message: t!("status.loading_directory").into_owned(),
         status,
     }
@@ -176,6 +182,7 @@ pub fn spawn_directory_load(
                 action: request.action,
                 next_location: loaded.location,
                 entries: loaded.entries,
+                selection_intent: request.selection_intent,
                 status: request.status,
             })
             .map_err(|error| error.to_string());

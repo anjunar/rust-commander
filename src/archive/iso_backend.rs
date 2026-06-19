@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use iso9660_simple::{ISO9660, ISODirectoryEntry, Read as IsoRead};
+use iso9660_simple::{ISODirectoryEntry, Read as IsoRead, ISO9660};
 
 use super::{
     safe_join_extract_path, ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind,
@@ -24,14 +24,12 @@ impl IsoBackend {
             detail: format!("Could not open ISO {}: {error}", path.display()),
         })?;
 
-        ISO9660::from_device(IsoFileDevice(file)).ok_or_else(|| {
-            ArchiveError::FeatureNotSupported {
-                backend: self.name().into(),
-                feature: format!(
-                    "Opening non-ISO9660 or Apple/macOS hybrid ISO images like {}",
-                    path.display()
-                ),
-            }
+        ISO9660::from_device(IsoFileDevice(file)).ok_or_else(|| ArchiveError::FeatureNotSupported {
+            backend: self.name().into(),
+            feature: format!(
+                "Opening non-ISO9660 or Apple/macOS hybrid ISO images like {}",
+                path.display()
+            ),
         })
     }
 
@@ -84,7 +82,12 @@ impl IsoBackend {
             });
 
             if directory_entry.is_folder() {
-                self.collect_entries(iso, directory_entry.record.lba.get(), &archive_path, entries);
+                self.collect_entries(
+                    iso,
+                    directory_entry.record.lba.get(),
+                    &archive_path,
+                    entries,
+                );
             }
         }
     }
@@ -152,9 +155,11 @@ impl IsoBackend {
         {
             let destination = safe_join_extract_path(target_dir, &entry.archive_path)?;
             if entry.kind == ArchiveEntryKind::Directory {
-                fs::create_dir_all(&destination).map_err(|error| ArchiveError::ExtractionFailed {
-                    path: session.archive_path().to_path_buf(),
-                    detail: format!("Could not create {}: {error}", destination.display()),
+                fs::create_dir_all(&destination).map_err(|error| {
+                    ArchiveError::ExtractionFailed {
+                        path: session.archive_path().to_path_buf(),
+                        detail: format!("Could not create {}: {error}", destination.display()),
+                    }
                 })?;
                 continue;
             }
@@ -222,7 +227,10 @@ impl ArchiveBackend for IsoBackend {
     }
 
     fn can_open(&self, path: &Path) -> bool {
-        matches!(ArchiveFormatDetector::detect(path), Some(ArchiveFormat::Iso))
+        matches!(
+            ArchiveFormatDetector::detect(path),
+            Some(ArchiveFormat::Iso)
+        )
     }
 
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {

@@ -3,7 +3,6 @@ pub mod entry_key;
 pub mod operation;
 pub mod panel;
 pub mod panel_location;
-pub mod panel_selection;
 pub mod roots;
 pub mod selection;
 pub mod sorting;
@@ -16,7 +15,9 @@ pub use operation::{
 };
 pub use panel::{Panel, SelectedEntry};
 pub use panel_location::{ArchiveView, PanelLocation};
-pub use panel_selection::{restore_panel_selection, PanelSelection};
 pub use roots::RootLocation;
-pub use selection::SelectionModel;
+pub use selection::{
+    apply_selection, snapshot_selection, SelectionFallback, SelectionIntent, SelectionModel,
+    SelectionSnapshot,
+};
 pub use sorting::{SortColumn, SortDirection, SortState};

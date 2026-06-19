@@ -414,7 +414,8 @@ impl MainWindow {
 
         let this = Rc::clone(self);
         settings.connect_gtk_application_prefer_dark_theme_notify(move |_| {
-            if this.app_config_cache.borrow().general.theme == crate::config::ThemePreference::System
+            if this.app_config_cache.borrow().general.theme
+                == crate::config::ThemePreference::System
             {
                 this.apply_theme();
             }
@@ -1037,4 +1038,3 @@ fn sync_maximize_button(window: &gtk::ApplicationWindow, button: &gtk::Button) {
         button.set_tooltip_text(Some("Maximize"));
     }
 }
-

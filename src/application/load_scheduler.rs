@@ -119,6 +119,7 @@ mod tests {
             generation: 0,
             action: LoadAction::Navigate,
             next_location: PanelLocation::filesystem("C:/tmp".into()),
+            selection_intent: None,
             status: "status".into(),
             busy_message: "busy".into(),
         }

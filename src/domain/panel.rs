@@ -9,8 +9,9 @@ use crate::domain::{
     entry::Entry,
     entry_key::EntryKey,
     panel_location::PanelLocation,
-    panel_selection::{restore_panel_selection, PanelSelection, SelectionFallback},
-    selection::SelectionModel,
+    selection::{
+        apply_selection, snapshot_selection, SelectionIntent, SelectionModel, SelectionSnapshot,
+    },
     sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
 
@@ -30,7 +31,8 @@ pub struct Panel {
     pub selection: SelectionModel,
     pub sort_state: SortState,
     folders_first: bool,
-    selected_history: HashMap<String, EntryKey>,
+    remembered_cursor_by_location: HashMap<String, EntryKey>,
+    pending_selection_intent: Option<SelectionIntent>,
 }
 
 impl Panel {
@@ -45,27 +47,29 @@ impl Panel {
             selection: SelectionModel::single(selected),
             sort_state,
             folders_first,
-            selected_history: HashMap::new(),
+            remembered_cursor_by_location: HashMap::new(),
+            pending_selection_intent: None,
         }
     }
 
     pub fn replace_entries(&mut self, mut entries: Vec<Entry>) {
-        let preserved_selection = self.preserved_selection();
         sort_entries(&mut entries, self.sort_state, self.folders_first);
+        let intent = self
+            .pending_selection_intent
+            .take()
+            .unwrap_or_else(|| SelectionIntent::preserve(self.selection_snapshot()));
+        self.selection = apply_selection(&entries, &intent);
         self.entries = entries;
-        self.selection =
-            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
     }
 
     pub fn navigate_to(&mut self, next_location: PanelLocation, mut entries: Vec<Entry>) {
-        self.save_selection_for_current_path();
+        self.remember_current_cursor();
+        let intent = SelectionIntent::for_navigation(self.remembered_cursor_for(&next_location));
         self.location = next_location;
         sort_entries(&mut entries, self.sort_state, self.folders_first);
+        self.selection = apply_selection(&entries, &intent);
         self.entries = entries;
-        self.selection = self.restore_selection(
-            PreservedSelection::default(),
-            SelectionFallback::PreferParentOrFirst,
-        );
+        self.pending_selection_intent = None;
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
@@ -130,19 +134,23 @@ impl Panel {
     }
 
     pub fn set_sort_column(&mut self, column: SortColumn) {
-        let preserved_selection = self.preserved_selection();
+        let preserved_selection = self.selection_snapshot();
         self.sort_state = self.sort_state.toggled_for(column);
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection =
-            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
+        self.selection = apply_selection(
+            &self.entries,
+            &SelectionIntent::preserve(preserved_selection),
+        );
     }
 
     pub fn set_sort_state(&mut self, column: SortColumn, direction: SortDirection) {
-        let preserved_selection = self.preserved_selection();
+        let preserved_selection = self.selection_snapshot();
         self.sort_state = SortState { column, direction };
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection =
-            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
+        self.selection = apply_selection(
+            &self.entries,
+            &SelectionIntent::preserve(preserved_selection),
+        );
     }
 
     pub fn set_folders_first(&mut self, folders_first: bool) {
@@ -150,11 +158,13 @@ impl Panel {
             return;
         }
 
-        let preserved_selection = self.preserved_selection();
+        let preserved_selection = self.selection_snapshot();
         self.folders_first = folders_first;
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection =
-            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
+        self.selection = apply_selection(
+            &self.entries,
+            &SelectionIntent::preserve(preserved_selection),
+        );
     }
 
     pub fn rename_target(&self, new_name: &str) -> Result<(PathBuf, PathBuf)> {
@@ -183,86 +193,58 @@ impl Panel {
         Ok((source, target))
     }
 
-    pub fn update_history_after_rename(&mut self, old_name: &str, new_name: &str) {
-        if let Some(saved) = self.selected_history.get_mut(&self.location.history_key()) {
-            if let EntryKey::FilesystemName(name) = saved {
-                if name == &std::ffi::OsString::from(old_name) {
-                    *name = new_name.into();
-                }
-            }
-        }
+    pub fn queue_selection_intent(&mut self, intent: SelectionIntent) {
+        self.pending_selection_intent = Some(intent);
     }
 
-    fn save_selection_for_current_path(&mut self) {
-        let Some(selected) = self.selection.primary_index() else {
-            return;
+    pub fn refresh_selection_intent(&self) -> SelectionIntent {
+        self.pending_selection_intent
+            .clone()
+            .unwrap_or_else(|| SelectionIntent::preserve(self.selection_snapshot()))
+    }
+
+    pub fn queue_delete_selection(&mut self) {
+        self.queue_selection_intent(SelectionIntent::after_delete(self.selection_snapshot()));
+    }
+
+    pub fn rename_selected_entry(&mut self, new_name: &str) -> Result<()> {
+        let Some(selected_index) = self.selection.primary_index() else {
+            return Ok(());
         };
-        let Some(entry) = self.entries.get(selected) else {
-            return;
+        let snapshot = self.selection_snapshot();
+        let Some(entry) = self.entries.get_mut(selected_index) else {
+            return Ok(());
         };
-
-        self.selected_history
-            .insert(self.location.history_key(), entry.key());
-    }
-
-    fn preserved_selection(&self) -> PreservedSelection {
-        PreservedSelection {
-            selection: PanelSelection {
-                cursor: self
-                    .selection
-                    .focus_index()
-                    .and_then(|index| self.entries.get(index))
-                    .map(Entry::key),
-                selected: self
-                    .selection
-                    .selected_indices()
-                    .filter_map(|index| self.entries.get(index))
-                    .map(Entry::key)
-                    .collect(),
-            },
-        }
-    }
-
-    fn restore_selection(
-        &self,
-        preserved: PreservedSelection,
-        fallback: SelectionFallback,
-    ) -> SelectionModel {
-        if self.entries.is_empty() {
-            return SelectionModel::default();
-        }
-
-        let restored = restore_panel_selection(
-            &preserved.selection,
-            self.selected_history.get(&self.location.history_key()),
+        entry.name = new_name.into();
+        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
+        self.selection = apply_selection(
             &self.entries,
-            fallback,
+            &SelectionIntent::reveal(EntryKey::FilesystemName(new_name.into()), snapshot),
         );
-        let mut selected_indices = self
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| restored.selected.contains(&entry.key()))
-            .map(|(index, _)| index)
-            .collect::<BTreeSet<_>>();
-        let focused_index = restored
-            .cursor
-            .as_ref()
-            .and_then(|key| self.entries.iter().position(|entry| entry.key() == *key))
-            .or_else(|| selected_indices.iter().next().copied());
-        if selected_indices.is_empty() {
-            if let Some(index) = focused_index {
-                selected_indices.insert(index);
-            }
-        }
-
-        SelectionModel::from_cursor(selected_indices, focused_index)
+        self.remembered_cursor_by_location.insert(
+            self.location.history_key(),
+            EntryKey::FilesystemName(new_name.into()),
+        );
+        Ok(())
     }
-}
 
-#[derive(Default)]
-struct PreservedSelection {
-    selection: PanelSelection,
+    fn remember_current_cursor(&mut self) {
+        let Some(key) = self.selection_snapshot().cursor_key else {
+            return;
+        };
+        self.remembered_cursor_by_location
+            .insert(self.location.history_key(), key);
+    }
+
+    fn remembered_cursor_for(&self, location: &PanelLocation) -> Option<EntryKey> {
+        self.remembered_cursor_by_location
+            .get(&location.history_key())
+            .cloned()
+    }
+
+    fn selection_snapshot(&self) -> SelectionSnapshot {
+        snapshot_selection(&self.selection, &self.entries)
+    }
 }
 
 #[cfg(test)]
@@ -347,8 +329,107 @@ mod tests {
         assert_eq!(panel.selection.focus_index(), None);
     }
 
+    #[test]
+    fn navigate_to_prefers_parent_when_no_history_exists() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha")],
+            true,
+        );
+
+        panel.navigate_to(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
+            vec![Entry::parent_link("Up"), entry("beta")],
+        );
+
+        assert_eq!(panel.selected_entry().unwrap().name, "..");
+    }
+
+    #[test]
+    fn rename_selected_entry_reveals_new_name_after_sort() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("b.txt"), entry("c.txt")],
+            true,
+        );
+
+        panel.select_single(1);
+        panel.rename_selected_entry("a.txt").unwrap();
+
+        assert_eq!(panel.selected_entry().unwrap().name, "a.txt");
+        assert_eq!(panel.selection.focus_index(), Some(0));
+    }
+
+    #[test]
+    fn navigate_back_restores_remembered_child_directory() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha"), dir_entry("child")],
+            true,
+        );
+
+        panel.select_single(0);
+        panel.navigate_to(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
+            vec![Entry::parent_link("Up"), entry("nested")],
+        );
+        panel.navigate_to(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha"), dir_entry("child"), entry("zeta")],
+        );
+
+        assert_eq!(panel.selected_entry().unwrap().name, "child");
+    }
+
+    #[test]
+    fn queued_delete_selection_clamps_to_parent_link_when_last_item_disappears() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
+            vec![Entry::parent_link("Up"), entry("last.txt")],
+            true,
+        );
+
+        panel.select_single(1);
+        panel.queue_delete_selection();
+        panel.replace_entries(vec![Entry::parent_link("Up")]);
+
+        assert_eq!(panel.selected_entry().unwrap().name, "..");
+        assert_eq!(panel.selection.focus_index(), Some(0));
+    }
+
+    #[test]
+    fn queued_delete_selection_allows_empty_result() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("only.txt")],
+            true,
+        );
+
+        panel.select_single(0);
+        panel.queue_delete_selection();
+        panel.replace_entries(vec![]);
+
+        assert!(panel.selected_entry().is_none());
+        assert!(panel.selection_indices().is_empty());
+    }
+
     fn entry(name: &str) -> Entry {
         sized_entry(name, 1)
+    }
+
+    fn dir_entry(name: &str) -> Entry {
+        Entry {
+            name: name.into(),
+            archive_path: None,
+            is_dir: true,
+            size_bytes: 0,
+            size_label: "-".into(),
+            type_label: "Directory".into(),
+            modified_at: Some(SystemTime::now()),
+            modified_label: String::new(),
+            attributes_label: String::new(),
+            is_parent_link: false,
+        }
     }
 
     fn sized_entry(name: &str, size_bytes: u64) -> Entry {
