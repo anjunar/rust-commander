@@ -85,6 +85,10 @@ settings:
 dialog:
   copy_confirmation_title: Kopieren bestaetigen
   copy_confirmation_detail: "%{source} nach %{target} kopieren?"
+  archive_open_title: Archiv oeffnen
+  archive_open_detail: "Wie soll dieses Archiv geoeffnet werden?\n\n%{path}"
+  archive_open_internal: Als Archiv oeffnen
+  archive_open_external: Extern oeffnen oder ausfuehren
   move_confirmation_title: Verschieben bestaetigen
   move_confirmation_detail: "%{source} nach %{target} verschieben?"
   delete_confirmation_title: Loeschen bestaetigen
@@ -183,6 +187,7 @@ status:
   up_one_level: "Eine Ebene nach oben: %{path}"
   loading_parent_directory: Uebergeordneter Ordner wird geladen...
   opened: "Geoeffnet: %{path}"
+  opened_with_default_app: "Mit Standardanwendung geoeffnet: %{path}"
   loading_directory: Ordner wird geladen...
   opened_archive: "Archiv geoeffnet: %{path}"
   opening_archive: Archiv wird geoeffnet...

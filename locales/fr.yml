@@ -85,6 +85,10 @@ settings:
 dialog:
   copy_confirmation_title: Confirmer la copie
   copy_confirmation_detail: "Copier %{source} vers %{target} ?"
+  archive_open_title: Ouvrir l'archive
+  archive_open_detail: "Comment faut-il ouvrir cette archive ?\n\n%{path}"
+  archive_open_internal: Ouvrir comme archive
+  archive_open_external: Ouvrir ou executer en externe
   move_confirmation_title: Confirmer le deplacement
   move_confirmation_detail: "Deplacer %{source} vers %{target} ?"
   delete_confirmation_title: Confirmer la suppression
@@ -183,6 +187,7 @@ status:
   up_one_level: "Monter d'un niveau : %{path}"
   loading_parent_directory: Chargement du dossier parent...
   opened: "Ouvert : %{path}"
+  opened_with_default_app: "Ouvert avec l'application par defaut : %{path}"
   loading_directory: Chargement du dossier...
   opened_archive: "Archive ouverte : %{path}"
   opening_archive: Ouverture de l'archive...

@@ -15,6 +15,9 @@ pub enum SelectedNavigation {
         path: std::path::PathBuf,
         status: String,
     },
+    AskArchiveAction {
+        path: std::path::PathBuf,
+    },
     Unsupported {
         message: String,
     },
@@ -99,18 +102,9 @@ pub fn selected_navigation_request(
     }
 
     if selected.archive_path.is_none() && archive_service.is_archive_path(&selected.path) {
-        return SelectedNavigation::Load(NavigationRequest {
-            panel,
-            generation: 0,
-            action: LoadAction::Navigate,
-            status: t!(
-                "status.opened_archive",
-                path = selected.path.display().to_string()
-            )
-            .into_owned(),
-            next_location: PanelLocation::filesystem(selected.path),
-            busy_message: t!("status.opening_archive").into_owned(),
-        });
+        return SelectedNavigation::AskArchiveAction {
+            path: selected.path,
+        };
     }
 
     match commander.state().panel(panel).location {

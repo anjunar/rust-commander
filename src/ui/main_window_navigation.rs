@@ -29,6 +29,36 @@ impl MainWindow {
                 }
                 self.set_status_message(status);
             }
+            SelectedNavigation::AskArchiveAction { path } => {
+                let this = Rc::clone(self);
+                dialogs::prompt_archive_open_action(&self.window, path.clone(), move |open_as_archive| {
+                    if open_as_archive {
+                        this.start_directory_load(NavigationRequest {
+                            panel,
+                            generation: 0,
+                            action: LoadAction::Navigate,
+                            status: t!(
+                                "status.opened_archive",
+                                path = path.display().to_string()
+                            )
+                            .into_owned(),
+                            next_location: crate::domain::PanelLocation::filesystem(path.clone()),
+                            busy_message: t!("status.opening_archive").into_owned(),
+                        });
+                        return;
+                    }
+
+                    if let Err(error) = crate::platform::open_path(&path) {
+                        this.show_command_failed(error);
+                        return;
+                    }
+
+                    this.set_status_message(
+                        t!("status.opened_with_default_app", path = path.display().to_string())
+                            .into_owned(),
+                    );
+                });
+            }
             SelectedNavigation::Unsupported { message } => {
                 self.show_command_failed(message);
             }

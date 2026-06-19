@@ -120,6 +120,78 @@ pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
     window.present();
 }
 
+pub fn prompt_archive_open_action<F>(
+    parent: &gtk::ApplicationWindow,
+    archive_path: PathBuf,
+    on_choice: F,
+) where
+    F: FnOnce(bool) + 'static,
+{
+    let title = t!("dialog.archive_open_title").into_owned();
+    let detail = t!(
+        "dialog.archive_open_detail",
+        path = archive_path.display().to_string()
+    )
+    .into_owned();
+
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &title, 500, 180);
+
+    let title_label = gtk::Label::new(Some(&title));
+    title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.add_css_class("dialog-title");
+    content.append(&title_label);
+
+    let detail_label = gtk::Label::new(Some(&detail));
+    detail_label.set_xalign(0.0);
+    detail_label.set_wrap(true);
+    content.append(&detail_label);
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let external_button = gtk::Button::with_label(&t!("dialog.archive_open_external"));
+    let archive_button = gtk::Button::with_label(&t!("dialog.archive_open_internal"));
+    archive_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&external_button);
+    actions.append(&archive_button);
+    window.set_default_widget(Some(&archive_button));
+
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+
+    let callback = Rc::new(RefCell::new(Some(on_choice)));
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        archive_button.connect_clicked(move |_| {
+            if let Some(on_choice) = callback.borrow_mut().take() {
+                on_choice(true);
+            }
+            window.close();
+        });
+    }
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        external_button.connect_clicked(move |_| {
+            if let Some(on_choice) = callback.borrow_mut().take() {
+                on_choice(false);
+            }
+            window.close();
+        });
+    }
+
+    window.present();
+}
+
 pub fn confirm_operation<F>(
     parent: &gtk::ApplicationWindow,
     request: FileOperationRequest,

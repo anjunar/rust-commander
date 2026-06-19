@@ -85,6 +85,10 @@ settings:
 dialog:
   copy_confirmation_title: Copy confirmation
   copy_confirmation_detail: "Copy %{source} to %{target}?"
+  archive_open_title: Open archive
+  archive_open_detail: "How should this archive be opened?\n\n%{path}"
+  archive_open_internal: Open as archive
+  archive_open_external: Open or run externally
   move_confirmation_title: Move confirmation
   move_confirmation_detail: "Move %{source} to %{target}?"
   delete_confirmation_title: Delete confirmation
@@ -183,6 +187,7 @@ status:
   up_one_level: "Up one level: %{path}"
   loading_parent_directory: Loading parent directory...
   opened: "Opened: %{path}"
+  opened_with_default_app: "Opened with default app: %{path}"
   loading_directory: Loading directory...
   opened_archive: "Opened archive: %{path}"
   opening_archive: Opening archive...
