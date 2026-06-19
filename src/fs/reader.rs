@@ -46,6 +46,37 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
     Ok(entries)
 }
 
+pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Could not read metadata for {}", path.display()));
+        }
+    };
+    let Some(file_name) = path.file_name().map(|value| value.to_string_lossy().into_owned()) else {
+        return Ok(None);
+    };
+    if !show_hidden_files && is_hidden(&metadata, &file_name) {
+        return Ok(None);
+    }
+    let modified_at = metadata.modified().ok();
+
+    Ok(Some(Entry {
+        name: file_name.clone(),
+        archive_path: None,
+        is_dir: metadata.is_dir(),
+        size_bytes: metadata.len(),
+        size_label: format_size(&metadata, metadata.is_dir()),
+        type_label: presentation::filesystem_entry_type_label(metadata.is_dir()),
+        modified_at,
+        modified_label: format_modified(modified_at),
+        attributes_label: format_attributes(&metadata, &file_name),
+        is_parent_link: false,
+    }))
+}
+
 pub fn rename_path(source: &Path, target: &Path) -> Result<()> {
     if target.exists() {
         anyhow::bail!("An entry with this name already exists");
@@ -154,7 +185,7 @@ fn is_hidden(metadata: &fs::Metadata, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::read_entries;
+    use super::{read_entries, read_entry};
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -192,5 +223,12 @@ mod tests {
         let _ = fs::remove_dir_all(&path);
 
         assert!(entries.iter().any(|entry| entry.name == ".hidden.txt"));
+    }
+
+    #[test]
+    fn read_entry_returns_none_for_missing_path() {
+        let path = temp_dir_path("missing_entry");
+        let entry = read_entry(&path.join("missing.txt"), true).unwrap();
+        assert!(entry.is_none());
     }
 }

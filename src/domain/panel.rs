@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{bail, Result};
@@ -228,6 +228,50 @@ impl Panel {
         Ok(())
     }
 
+    pub fn apply_filesystem_entry_change(&mut self, path: &Path, next_entry: Option<Entry>) -> bool {
+        let Some(panel_path) = self.location.filesystem_path() else {
+            return false;
+        };
+        if path.parent() != Some(panel_path) {
+            return false;
+        }
+
+        let Some(name) = path.file_name().map(|value| value.to_string_lossy().into_owned()) else {
+            return false;
+        };
+        let changed_key = EntryKey::FilesystemName(name.clone().into());
+        let snapshot = self.selection_snapshot();
+        let removed_selected = snapshot.cursor_key.as_ref() == Some(&changed_key)
+            || snapshot.selected_keys.contains(&changed_key);
+
+        let mut changed = false;
+        self.entries.retain(|entry| {
+            let keep = entry.is_parent_link || entry.name != name;
+            if !keep {
+                changed = true;
+            }
+            keep
+        });
+
+        if let Some(entry) = next_entry {
+            self.entries.push(entry);
+            changed = true;
+        }
+
+        if !changed {
+            return false;
+        }
+
+        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
+        let intent = if removed_selected {
+            SelectionIntent::after_delete(snapshot)
+        } else {
+            SelectionIntent::preserve(snapshot)
+        };
+        self.selection = apply_selection(&self.entries, &intent);
+        true
+    }
+
     fn remember_current_cursor(&mut self) {
         let Some(key) = self.selection_snapshot().cursor_key else {
             return;
@@ -445,5 +489,52 @@ mod tests {
             attributes_label: String::new(),
             is_parent_link: false,
         }
+    }
+
+    #[test]
+    fn apply_filesystem_entry_change_updates_existing_entry() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha.txt")],
+            true,
+        );
+
+        let changed = panel.apply_filesystem_entry_change(
+            std::path::Path::new("/tmp/alpha.txt"),
+            Some(Entry {
+                name: "alpha.txt".into(),
+                archive_path: None,
+                is_dir: false,
+                size_bytes: 99,
+                size_label: "99 B".into(),
+                type_label: "File".into(),
+                modified_at: Some(SystemTime::now()),
+                modified_label: String::new(),
+                attributes_label: String::new(),
+                is_parent_link: false,
+            }),
+        );
+
+        assert!(changed);
+        assert_eq!(panel.entries.len(), 1);
+        assert_eq!(panel.entries[0].size_bytes, 99);
+    }
+
+    #[test]
+    fn apply_filesystem_entry_change_removes_missing_entry() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha.txt"), entry("beta.txt")],
+            true,
+        );
+
+        let changed =
+            panel.apply_filesystem_entry_change(std::path::Path::new("/tmp/alpha.txt"), None);
+
+        assert!(changed);
+        assert_eq!(
+            panel.entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(),
+            vec!["beta.txt"]
+        );
     }
 }

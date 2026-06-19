@@ -1,5 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeSet,
     path::PathBuf,
     rc::Rc,
     sync::mpsc::{Receiver, Sender, TryRecvError},
@@ -203,8 +204,8 @@ impl NavigationController {
                         controller.host.apply_panel_root(load.panel);
                         controller.host.focus_active_panel();
                         controller.host.notify_initial_panel_loaded(load.panel);
-                        controller.trigger_manual_refresh_cooldown();
                         controller.refresh_dirty_panels_if_idle();
+                        controller.trigger_manual_refresh_cooldown();
                     }
                     Err(error) => {
                         controller.finish_in_flight_load(
@@ -250,13 +251,6 @@ impl NavigationController {
         });
     }
 
-    pub fn mark_panels_dirty(&self, panels: &[ActivePanel]) {
-        self.runtime
-            .load_scheduler
-            .borrow_mut()
-            .queue_refresh(panels, t!("status.view_refreshed").into_owned());
-    }
-
     pub fn refresh_dirty_panels_if_idle(&self) {
         if self.operation_runtime.active_operation.borrow().is_some()
             || self.runtime.navigation_busy.get()
@@ -295,18 +289,33 @@ impl NavigationController {
 
     pub fn install_watcher_poll(&self, watch_event_rx: Receiver<WatchEvent>) {
         let controller = self.clone();
+        let pending_paths = Rc::new(RefCell::new(Vec::<PathBuf>::new()));
         glib::timeout_add_local(Duration::from_millis(350), move || {
-            let mut changed_paths = Vec::new();
+            let mut drained_paths = Vec::new();
             while let Ok(event) = watch_event_rx.try_recv() {
-                changed_paths.extend(event.paths);
+                drained_paths.extend(event.paths);
             }
 
-            if !changed_paths.is_empty() {
-                let affected_panels = controller.affected_panels_for_paths(&changed_paths);
-                controller.mark_panels_dirty(&affected_panels);
+            if !drained_paths.is_empty() {
+                let mut pending = pending_paths.borrow_mut();
+                pending.extend(drained_paths);
             }
 
-            controller.refresh_dirty_panels_if_idle();
+            if controller.operation_runtime.active_operation.borrow().is_some()
+                || controller.runtime.navigation_busy.get()
+            {
+                return glib::ControlFlow::Continue;
+            }
+
+            let changed_paths = {
+                let mut pending = pending_paths.borrow_mut();
+                if pending.is_empty() {
+                    return glib::ControlFlow::Continue;
+                }
+                std::mem::take(&mut *pending)
+            };
+
+            controller.apply_watcher_changes(&changed_paths);
 
             glib::ControlFlow::Continue
         });
@@ -334,6 +343,45 @@ impl NavigationController {
 
     fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
         self.runtime.load_scheduler.borrow_mut().prepare_request(request)
+    }
+
+    fn apply_watcher_changes(&self, changed_paths: &[PathBuf]) {
+        let deduped_paths = dedupe_paths(changed_paths);
+        if deduped_paths.is_empty() {
+            return;
+        }
+
+        let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
+        for panel in self.affected_panels_for_paths(&deduped_paths) {
+            let relevant_paths = deduped_paths
+                .iter()
+                .filter(|path| self.path_affects_panel(panel, path))
+                .cloned()
+                .collect::<Vec<_>>();
+            if relevant_paths.is_empty() {
+                continue;
+            }
+
+            let update = {
+                let mut commander = self.commander.borrow_mut();
+                match commander.apply_filesystem_entry_changes(
+                    panel,
+                    &relevant_paths,
+                    show_hidden_files,
+                ) {
+                    Ok(update) => update,
+                    Err(error) => {
+                        drop(commander);
+                        self.show_command_failed(error);
+                        return;
+                    }
+                }
+            };
+
+            if let Some(update) = update {
+                self.host.apply_update(update);
+            }
+        }
     }
 
     fn commit_loaded_generation(&self, panel: ActivePanel, generation: u64) -> bool {
@@ -374,4 +422,25 @@ impl NavigationController {
             .set_status(t!("status.command_failed", error = error.as_str()).into_owned());
         self.host.show_error(&t!("error.command_failed"), &error);
     }
+
+    fn path_affects_panel(&self, panel: ActivePanel, path: &PathBuf) -> bool {
+        let commander = self.commander.borrow();
+        let Some(panel_path) = commander.state().panel(panel).location.filesystem_path() else {
+            return false;
+        };
+        path.parent() == Some(panel_path)
+    }
+}
+
+fn dedupe_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    let mut deduped = Vec::new();
+
+    for path in paths {
+        if seen.insert(path.clone()) {
+            deduped.push(path.clone());
+        }
+    }
+
+    deduped
 }

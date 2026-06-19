@@ -3,5 +3,5 @@
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    rust_commander::run()
+    rcommander::run()
 }

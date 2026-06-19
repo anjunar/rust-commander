@@ -265,6 +265,45 @@ impl Commander {
         ViewUpdate::status()
     }
 
+    pub fn apply_filesystem_entry_changes(
+        &mut self,
+        panel: ActivePanel,
+        changed_paths: &[PathBuf],
+        show_hidden_files: bool,
+    ) -> Result<Option<ViewUpdate>> {
+        let panel_path = match self
+            .state
+            .panel(panel)
+            .location
+            .filesystem_path()
+            .map(PathBuf::from)
+        {
+            Some(path) => path,
+            None => return Ok(None),
+        };
+
+        let panel_state = self.state.panel_mut(panel);
+        if panel_state.location.filesystem_path().is_none() {
+            return Ok(None);
+        }
+
+        let mut changed = false;
+        for path in changed_paths {
+            if path.parent() != Some(panel_path.as_path()) {
+                continue;
+            }
+
+            let next_entry = crate::fs::reader::read_entry(path, show_hidden_files)?;
+            changed |= panel_state.apply_filesystem_entry_change(path, next_entry);
+        }
+
+        if changed {
+            Ok(Some(ViewUpdate::panel_entries_without_status(panel)))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn queue_selection_after_file_operation(&mut self, request: &FileOperationRequest) {
         if !matches!(
             request.kind,

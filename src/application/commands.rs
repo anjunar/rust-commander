@@ -49,6 +49,21 @@ impl ViewUpdate {
         }
     }
 
+    pub fn panel_entries_without_status(panel: ActivePanel) -> Self {
+        match panel {
+            ActivePanel::Left => Self {
+                left_entries: true,
+                selection: true,
+                ..Self::default()
+            },
+            ActivePanel::Right => Self {
+                right_entries: true,
+                selection: true,
+                ..Self::default()
+            },
+        }
+    }
+
     pub fn status() -> Self {
         Self {
             status: true,
