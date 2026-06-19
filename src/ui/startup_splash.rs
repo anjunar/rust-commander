@@ -4,6 +4,7 @@ use image::imageops::FilterType;
 use crate::platform::assets::asset_path;
 
 const SPLASH_TITLE: &str = "RCommander";
+const SPLASH_WINDOW_TITLE: &str = "RCommander Splash";
 const SPLASH_IMAGE_WIDTH: u32 = 520;
 const SPLASH_IMAGE_HEIGHT: u32 = 320;
 
@@ -15,7 +16,7 @@ impl StartupSplash {
     pub fn new(app: &gtk::Application) -> Self {
         let window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title(SPLASH_TITLE)
+            .title(SPLASH_WINDOW_TITLE)
             .build();
         window.set_decorated(false);
         window.set_resizable(false);

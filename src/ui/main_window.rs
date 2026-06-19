@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{Cell, RefCell}, rc::Rc};
 
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use rust_i18n::t;
 use crate::{
     application::{ActivePanel, Commander, ViewUpdate},
     archive::ArchiveService,
-    config::AppConfig,
+    config::{AppConfig, WindowConfig},
     fs::watcher::start_file_watcher,
     platform::assets::asset_path,
     presentation,
@@ -90,6 +90,8 @@ pub struct MainWindow {
     navigation_runtime: NavigationRuntime,
     context_menu_runtime: ContextMenuRuntime,
     startup_load_state: Rc<RefCell<StartupLoadState>>,
+    initial_window_config: WindowConfig,
+    window_state_initialized: Cell<bool>,
     app_config_cache: Rc<RefCell<AppConfig>>,
     theme_controller: Rc<ThemeController>,
 }
@@ -202,6 +204,8 @@ impl MainWindow {
             navigation_runtime,
             context_menu_runtime,
             startup_load_state,
+            initial_window_config: window_config.clone(),
+            window_state_initialized: Cell::new(present_immediately),
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
             theme_controller,
         });
@@ -217,7 +221,6 @@ impl MainWindow {
         this.navigation_controller()
             .install_watcher_poll(watch_event_rx);
         this.window_state_controller().install_window_state_persistence();
-        this.window_state_controller().install_window_geometry_tracking();
         this.window_chrome().install_system_theme_tracking();
         shortcuts::install(&this, app);
 
@@ -227,30 +230,34 @@ impl MainWindow {
             let _ = crate::platform::tray::create_tray_icon();
         }
 
-        // On Windows: set the native window icon at runtime (WM_SETICON) so the taskbar updates immediately
-        #[cfg(target_os = "windows")]
-        {
-            // Defer to idle so the window is realized
-            glib::idle_add_local_once(move || {
-                if let Err(error) = crate::platform::apply_runtime_window_icon(APP_WINDOW_TITLE) {
-                    eprintln!("Could not apply Windows runtime icon: {error}");
-                }
-            });
-        }
-
         if present_immediately {
+            this.window_state_controller()
+                .restore_window_geometry(window_config);
+            this.window_state_controller().initialize_split_positions();
+            this.window_state_controller().install_window_geometry_tracking();
             this.present_window();
         }
-        this.window_state_controller()
-            .restore_window_geometry(window_config);
-        this.window_state_controller().initialize_split_positions();
         this.navigation_controller().queue_initial_panel_loads();
 
         this
     }
 
     pub fn present_window(self: &Rc<Self>) {
+        if !self.window_state_initialized.replace(true) {
+            self.window_state_controller()
+                .restore_window_geometry(self.initial_window_config.clone());
+            self.window_state_controller().initialize_split_positions();
+            self.window_state_controller().install_window_geometry_tracking();
+        }
         self.window.present();
+        #[cfg(target_os = "windows")]
+        {
+            glib::idle_add_local_once(move || {
+                if let Err(error) = crate::platform::apply_runtime_window_icon(APP_WINDOW_TITLE) {
+                    eprintln!("Could not apply Windows runtime icon: {error}");
+                }
+            });
+        }
         #[cfg(all(unix, not(target_os = "macos")))]
         {
             let window = self.window.clone();
