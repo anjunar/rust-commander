@@ -70,8 +70,8 @@ pub fn open_console(path: &Path) -> Result<()> {
 
     use windows_sys::Win32::System::Threading::CREATE_NEW_CONSOLE;
 
-    Command::new("cmd.exe")
-        .arg("/K")
+    Command::new("powershell.exe")
+        .arg("-NoExit")
         .current_dir(path)
         .creation_flags(CREATE_NEW_CONSOLE)
         .spawn()
