@@ -214,8 +214,9 @@ impl MainWindow {
                 update
             };
             this.apply_update(update);
-            this.apply_theme();
-            this.refresh_localized_labels();
+            this.window_chrome().apply_theme();
+            this.window_chrome()
+                .refresh_localized_labels(&this.commander_view, &this.terminal_dock);
         });
     }
 

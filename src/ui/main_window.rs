@@ -1,31 +1,27 @@
 use std::{
     cell::{Cell, RefCell},
-    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
 
+#[cfg(not(target_os = "windows"))]
+use std::path::PathBuf;
+
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
-
-#[cfg(target_os = "windows")]
-use crate::platform::restore_window_placement;
 
 use crate::{
     application::{ActivePanel, Commander, LoadScheduler, ViewUpdate},
     archive::ArchiveService,
-    config::{self, AppConfig, WindowConfig, WindowPosition},
-    domain::sorting::SortDirection,
+    config::AppConfig,
     fs::watcher::{start_file_watcher, WatchCommand, WatchEvent},
-    platform::{assets::asset_path, current_window_placement, ContextMenuRequest},
+    platform::assets::asset_path,
     presentation,
     ui::{
         commander_view::CommanderView,
         dialogs,
-        navigation::{self, NavigationRequest},
         operations::ActiveOperationHandle,
         shortcuts,
-        terminal_controller::TerminalAction,
         terminal_dock::TerminalDock,
         theme::ThemeController,
     },
@@ -33,12 +29,30 @@ use crate::{
 
 #[path = "main_window_actions.rs"]
 mod actions;
+#[path = "main_window_hosts.rs"]
+mod hosts;
 #[path = "main_window_navigation.rs"]
 mod navigation_controller;
+#[path = "main_window_panel_wiring.rs"]
+mod panel_wiring;
+#[path = "main_window_context_menu.rs"]
+mod context_menu;
 #[path = "main_window_operations.rs"]
 mod operations_controller;
+#[path = "main_window_terminal.rs"]
+mod terminal_wiring;
+#[path = "main_window_window_chrome.rs"]
+mod window_chrome;
 
 const APP_WINDOW_TITLE: &str = "RCommander";
+
+use hosts::{NavigationHost, OperationsHost, ViewHost};
+use context_menu::ContextMenuController;
+use navigation_controller::NavigationController;
+use operations_controller::OperationsController;
+use panel_wiring::PanelWiring;
+use terminal_wiring::TerminalController;
+use window_chrome::{install_custom_window_controls, WindowChromeController};
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
@@ -55,14 +69,14 @@ pub struct MainWindow {
     load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
-    theme_controller: ThemeController,
+    theme_controller: Rc<ThemeController>,
     #[cfg(not(target_os = "windows"))]
     unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
 impl MainWindow {
     pub fn new(app: &gtk::Application, commander: Commander, app_config: AppConfig) -> Rc<Self> {
-        let theme_controller = ThemeController::new();
+        let theme_controller = Rc::new(ThemeController::new());
         theme_controller.apply(app_config.general.theme);
         let window_config = app_config.window.clone();
 
@@ -155,16 +169,17 @@ impl MainWindow {
         });
 
         this.apply_update(ViewUpdate::all());
-        this.apply_theme();
-        this.refresh_localized_labels();
+        this.window_chrome().apply_theme();
+        this.window_chrome()
+            .refresh_localized_labels(&this.commander_view, &this.terminal_dock);
         this.sync_watched_paths();
-        this.connect_panel_events();
+        this.panel_wiring().connect_panels(&this.commander_view);
         this.connect_command_bar(&command_bar);
-        this.connect_terminal_dock();
+        this.terminal_controller().connect_terminal_dock();
         this.install_watcher_poll(watch_event_rx);
-        this.install_window_state_persistence();
-        this.install_window_geometry_tracking();
-        this.install_system_theme_tracking();
+        this.window_chrome().install_window_state_persistence();
+        this.window_chrome().install_window_geometry_tracking();
+        this.window_chrome().install_system_theme_tracking();
         shortcuts::install(&this, app);
 
         // Initialize Windows tray icon (no-op on other platforms)
@@ -194,119 +209,11 @@ impl MainWindow {
                 }
             });
         }
-        this.restore_window_geometry(window_config);
-        this.initialize_split_positions();
+        this.window_chrome().restore_window_geometry(window_config);
+        this.window_chrome().initialize_split_positions();
         this.queue_initial_panel_loads();
 
         this
-    }
-
-    fn connect_panel_events(self: &Rc<Self>) {
-        for panel in [ActivePanel::Left, ActivePanel::Right] {
-            let panel_view = self.commander_view.panel(panel);
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_selection_changed(move |indices| {
-                    let update = {
-                        let mut commander = this.commander.borrow_mut();
-                        commander.select_indices(panel, indices)
-                    };
-                    this.apply_update(update);
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_focus_enter(move || {
-                    let update = {
-                        let mut commander = this.commander.borrow_mut();
-                        if commander.state().active_panel == panel {
-                            return;
-                        }
-                        commander.set_active_panel(panel)
-                    };
-                    this.apply_update(update);
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_primary_click(move || {
-                    let update = {
-                        let mut commander = this.commander.borrow_mut();
-                        if commander.state().active_panel == panel {
-                            return;
-                        }
-                        commander.set_active_panel(panel)
-                    };
-                    this.apply_update(update);
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_activate(move |index| {
-                    let this = Rc::clone(&this);
-                    glib::idle_add_local_once(move || {
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.select_single(panel, index)
-                        };
-                        this.apply_update(update);
-                        this.start_selected_navigation(panel);
-                    });
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_open_key(move || {
-                    let this = Rc::clone(&this);
-                    glib::idle_add_local_once(move || {
-                        this.start_selected_navigation(panel);
-                    });
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_root_changed(move |index| {
-                    let this = Rc::clone(&this);
-                    glib::idle_add_local_once(move || {
-                        this.start_root_navigation(panel, index);
-                    });
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_secondary_click(move |clicked_index, x, y| {
-                    let this = Rc::clone(&this);
-                    glib::idle_add_local_once(move || {
-                        this.handle_panel_context_menu(panel, clicked_index, x, y);
-                    });
-                });
-            }
-
-            {
-                let this = Rc::clone(self);
-                panel_view.connect_sort_changed(move |column, sort_type| {
-                    let this = Rc::clone(&this);
-                    glib::idle_add_local_once(move || {
-                        let direction = match sort_type {
-                            gtk::SortType::Descending => SortDirection::Descending,
-                            _ => SortDirection::Ascending,
-                        };
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.sort_panel(panel, column, direction)
-                        };
-                        this.apply_update(update);
-                    });
-                });
-            }
-        }
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
@@ -338,27 +245,11 @@ impl MainWindow {
         }
     }
 
-    fn connect_terminal_dock(self: &Rc<Self>) {
-        {
-            let this = Rc::clone(self);
-            self.terminal_dock.connect_focus_return(move || {
-                this.focus_active_panel();
-            });
-        }
-
-        {
-            let this = Rc::clone(self);
-            self.terminal_dock.connect_buttons(move |action| {
-                this.handle_terminal_action(action);
-            });
-        }
-    }
-
     fn install_watcher_poll(
         self: &Rc<Self>,
         watch_event_rx: std::sync::mpsc::Receiver<WatchEvent>,
     ) {
-        let this = Rc::clone(self);
+        let navigation = self.navigation_controller();
         glib::timeout_add_local(Duration::from_millis(350), move || {
             let mut changed_paths = Vec::new();
             while let Ok(event) = watch_event_rx.try_recv() {
@@ -366,11 +257,11 @@ impl MainWindow {
             }
 
             if !changed_paths.is_empty() {
-                let affected_panels = this.affected_panels_for_paths(&changed_paths);
-                this.mark_panels_dirty(&affected_panels);
+                let affected_panels = navigation.affected_panels_for_paths(&changed_paths);
+                navigation.mark_panels_dirty(&affected_panels);
             }
 
-            this.refresh_dirty_panels_if_idle();
+            navigation.refresh_dirty_panels_if_idle();
 
             glib::ControlFlow::Continue
         });
@@ -402,90 +293,9 @@ impl MainWindow {
         self.terminal_dock.refresh_toolbar();
     }
 
-    fn apply_theme(&self) {
-        let preference = self.app_config_cache.borrow().general.theme;
-        self.theme_controller.apply(preference);
-    }
-
-    fn install_system_theme_tracking(self: &Rc<Self>) {
-        let Some(settings) = gtk::Settings::default() else {
-            return;
-        };
-
-        let this = Rc::clone(self);
-        settings.connect_gtk_application_prefer_dark_theme_notify(move |_| {
-            if this.app_config_cache.borrow().general.theme
-                == crate::config::ThemePreference::System
-            {
-                this.apply_theme();
-            }
-        });
-    }
-
     fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
         let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
-    }
-
-    fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
-        self.load_scheduler.borrow_mut().prepare_request(request)
-    }
-
-    fn commit_loaded_generation(&self, panel: ActivePanel, generation: u64) -> bool {
-        self.load_scheduler
-            .borrow_mut()
-            .commit_loaded(panel, generation)
-    }
-
-    fn finish_in_flight_load(&self, panel: ActivePanel, generation: u64) {
-        self.load_scheduler
-            .borrow_mut()
-            .finish_in_flight(panel, generation);
-    }
-
-    fn mark_panels_dirty(&self, panels: &[ActivePanel]) {
-        self.load_scheduler
-            .borrow_mut()
-            .queue_refresh(panels, t!("status.view_refreshed").into_owned());
-    }
-
-    fn refresh_dirty_panels_if_idle(self: &Rc<Self>) {
-        if self.active_operation.borrow().is_some()
-            || self.navigation_busy.get()
-            || self.is_watcher_refresh_suppressed()
-        {
-            return;
-        }
-
-        let Some((panel, status)) = self
-            .load_scheduler
-            .borrow_mut()
-            .take_next_refresh(&t!("status.view_refreshed").into_owned())
-        else {
-            return;
-        };
-        let request = {
-            let commander = self.commander.borrow();
-            navigation::refresh_request(&commander, panel, status)
-        };
-        self.start_directory_load(request);
-    }
-
-    fn trigger_manual_refresh_cooldown(&self) {
-        self.watcher_refresh_cooldown_until
-            .set(Some(Instant::now() + Duration::from_millis(900)));
-        self.sync_watched_paths();
-    }
-
-    fn is_watcher_refresh_suppressed(&self) -> bool {
-        match self.watcher_refresh_cooldown_until.get() {
-            Some(until) if Instant::now() < until => true,
-            Some(_) => {
-                self.watcher_refresh_cooldown_until.set(None);
-                false
-            }
-            None => false,
-        }
     }
 
     fn active_panel_path(&self) -> std::path::PathBuf {
@@ -516,244 +326,6 @@ impl MainWindow {
         dialogs::show_error(&self.window, &t!("error.command_failed"), &error);
     }
 
-    fn handle_terminal_action(&self, action: TerminalAction) {
-        match action {
-            TerminalAction::None => {
-                self.terminal_dock.sync_visibility();
-                if self.terminal_dock.state().borrow().visible
-                    && self.content_paned.position() < 320
-                {
-                    self.content_paned.set_position(600);
-                }
-            }
-            TerminalAction::FocusPanels => self.focus_active_panel(),
-            TerminalAction::ShowError(error) => {
-                dialogs::show_error(&self.window, &t!("error.could_not_start_terminal"), &error);
-            }
-        }
-    }
-
-    fn handle_panel_context_menu(
-        self: &Rc<Self>,
-        panel: ActivePanel,
-        clicked_index: Option<usize>,
-        _x: f64,
-        _y: f64,
-    ) {
-        let (request, update) = {
-            let mut commander = self.commander.borrow_mut();
-            let mut update = commander.set_active_panel(panel);
-            if let Some(index) = clicked_index {
-                let keep_multi_selection = commander
-                    .state()
-                    .panel(panel)
-                    .selection_indices()
-                    .contains(&index);
-                if !keep_multi_selection {
-                    update = commander.select_single(panel, index);
-                }
-            }
-            let panel_state = commander.state().panel(panel);
-            let Some(directory) = panel_state.location.filesystem_path().map(PathBuf::from) else {
-                dialogs::show_error(
-                    &self.window,
-                    &t!("error.command_failed"),
-                    "The native context menu is currently only available in filesystem views.",
-                );
-                return;
-            };
-
-            let selected_paths = panel_state
-                .selected_items()
-                .into_iter()
-                .filter(|item| item.archive_path.is_none())
-                .map(|item| item.path)
-                .collect::<Vec<_>>();
-
-            (
-                ContextMenuRequest {
-                    directory,
-                    selected_paths,
-                },
-                update,
-            )
-        };
-
-        self.apply_update(update);
-
-        #[cfg(target_os = "windows")]
-        {
-            if let Err(error) = crate::platform::show_context_menu(&request) {
-                self.show_command_failed(error);
-                return;
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.show_unix_context_menu(panel, request, _x, _y);
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn show_unix_context_menu(
-        self: &Rc<Self>,
-        panel: ActivePanel,
-        request: ContextMenuRequest,
-        x: f64,
-        y: f64,
-    ) {
-        self.close_unix_context_menu();
-
-        let panel_view = self.commander_view.panel(panel);
-        let popover = gtk::Popover::new();
-        popover.set_has_arrow(false);
-        popover.set_autohide(true);
-        popover.set_parent(&panel_view.root);
-        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.set_margin_top(6);
-        content.set_margin_bottom(6);
-        content.set_margin_start(6);
-        content.set_margin_end(6);
-
-        if request.selected_paths.len() == 1 {
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("common.open"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_open_active();
-            });
-            content.append(&button);
-        }
-
-        if request.selected_paths.len() == 1 {
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("common.rename"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_rename();
-            });
-            content.append(&button);
-        }
-
-        if !request.selected_paths.is_empty() {
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("operation.copy"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_copy();
-            });
-            content.append(&button);
-
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("operation.move"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_move();
-            });
-            content.append(&button);
-
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("operation.delete"));
-            button.add_css_class("destructive-action");
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_delete();
-            });
-            content.append(&button);
-        }
-
-        {
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("command.mkdir"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_make_directory();
-            });
-            content.append(&button);
-        }
-
-        if !request.selected_paths.is_empty() {
-            content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-
-            let chmod_paths = request.selected_paths.clone();
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("dialog.chmod_title"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_unix_chmod(chmod_paths.clone());
-            });
-            content.append(&button);
-
-            let chown_paths = request.selected_paths.clone();
-            let this = Rc::clone(self);
-            let menu = popover.clone();
-            let button = gtk::Button::with_label(&t!("dialog.chown_title"));
-            button.set_halign(gtk::Align::Fill);
-            button.connect_clicked(move |_| {
-                menu.popdown();
-                this.close_unix_context_menu();
-                this.handle_unix_chown(chown_paths.clone());
-            });
-            content.append(&button);
-        }
-
-        popover.set_child(Some(&content));
-        popover.popup();
-        self.unix_context_menu.replace(Some(popover));
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn close_unix_context_menu(&self) {
-        if let Some(popover) = self.unix_context_menu.borrow_mut().take() {
-            popover.popdown();
-            popover.unparent();
-        }
-    }
-
-    fn affected_panels_for_paths(&self, changed_paths: &[PathBuf]) -> Vec<ActivePanel> {
-        let commander = self.commander.borrow();
-        let state = commander.state();
-        let mut affected = Vec::new();
-
-        for panel in [ActivePanel::Left, ActivePanel::Right] {
-            let Some(panel_path) = state.panel(panel).location.filesystem_path() else {
-                continue;
-            };
-            if changed_paths
-                .iter()
-                .any(|path| path == panel_path || path.parent() == Some(panel_path))
-            {
-                affected.push(panel);
-            }
-        }
-
-        affected
-    }
-
     fn set_navigation_busy(&self, busy: bool, message: &str) {
         self.navigation_busy.set(busy);
         self.busy_spinner.set_visible(busy);
@@ -768,166 +340,196 @@ impl MainWindow {
         }
     }
 
-    fn install_window_state_persistence(self: &Rc<Self>) {
-        let commander = Rc::clone(&self.commander);
-        let window = self.window.clone();
-        let app_config_cache = Rc::clone(&self.app_config_cache);
-        self.window.connect_close_request(move |_| {
-            {
-                let commander = commander.borrow();
-                let mut app_config = app_config_cache.borrow_mut();
-                app_config.window.maximized = window.is_maximized();
-                if !app_config.window.maximized {
-                    app_config.window.width = window.width().max(1);
-                    app_config.window.height = window.height().max(1);
-                }
-                app_config.panes.left_directory =
-                    Some(commander.panel_directory(ActivePanel::Left));
-                app_config.panes.right_directory =
-                    Some(commander.panel_directory(ActivePanel::Right));
-            }
-
-            if let Err(error) = config::save(&app_config_cache.borrow().clone()) {
-                eprintln!("Could not save config: {error}");
-            }
-            glib::Propagation::Proceed
-        });
-    }
-
-    fn install_window_geometry_tracking(self: &Rc<Self>) {
-        let window = self.window.clone();
-        let app_config_cache = Rc::clone(&self.app_config_cache);
-        glib::timeout_add_local(Duration::from_millis(250), move || {
-            let mut app_config = app_config_cache.borrow_mut();
-            let config = &mut app_config.window;
-            config.maximized = window.is_maximized();
-            if let Some(placement) = current_window_placement(APP_WINDOW_TITLE) {
-                config.width = placement.width.max(1);
-                config.height = placement.height.max(1);
-                config.position = Some(WindowPosition {
-                    x: placement.x,
-                    y: placement.y,
-                });
-                config.maximized = placement.maximized;
-            } else if !config.maximized {
-                config.width = window.width().max(1);
-                config.height = window.height().max(1);
-            }
-            glib::ControlFlow::Continue
-        });
-    }
-
-    fn restore_window_geometry(&self, window_config: WindowConfig) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.window
-                .set_default_size(window_config.width.max(1), window_config.height.max(1));
-            if window_config.maximized {
-                let window = self.window.clone();
-                glib::idle_add_local_once(move || {
-                    window.maximize();
-                });
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            let position = window_config
-                .position
-                .unwrap_or(WindowPosition { x: 0, y: 0 });
-            glib::idle_add_local_once({
-                let position = position.clone();
-                let width = window_config.width;
-                let height = window_config.height;
-                let maximized = window_config.maximized;
-                move || {
-                    restore_window_placement(
-                        APP_WINDOW_TITLE,
-                        position.x,
-                        position.y,
-                        width,
-                        height,
-                        maximized,
-                    );
-                }
-            });
-            let width = window_config.width;
-            let height = window_config.height;
-            let maximized = window_config.maximized;
-            glib::timeout_add_local_once(Duration::from_millis(150), move || {
-                restore_window_placement(
-                    APP_WINDOW_TITLE,
-                    position.x,
-                    position.y,
-                    width,
-                    height,
-                    maximized,
-                );
-            });
-        }
-    }
-
-    fn initialize_split_positions(&self) {
-        let horizontal = self.commander_view.root.clone();
-        let vertical = self.content_paned.clone();
-        glib::timeout_add_local_once(Duration::from_millis(30), move || {
-            let horizontal_width = horizontal.width();
-            if horizontal_width > 0 {
-                horizontal.set_position(horizontal_width / 2);
-            }
-
-            let vertical_height = vertical.height();
-            if vertical_height > 0 {
-                vertical.set_position(vertical_height / 2);
-            }
-        });
-    }
-
     fn queue_initial_panel_loads(self: &Rc<Self>) {
-        self.load_scheduler.borrow_mut().queue_refresh(
-            &[ActivePanel::Left, ActivePanel::Right],
-            t!("status.view_refreshed").into_owned(),
-        );
-        self.refresh_dirty_panels_if_idle();
+        self.navigation_controller().queue_initial_panel_loads();
     }
 
-    fn refresh_localized_labels(&self) {
-        self.commander_view.refresh_labels();
-        self.terminal_dock.refresh_toolbar();
-        if let Some(titlebar) = self.window.titlebar() {
-            if let Ok(header) = titlebar.downcast::<gtk::HeaderBar>() {
-                if let Some(title_widget) = header.title_widget() {
-                    if let Ok(label) = title_widget.downcast::<gtk::Label>() {
-                        label.set_label(APP_WINDOW_TITLE);
-                    }
-                }
-            }
-        }
+    fn navigation_controller(self: &Rc<Self>) -> NavigationController {
+        let host: Rc<dyn NavigationHost> = self.clone();
+        NavigationController::new(
+            host,
+            self.window.clone(),
+            Rc::clone(&self.commander),
+            Rc::clone(&self.archive_service),
+            Rc::clone(&self.active_operation),
+            Rc::clone(&self.navigation_busy),
+            Rc::clone(&self.watcher_refresh_cooldown_until),
+            Rc::clone(&self.load_scheduler),
+            self.watch_command_tx.clone(),
+            Rc::clone(&self.app_config_cache),
+        )
+    }
 
-        let labels = command_bar_labels();
-        let mut index = 0usize;
-        let mut child = self
-            .window
-            .child()
-            .and_then(|child| child.downcast::<gtk::Box>().ok())
-            .and_then(|shell| shell.last_child());
-        while let Some(widget) = child {
-            let previous = widget.prev_sibling();
-            if let Ok(button_row) = widget.clone().downcast::<gtk::Box>() {
-                let mut button = button_row.first_child();
-                while let Some(widget) = button {
-                    button = widget.next_sibling();
-                    if let Ok(button) = widget.downcast::<gtk::Button>() {
-                        if let Some(label) = labels.get(index) {
-                            button.set_label(label);
-                        }
-                        index += 1;
-                    }
-                }
-                break;
-            }
-            child = previous;
-        }
+    fn panel_wiring(self: &Rc<Self>) -> PanelWiring {
+        let host: Rc<dyn ViewHost> = self.clone();
+        let this = Rc::clone(self);
+        let context_menu_handler = Rc::new(move |panel, clicked_index, x, y| {
+            this.context_menu_controller()
+                .handle_panel_context_menu(panel, clicked_index, x, y);
+        });
+        PanelWiring::new(
+            host,
+            Rc::clone(&self.commander),
+            self.navigation_controller(),
+            context_menu_handler,
+        )
+    }
+
+    fn context_menu_controller(self: &Rc<Self>) -> ContextMenuController {
+        let host: Rc<dyn ViewHost> = self.clone();
+        #[cfg(not(target_os = "windows"))]
+        let open_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_open_active()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let rename_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_rename()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let copy_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_copy()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let move_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_move()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let delete_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_delete()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let mkdir_action = {
+            let this = Rc::clone(self);
+            Rc::new(move || this.handle_make_directory()) as Rc<dyn Fn()>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let chmod_action = {
+            let this = Rc::clone(self);
+            Rc::new(move |paths| this.handle_unix_chmod(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
+        };
+        #[cfg(not(target_os = "windows"))]
+        let chown_action = {
+            let this = Rc::clone(self);
+            Rc::new(move |paths| this.handle_unix_chown(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
+        };
+
+        ContextMenuController::new(
+            host,
+            self.window.clone(),
+            #[cfg(not(target_os = "windows"))]
+            self.commander_view.left.root.clone(),
+            #[cfg(not(target_os = "windows"))]
+            self.commander_view.right.root.clone(),
+            Rc::clone(&self.commander),
+            #[cfg(not(target_os = "windows"))]
+            Rc::clone(&self.unix_context_menu),
+            #[cfg(not(target_os = "windows"))]
+            open_action,
+            #[cfg(not(target_os = "windows"))]
+            rename_action,
+            #[cfg(not(target_os = "windows"))]
+            copy_action,
+            #[cfg(not(target_os = "windows"))]
+            move_action,
+            #[cfg(not(target_os = "windows"))]
+            delete_action,
+            #[cfg(not(target_os = "windows"))]
+            mkdir_action,
+            #[cfg(not(target_os = "windows"))]
+            chmod_action,
+            #[cfg(not(target_os = "windows"))]
+            chown_action,
+        )
+    }
+
+    fn operations_controller(self: &Rc<Self>) -> OperationsController {
+        let host: Rc<dyn OperationsHost> = self.clone();
+        OperationsController::new(
+            host,
+            self.window.clone(),
+            Rc::clone(&self.commander),
+            Rc::clone(&self.archive_service),
+            Rc::clone(&self.active_operation),
+            Rc::clone(&self.app_config_cache),
+            self.navigation_controller(),
+        )
+    }
+
+    fn terminal_controller(self: &Rc<Self>) -> TerminalController {
+        let host: Rc<dyn hosts::TerminalHost> = self.clone();
+        TerminalController::new(
+            host,
+            self.terminal_dock.clone(),
+            self.content_paned.clone(),
+        )
+    }
+
+    fn window_chrome(&self) -> WindowChromeController {
+        WindowChromeController::new(
+            self.window.clone(),
+            self.commander_view.root.clone(),
+            self.content_paned.clone(),
+            Rc::clone(&self.commander),
+            Rc::clone(&self.app_config_cache),
+            Rc::clone(&self.theme_controller),
+        )
+    }
+
+    fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
+        self.navigation_controller().start_selected_navigation(panel);
+    }
+
+    fn handle_operation(self: &Rc<Self>, kind: crate::domain::operation::FileOperationKind) {
+        self.operations_controller().handle_operation(kind);
+    }
+
+    fn handle_terminal_action(
+        self: &Rc<Self>,
+        action: crate::ui::terminal_controller::TerminalAction,
+    ) {
+        self.terminal_controller().handle_terminal_action(action);
+    }
+}
+
+impl ViewHost for MainWindow {
+    fn apply_update(&self, update: ViewUpdate) {
+        MainWindow::apply_update(self, update);
+    }
+
+    fn show_error(&self, title: &str, detail: &str) {
+        dialogs::show_error(&self.window, title, detail);
+    }
+
+    fn set_status(&self, status: String) {
+        self.set_status_message(status);
+    }
+}
+
+impl NavigationHost for MainWindow {
+    fn set_navigation_busy(&self, busy: bool, message: &str) {
+        MainWindow::set_navigation_busy(self, busy, message);
+    }
+
+    fn focus_active_panel(&self) {
+        MainWindow::focus_active_panel(self);
+    }
+
+    fn apply_panel_root(&self, panel: ActivePanel) {
+        self.commander_view
+            .apply_root(self.commander.borrow().state(), panel);
+    }
+}
+
+impl OperationsHost for MainWindow {}
+
+impl hosts::TerminalHost for MainWindow {
+    fn focus_active_panel(&self) {
+        MainWindow::focus_active_panel(self);
     }
 }
 
@@ -958,83 +560,4 @@ fn command_bar_labels() -> Vec<String> {
         t!("command.terminal").into_owned(),
         t!("command.quit").into_owned(),
     ]
-}
-
-#[cfg(target_os = "windows")]
-fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk::HeaderBar) {
-    header.set_show_title_buttons(false);
-
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    controls.add_css_class("window-controls");
-
-    let minimize_button = gtk::Button::from_icon_name("window-minimize-symbolic");
-    minimize_button.add_css_class("window-control-button");
-    minimize_button.add_css_class("window-minimize-button");
-    minimize_button.add_css_class("flat");
-    minimize_button.set_focus_on_click(false);
-    minimize_button.set_size_request(44, 28);
-    minimize_button.set_tooltip_text(Some("Minimize"));
-    {
-        let window = window.clone();
-        minimize_button.connect_clicked(move |_| {
-            window.minimize();
-        });
-    }
-    controls.append(&minimize_button);
-
-    let maximize_button = gtk::Button::new();
-    maximize_button.add_css_class("window-control-button");
-    maximize_button.add_css_class("window-maximize-button");
-    maximize_button.add_css_class("flat");
-    maximize_button.set_focus_on_click(false);
-    maximize_button.set_size_request(44, 28);
-    maximize_button.set_tooltip_text(Some("Maximize"));
-    sync_maximize_button(window, &maximize_button);
-    {
-        let window = window.clone();
-        let maximize_button = maximize_button.clone();
-        maximize_button.connect_clicked(move |_| {
-            if window.is_maximized() {
-                window.unmaximize();
-            } else {
-                window.maximize();
-            }
-        });
-    }
-    {
-        let window = window.clone();
-        let maximize_button = maximize_button.clone();
-        window.connect_maximized_notify(move |window| {
-            sync_maximize_button(window, &maximize_button);
-        });
-    }
-    controls.append(&maximize_button);
-
-    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
-    close_button.add_css_class("window-control-button");
-    close_button.add_css_class("window-close-button");
-    close_button.add_css_class("flat");
-    close_button.set_focus_on_click(false);
-    close_button.set_size_request(44, 28);
-    close_button.set_tooltip_text(Some("Close"));
-    {
-        let window = window.clone();
-        close_button.connect_clicked(move |_| {
-            window.close();
-        });
-    }
-    controls.append(&close_button);
-
-    header.pack_end(&controls);
-}
-
-#[cfg(target_os = "windows")]
-fn sync_maximize_button(window: &gtk::ApplicationWindow, button: &gtk::Button) {
-    if window.is_maximized() {
-        button.set_icon_name("window-restore-symbolic");
-        button.set_tooltip_text(Some("Restore"));
-    } else {
-        button.set_icon_name("window-maximize-symbolic");
-        button.set_tooltip_text(Some("Maximize"));
-    }
 }
