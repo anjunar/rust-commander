@@ -304,6 +304,18 @@ impl FilePanelView {
         });
     }
 
+    pub fn connect_context_requested<F>(&self, f: F)
+    where
+        F: Fn(f64, f64) + 'static,
+    {
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(3);
+        gesture.connect_pressed(move |_, _, x, y| {
+            f(x, y);
+        });
+        self.column_view.add_controller(gesture);
+    }
+
     pub fn connect_sort_changed<F>(&self, f: F)
     where
         F: Fn(SortColumn, gtk::SortType) + 'static,

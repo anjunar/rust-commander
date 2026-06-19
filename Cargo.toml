@@ -23,7 +23,7 @@ zip = { version = "0.6.6", default-features = true }
 [build-dependencies]
 winres = "0.1.11"
 
-[target.'cfg(not(target_os = "windows"))'.dependencies]
+[target.'cfg(all(not(target_os = "windows"), not(target_os = "macos")))'.dependencies]
 vte4 = { version = "0.10.0", features = ["v0_72"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]

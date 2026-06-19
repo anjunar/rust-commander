@@ -11,6 +11,16 @@ pub fn asset_path(relative: impl AsRef<Path>) -> PathBuf {
                     return candidate;
                 }
             }
+
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(contents_dir) = exe_dir.parent() {
+                    let resources_candidate = contents_dir.join("Resources").join(relative);
+                    if resources_candidate.exists() {
+                        return resources_candidate;
+                    }
+                }
+            }
         }
     }
 

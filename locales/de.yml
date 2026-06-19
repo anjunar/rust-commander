@@ -47,6 +47,14 @@ command:
   terminal: F9 Terminal
   quit: F10 Beenden
 
+context:
+  open: Oeffnen
+  view: Anzeigen
+  edit: Bearbeiten
+  rename: Umbenennen
+  delete: Loeschen
+  open_terminal: Terminal oeffnen
+
 settings:
   title: Anwendungseinstellungen
   description: Minimale Einstellungen fuer Sprache, Ansicht, Dateioperationen und Viewer.
@@ -137,6 +145,7 @@ terminal:
   title: Terminal
   restart: Neustart
   title_windows_pending: Terminal (Windows-Backend ausstehend)
+  title_unsupported: Terminal (Backend auf dieser Plattform nicht verfuegbar)
   panel_path: "Panel-Pfad: %{path}"
   unsupported_path_chars: "Das Terminalverzeichnis enthaelt nicht unterstuetzte Zeichen: %{path}"
   windows_placeholder_title: Das eingebettete Terminal ist derzeit auf Linux-Builds mit VTE verfuegbar.

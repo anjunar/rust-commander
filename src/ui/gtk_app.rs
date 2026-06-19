@@ -6,6 +6,11 @@ use crate::{application::Commander, config, i18n, ui::main_window::MainWindow};
 pub const APP_ID: &str = "dev.rcommander.Gtk";
 
 pub fn run() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        configure_macos_runtime();
+    }
+
     let app = gtk::Application::builder().application_id(APP_ID).build();
 
     #[cfg(target_os = "windows")]
@@ -56,6 +61,104 @@ pub fn run() -> Result<()> {
 
     app.run();
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn configure_macos_runtime() {
+    let Ok(exe_path) = std::env::current_exe() else {
+        return;
+    };
+    let Some(macos_dir) = exe_path.parent() else {
+        return;
+    };
+    let Some(contents_dir) = macos_dir.parent() else {
+        return;
+    };
+
+    let resources_dir = contents_dir.join("Resources");
+    let frameworks_dir = contents_dir.join("Frameworks");
+    let resources_bin_dir = resources_dir.join("bin");
+    let resources_share_dir = resources_dir.join("share");
+    let gtk_lib_dir = resources_dir.join("lib").join("gtk-4.0");
+    let glib_schema_dir = resources_share_dir.join("glib-2.0").join("schemas");
+
+    prepend_env_path("PATH", &resources_bin_dir);
+    prepend_env_path("XDG_DATA_DIRS", &resources_share_dir);
+
+    if glib_schema_dir.is_dir() {
+        std::env::set_var("GSETTINGS_SCHEMA_DIR", &glib_schema_dir);
+    }
+    if resources_dir.is_dir() {
+        std::env::set_var("GTK_DATA_PREFIX", &resources_dir);
+        std::env::set_var("GTK_EXE_PREFIX", &resources_dir);
+    }
+    if gtk_lib_dir.is_dir() {
+        std::env::set_var("GTK_PATH", &gtk_lib_dir);
+    }
+    if frameworks_dir.is_dir() {
+        prepend_env_path("DYLD_FALLBACK_LIBRARY_PATH", &frameworks_dir);
+    }
+    if std::env::var_os("GDK_BACKEND").is_none() {
+        std::env::set_var("GDK_BACKEND", "macos");
+    }
+    if std::env::var_os("GSK_RENDERER").is_none() {
+        std::env::set_var("GSK_RENDERER", "cairo");
+    }
+
+    if let Some(loaders_dir) =
+        find_first_named_dir(&resources_dir.join("lib").join("gdk-pixbuf-2.0"), "loaders")
+    {
+        std::env::set_var("GDK_PIXBUF_MODULEDIR", &loaders_dir);
+    }
+    let pixbuf_cache = resources_dir
+        .join("lib")
+        .join("gdk-pixbuf-2.0")
+        .join("2.10.0")
+        .join("loaders.cache");
+    if pixbuf_cache.is_file() {
+        std::env::set_var("GDK_PIXBUF_MODULE_FILE", &pixbuf_cache);
+    }
+
+    let immodules_cache = gtk_lib_dir.join("gtk.immodules");
+    if immodules_cache.is_file() {
+        std::env::set_var("GTK_IM_MODULE_FILE", &immodules_cache);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn prepend_env_path(key: &str, value: &std::path::Path) {
+    if !value.exists() {
+        return;
+    }
+
+    match std::env::var_os(key) {
+        Some(existing) if !existing.is_empty() => {
+            let mut combined = std::path::PathBuf::from(value).into_os_string();
+            combined.push(":");
+            combined.push(existing);
+            std::env::set_var(key, combined);
+        }
+        _ => {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn find_first_named_dir(root: &std::path::Path, target_name: &str) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().and_then(|name| name.to_str()) == Some(target_name) {
+                return Some(path);
+            }
+            if let Some(found) = find_first_named_dir(&path, target_name) {
+                return Some(found);
+            }
+        }
+    }
+    None
 }
 
 fn initial_panel_path(

@@ -47,6 +47,14 @@ command:
   terminal: F9 Terminal
   quit: F10 Quit
 
+context:
+  open: Open
+  view: View
+  edit: Edit
+  rename: Rename
+  delete: Delete
+  open_terminal: Open Terminal
+
 settings:
   title: Application settings
   description: Minimal settings for language, view, file operations, and the viewer.
@@ -137,6 +145,7 @@ terminal:
   title: Terminal
   restart: Restart
   title_windows_pending: Terminal (Windows backend pending)
+  title_unsupported: Terminal (backend unavailable on this platform)
   panel_path: "Panel path: %{path}"
   unsupported_path_chars: "The terminal directory contains unsupported characters: %{path}"
   windows_placeholder_title: Embedded terminal is currently available on Linux builds with VTE.

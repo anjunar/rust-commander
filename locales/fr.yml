@@ -47,6 +47,14 @@ command:
   terminal: F9 Terminal
   quit: F10 Quitter
 
+context:
+  open: Ouvrir
+  view: Voir
+  edit: Modifier
+  rename: Renommer
+  delete: Supprimer
+  open_terminal: Ouvrir le terminal
+
 settings:
   title: Parametres de l'application
   description: Parametres minimaux pour la langue, l'affichage, les operations de fichiers et la visionneuse.
@@ -137,6 +145,7 @@ terminal:
   title: Terminal
   restart: Redemarrer
   title_windows_pending: Terminal (backend Windows en attente)
+  title_unsupported: Terminal (backend indisponible sur cette plateforme)
   panel_path: "Chemin du panneau : %{path}"
   unsupported_path_chars: "Le repertoire du terminal contient des caracteres non pris en charge : %{path}"
   windows_placeholder_title: Le terminal integre est actuellement disponible sur les builds Linux avec VTE.

@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
 use rust_i18n::t;
 
 #[cfg(target_os = "windows")]
@@ -262,6 +262,7 @@ impl MainWindow {
         }
         this.restore_window_geometry(window_config);
         this.initialize_split_positions();
+        this.queue_initial_panel_loads();
 
         this
     }
@@ -774,6 +775,72 @@ impl MainWindow {
         });
     }
 
+    fn queue_initial_panel_loads(self: &Rc<Self>) {
+        for panel in [ActivePanel::Left, ActivePanel::Right] {
+            let this = Rc::clone(self);
+            glib::idle_add_local_once(move || {
+                this.start_initial_panel_load(panel);
+            });
+        }
+    }
+
+    fn start_initial_panel_load(self: &Rc<Self>, panel: ActivePanel) {
+        let next_location = {
+            let commander = self.commander.borrow();
+            commander.state().panel(panel).location.clone()
+        };
+
+        let archive_service = self.commander.borrow().archive_service();
+        let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
+        let (tx, rx) = std::sync::mpsc::channel::<Result<DirectoryLoadResult, String>>();
+
+        std::thread::spawn(move || {
+            let result =
+                load_entries_for_location(&archive_service, &next_location, show_hidden_files)
+                    .map(|entries| DirectoryLoadResult {
+                        panel,
+                        next_location,
+                        entries,
+                        status: t!("status.ready").into_owned(),
+                    })
+                    .map_err(|error| error.to_string());
+            let _ = tx.send(result);
+        });
+
+        let this = Rc::clone(self);
+        glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
+            Ok(result) => {
+                match result {
+                    Ok(load) => {
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.navigate_to_loaded(
+                                load.panel,
+                                load.next_location,
+                                load.entries,
+                                load.status,
+                            )
+                        };
+                        this.apply_update(update);
+                        this.sync_watched_paths();
+                    }
+                    Err(error) => {
+                        let update = {
+                            let mut commander = this.commander.borrow_mut();
+                            commander.set_status(
+                                t!("status.navigation_failed", error = error.as_str()).into_owned(),
+                            )
+                        };
+                        this.apply_update(update);
+                    }
+                }
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        });
+    }
+
     fn handle_operation(self: &Rc<Self>, kind: FileOperationKind) {
         if self.active_operation.borrow().is_some() {
             dialogs::show_error(
@@ -1104,6 +1171,16 @@ impl MainWindow {
 
             {
                 let this = Rc::clone(self);
+                panel_view.connect_context_requested(move |x, y| {
+                    let this = Rc::clone(&this);
+                    glib::idle_add_local_once(move || {
+                        this.show_panel_context_menu(panel, x, y);
+                    });
+                });
+            }
+
+            {
+                let this = Rc::clone(self);
                 panel_view.connect_sort_changed(move |column, sort_type| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
@@ -1197,6 +1274,48 @@ impl MainWindow {
 
             glib::ControlFlow::Continue
         });
+    }
+
+    fn show_panel_context_menu(self: &Rc<Self>, panel: ActivePanel, x: f64, y: f64) {
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.set_active_panel(panel)
+        };
+        self.apply_update(update);
+
+        if self
+            .commander
+            .borrow()
+            .state()
+            .panel(panel)
+            .selected_item()
+            .is_none()
+        {
+            return;
+        }
+
+        let menu = gio::Menu::new();
+        menu.append(Some(&t!("context.open")), Some("win.open"));
+        menu.append(Some(&t!("context.view")), Some("win.view"));
+        menu.append(Some(&t!("context.edit")), Some("win.edit"));
+        menu.append(Some(&t!("context.rename")), Some("win.rename"));
+        menu.append(Some(&t!("context.delete")), Some("win.delete"));
+        menu.append(Some(&t!("context.open_terminal")), Some("win.console"));
+
+        let panel_view = self.commander_view.panel(panel);
+        let popover = gtk::PopoverMenu::from_model(Some(&menu));
+        popover.set_has_arrow(true);
+        popover.set_parent(&panel_view.column_view);
+        popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+        let popover_weak = popover.downgrade();
+        popover.connect_closed(move |_| {
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.unparent();
+            }
+        });
+
+        popover.popup();
     }
 
     fn run_command<F>(self: &Rc<Self>, command: F)
