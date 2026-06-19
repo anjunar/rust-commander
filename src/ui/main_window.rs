@@ -52,7 +52,9 @@ use navigation_controller::{NavigationController, NavigationRuntime};
 use operations_controller::{OperationRuntime, OperationsController};
 use panel_wiring::PanelWiring;
 use terminal_wiring::TerminalController;
-use window_chrome::{install_custom_window_controls, WindowChromeController};
+#[cfg(target_os = "windows")]
+use window_chrome::install_custom_window_controls;
+use window_chrome::WindowChromeController;
 use window_state_controller::WindowStateController;
 
 struct StartupLoadState {

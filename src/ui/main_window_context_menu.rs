@@ -4,6 +4,8 @@ use std::{
     rc::Rc,
 };
 
+use gtk::prelude::*;
+
 use rust_i18n::t;
 
 use crate::{
@@ -45,7 +47,7 @@ pub struct UnixContextMenuActions {
 #[derive(Clone)]
 pub struct ContextMenuController {
     host: Rc<dyn ViewHost>,
-    window: gtk::ApplicationWindow,
+    _window: gtk::ApplicationWindow,
     #[cfg(not(target_os = "windows"))]
     left_panel_root: gtk::Box,
     #[cfg(not(target_os = "windows"))]
@@ -71,7 +73,7 @@ impl ContextMenuController {
     ) -> Self {
         Self {
             host,
-            window,
+            _window: window,
             #[cfg(not(target_os = "windows"))]
             left_panel_root,
             #[cfg(not(target_os = "windows"))]
@@ -150,20 +152,16 @@ impl ContextMenuController {
         &self,
         panel: ActivePanel,
         request: ContextMenuRequest,
-        x: f64,
-        y: f64,
+        _x: f64,
+        _y: f64,
     ) {
         self.close_unix_context_menu();
 
-        let panel_root = match panel {
+        let _panel_root = match panel {
             ActivePanel::Left => self.left_panel_root.clone(),
             ActivePanel::Right => self.right_panel_root.clone(),
         };
         let popover = gtk::Popover::new();
-        popover.set_has_arrow(false);
-        popover.set_autohide(true);
-        popover.set_parent(&panel_root);
-        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.set_margin_top(6);
@@ -295,10 +293,11 @@ impl ContextMenuController {
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn show_command_failed(&self, error: impl std::fmt::Display) {
         let error = error.to_string();
         self.host
             .set_status(t!("status.command_failed", error = error.as_str()).into_owned());
-        dialogs::show_error(&self.window, &t!("error.command_failed"), &error);
+        dialogs::show_error(&self._window, &t!("error.command_failed"), &error);
     }
 }
