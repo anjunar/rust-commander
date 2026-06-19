@@ -37,13 +37,15 @@ pub(crate) fn build_modal_window(
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
     root.set_margin_top(12);
-    root.set_margin_bottom(12);
+    root.set_margin_bottom(14);
     root.set_margin_start(12);
     root.set_margin_end(12);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
+    actions.set_margin_top(3);
+    actions.set_margin_bottom(0);
 
     root.append(&content);
     root.append(&actions);
@@ -68,12 +70,13 @@ fn install_dialog_window_controls(window: &gtk::Window, title: &str) {
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     controls.add_css_class("window-controls");
 
-    let close_button = gtk::Button::with_label("X");
+    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
     close_button.add_css_class("window-control-button");
     close_button.add_css_class("window-close-button");
     close_button.add_css_class("flat");
     close_button.set_focus_on_click(false);
-    close_button.set_size_request(46, 30);
+    close_button.set_size_request(44, 28);
+    close_button.set_tooltip_text(Some("Close"));
     {
         let window = window.clone();
         close_button.connect_clicked(move |_| {
@@ -201,12 +204,14 @@ pub fn confirm_operation<F>(
         let callback = Rc::clone(&callback);
         let request = Rc::clone(&request);
         confirm_button.connect_clicked(move |_| {
+            window.close();
             if let (Some(on_confirm), Some(request)) =
                 (callback.borrow_mut().take(), request.borrow_mut().take())
             {
-                on_confirm(request);
+                glib::idle_add_local_once(move || {
+                    on_confirm(request);
+                });
             }
-            window.close();
         });
     }
 

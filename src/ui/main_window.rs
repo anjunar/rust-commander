@@ -966,12 +966,13 @@ fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk:
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     controls.add_css_class("window-controls");
 
-    let minimize_button = gtk::Button::with_label("_");
+    let minimize_button = gtk::Button::from_icon_name("window-minimize-symbolic");
     minimize_button.add_css_class("window-control-button");
     minimize_button.add_css_class("window-minimize-button");
     minimize_button.add_css_class("flat");
     minimize_button.set_focus_on_click(false);
-    minimize_button.set_size_request(46, 30);
+    minimize_button.set_size_request(44, 28);
+    minimize_button.set_tooltip_text(Some("Minimize"));
     {
         let window = window.clone();
         minimize_button.connect_clicked(move |_| {
@@ -985,7 +986,8 @@ fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk:
     maximize_button.add_css_class("window-maximize-button");
     maximize_button.add_css_class("flat");
     maximize_button.set_focus_on_click(false);
-    maximize_button.set_size_request(46, 30);
+    maximize_button.set_size_request(44, 28);
+    maximize_button.set_tooltip_text(Some("Maximize"));
     sync_maximize_button(window, &maximize_button);
     {
         let window = window.clone();
@@ -1007,12 +1009,13 @@ fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk:
     }
     controls.append(&maximize_button);
 
-    let close_button = gtk::Button::with_label("X");
+    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
     close_button.add_css_class("window-control-button");
     close_button.add_css_class("window-close-button");
     close_button.add_css_class("flat");
     close_button.set_focus_on_click(false);
-    close_button.set_size_request(46, 30);
+    close_button.set_size_request(44, 28);
+    close_button.set_tooltip_text(Some("Close"));
     {
         let window = window.clone();
         close_button.connect_clicked(move |_| {
@@ -1027,9 +1030,11 @@ fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk:
 #[cfg(target_os = "windows")]
 fn sync_maximize_button(window: &gtk::ApplicationWindow, button: &gtk::Button) {
     if window.is_maximized() {
-        button.set_label("[]");
+        button.set_icon_name("window-restore-symbolic");
+        button.set_tooltip_text(Some("Restore"));
     } else {
-        button.set_label("[]");
+        button.set_icon_name("window-maximize-symbolic");
+        button.set_tooltip_text(Some("Maximize"));
     }
 }
 

@@ -90,17 +90,31 @@ scrollbar slider {
     padding: 10px 14px;
 }
 
+.dialog-action-area button,
+.dialog-action-area .button,
+dialog button,
+dialog .button {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
 .dialog-title {
     font-size: 1.1em;
 }
 
 .window-controls {
     margin-end: 4px;
+    margin-top: 2px;
+    margin-bottom: 2px;
 }
 
 .window-control-button {
-    min-width: 38px;
-    min-height: 30px;
+    min-width: 36px;
+    min-height: 26px;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    padding-right: 0;
     padding: 0;
     margin: 0;
     border-radius: 6px;
@@ -110,6 +124,7 @@ scrollbar slider {
     background-image: none;
     box-shadow: none;
     outline: none;
+    line-height: 1;
     font-family: 'Cascadia Code', 'Consolas', monospace;
     font-weight: 700;
 }

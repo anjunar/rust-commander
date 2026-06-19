@@ -46,8 +46,8 @@ headerbar .titlebutton:active,
 }
 
 .active-panel {
-    border-color: #1d6fd1;
-    box-shadow: 0 0 0 1px rgba(29, 111, 209, 0.18);
+    border-color: #d3c8b8;
+    box-shadow: none;
 }
 
 dropdown,
@@ -117,6 +117,13 @@ listview row:selected,
 treeexpander row:selected {
     background: #cfe2ff;
     color: #0f2236;
+}
+
+.file-panel:not(.active-panel) columnview row:selected,
+.file-panel:not(.active-panel) listview row:selected,
+.file-panel:not(.active-panel) treeexpander row:selected {
+    background: #d9d7d2;
+    color: #2c3946;
 }
 
 .parent-link {
