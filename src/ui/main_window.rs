@@ -140,13 +140,16 @@ impl MainWindow {
             }
         }
 
-        let header = gtk::HeaderBar::new();
-        let title = gtk::Label::new(Some(APP_WINDOW_TITLE));
-        title.add_css_class("app-title");
-        header.set_title_widget(Some(&title));
-        #[cfg(target_os = "windows")]
-        install_custom_window_controls(&window, &header);
-        window.set_titlebar(Some(&header));
+        #[cfg(not(target_os = "macos"))]
+        {
+            let header = gtk::HeaderBar::new();
+            let title = gtk::Label::new(Some(APP_WINDOW_TITLE));
+            title.add_css_class("app-title");
+            header.set_title_widget(Some(&title));
+            #[cfg(target_os = "windows")]
+            install_custom_window_controls(&window, &header);
+            window.set_titlebar(Some(&header));
+        }
 
         let shell = gtk::Box::new(gtk::Orientation::Vertical, 8);
         shell.set_margin_top(8);

@@ -39,11 +39,11 @@ columnview columnheader button {
 }
 
 .file-panel-left {
-    margin-end: 4px;
+    margin-right: 4px;
 }
 
 .file-panel-right {
-    margin-start: 4px;
+    margin-left: 4px;
 }
 
 paned.horizontal > separator {
@@ -116,7 +116,7 @@ dialog .button {
 }
 
 .window-controls {
-    margin-end: 4px;
+    margin-right: 4px;
     margin-top: 2px;
     margin-bottom: 2px;
 }

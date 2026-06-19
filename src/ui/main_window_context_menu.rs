@@ -8,10 +8,11 @@ use gtk::prelude::*;
 
 use rust_i18n::t;
 
+#[cfg(target_os = "windows")]
+use crate::ui::dialogs;
 use crate::{
     application::{ActivePanel, Commander},
     platform::ContextMenuRequest,
-    ui::dialogs,
 };
 
 use super::hosts::ViewHost;
