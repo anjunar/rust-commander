@@ -1306,6 +1306,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcommander"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "gdk4-x11",
+ "gtk4",
+ "ico",
+ "image",
+ "iso9660_simple",
+ "libarchive",
+ "memchr",
+ "notify",
+ "rust-i18n",
+ "serde",
+ "sourceview5",
+ "toml 0.8.23",
+ "unrar",
+ "vte4",
+ "windows",
+ "windows-sys 0.61.2",
+ "winres",
+ "x11rb",
+ "zip",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1333,33 +1360,6 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
-
-[[package]]
-name = "rust-commander"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "chrono",
- "gdk4-x11",
- "gtk4",
- "ico",
- "image",
- "iso9660_simple",
- "libarchive",
- "memchr",
- "notify",
- "rust-i18n",
- "serde",
- "sourceview5",
- "toml 0.8.23",
- "unrar",
- "vte4",
- "windows",
- "windows-sys 0.61.2",
- "winres",
- "x11rb",
- "zip",
-]
 
 [[package]]
 name = "rust-i18n"
