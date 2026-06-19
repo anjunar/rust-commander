@@ -4,7 +4,6 @@ use gtk::glib;
 use rust_i18n::t;
 
 use crate::{
-    application::ActivePanel,
     domain::{
         operation::{FileOperationKind, FileOperationRequest, OperationEvent},
         ConflictResolution,
@@ -160,10 +159,8 @@ impl MainWindow {
                             seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
                         )
                         .into_owned();
-                        this.queue_async_refresh_panels(
-                            &[ActivePanel::Left, ActivePanel::Right],
-                            status,
-                        );
+                        this.set_status_message(status);
+                        this.refresh_dirty_panels_if_idle();
                         keep_running = false;
                     }
                     OperationEvent::Cancelled(summary) => {
@@ -176,10 +173,8 @@ impl MainWindow {
                             size = crate::fs::reader::format_bytes(summary.total_bytes)
                         )
                         .into_owned();
-                        this.queue_async_refresh_panels(
-                            &[ActivePanel::Left, ActivePanel::Right],
-                            status,
-                        );
+                        this.set_status_message(status);
+                        this.refresh_dirty_panels_if_idle();
                         keep_running = false;
                     }
                     OperationEvent::Failed(error) => {
@@ -249,19 +244,15 @@ impl MainWindow {
                     crate::archive::ArchiveTaskEvent::Finished(message) => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        this.queue_async_refresh_panels(
-                            &[ActivePanel::Left, ActivePanel::Right],
-                            message,
-                        );
+                        this.set_status_message(message);
+                        this.refresh_dirty_panels_if_idle();
                         keep_running = false;
                     }
                     crate::archive::ArchiveTaskEvent::Cancelled => {
                         progress_dialog.close();
                         this.active_operation.borrow_mut().take();
-                        this.queue_async_refresh_panels(
-                            &[ActivePanel::Left, ActivePanel::Right],
-                            t!("status.archive_copy_cancelled").into_owned(),
-                        );
+                        this.set_status_message(t!("status.archive_copy_cancelled").into_owned());
+                        this.refresh_dirty_panels_if_idle();
                         keep_running = false;
                     }
                     crate::archive::ArchiveTaskEvent::Failed(error) => {

@@ -9,7 +9,7 @@ use crate::domain::{
     entry::Entry,
     entry_key::EntryKey,
     panel_location::PanelLocation,
-    panel_selection::{restore_panel_selection, PanelSelection},
+    panel_selection::{restore_panel_selection, PanelSelection, SelectionFallback},
     selection::SelectionModel,
     sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
@@ -53,7 +53,8 @@ impl Panel {
         let preserved_selection = self.preserved_selection();
         sort_entries(&mut entries, self.sort_state, self.folders_first);
         self.entries = entries;
-        self.selection = self.restore_selection(preserved_selection);
+        self.selection =
+            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
     }
 
     pub fn navigate_to(&mut self, next_location: PanelLocation, mut entries: Vec<Entry>) {
@@ -61,7 +62,10 @@ impl Panel {
         self.location = next_location;
         sort_entries(&mut entries, self.sort_state, self.folders_first);
         self.entries = entries;
-        self.selection = self.restore_selection(PreservedSelection::default());
+        self.selection = self.restore_selection(
+            PreservedSelection::default(),
+            SelectionFallback::PreferParentOrFirst,
+        );
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {
@@ -129,14 +133,16 @@ impl Panel {
         let preserved_selection = self.preserved_selection();
         self.sort_state = self.sort_state.toggled_for(column);
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection = self.restore_selection(preserved_selection);
+        self.selection =
+            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
     }
 
     pub fn set_sort_state(&mut self, column: SortColumn, direction: SortDirection) {
         let preserved_selection = self.preserved_selection();
         self.sort_state = SortState { column, direction };
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection = self.restore_selection(preserved_selection);
+        self.selection =
+            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
     }
 
     pub fn set_folders_first(&mut self, folders_first: bool) {
@@ -147,7 +153,8 @@ impl Panel {
         let preserved_selection = self.preserved_selection();
         self.folders_first = folders_first;
         sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection = self.restore_selection(preserved_selection);
+        self.selection =
+            self.restore_selection(preserved_selection, SelectionFallback::PreserveOnly);
     }
 
     pub fn rename_target(&self, new_name: &str) -> Result<(PathBuf, PathBuf)> {
@@ -216,7 +223,11 @@ impl Panel {
         }
     }
 
-    fn restore_selection(&self, preserved: PreservedSelection) -> SelectionModel {
+    fn restore_selection(
+        &self,
+        preserved: PreservedSelection,
+        fallback: SelectionFallback,
+    ) -> SelectionModel {
         if self.entries.is_empty() {
             return SelectionModel::default();
         }
@@ -225,6 +236,7 @@ impl Panel {
             &preserved.selection,
             self.selected_history.get(&self.location.history_key()),
             &self.entries,
+            fallback,
         );
         let mut selected_indices = self
             .entries
@@ -237,8 +249,7 @@ impl Panel {
             .cursor
             .as_ref()
             .and_then(|key| self.entries.iter().position(|entry| entry.key() == *key))
-            .or_else(|| selected_indices.iter().next().copied())
-            .or(Some(0));
+            .or_else(|| selected_indices.iter().next().copied());
         if selected_indices.is_empty() {
             if let Some(index) = focused_index {
                 selected_indices.insert(index);
@@ -318,6 +329,22 @@ mod tests {
         panel.set_sort_state(SortColumn::Size, SortDirection::Ascending);
 
         assert_eq!(panel.selected_entry().unwrap().name, "b.txt");
+    }
+
+    #[test]
+    fn replace_entries_does_not_select_first_row_when_selection_disappears() {
+        let mut panel = Panel::new(
+            PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
+            vec![entry("alpha"), entry("beta"), entry("gamma")],
+            true,
+        );
+
+        panel.select_single(1);
+        panel.replace_entries(vec![entry("alpha"), entry("gamma")]);
+
+        assert!(panel.selection_indices().is_empty());
+        assert!(panel.selected_entry().is_none());
+        assert_eq!(panel.selection.focus_index(), None);
     }
 
     fn entry(name: &str) -> Entry {

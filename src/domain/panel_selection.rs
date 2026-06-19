@@ -8,6 +8,12 @@ pub struct PanelSelection {
     pub selected: BTreeSet<EntryKey>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SelectionFallback {
+    PreserveOnly,
+    PreferParentOrFirst,
+}
+
 impl PanelSelection {
     pub fn single(key: Option<EntryKey>) -> Self {
         let selected = key.iter().cloned().collect();
@@ -22,6 +28,7 @@ pub fn restore_panel_selection(
     previous: &PanelSelection,
     history_cursor: Option<&EntryKey>,
     next_entries: &[Entry],
+    fallback: SelectionFallback,
 ) -> PanelSelection {
     let mut selected = previous
         .selected
@@ -39,11 +46,16 @@ pub fn restore_panel_selection(
             history_cursor
                 .filter(|key| contains_entry(next_entries, key))
                 .cloned()
-        })
-        .or_else(|| {
-            contains_entry(next_entries, &EntryKey::ParentLink).then_some(EntryKey::ParentLink)
-        })
-        .or_else(|| next_entries.first().map(Entry::key));
+        });
+
+    let cursor = match fallback {
+        SelectionFallback::PreserveOnly => cursor,
+        SelectionFallback::PreferParentOrFirst => cursor
+            .or_else(|| {
+                contains_entry(next_entries, &EntryKey::ParentLink).then_some(EntryKey::ParentLink)
+            })
+            .or_else(|| next_entries.first().map(Entry::key)),
+    };
 
     if selected.is_empty() {
         if let Some(cursor) = &cursor {
@@ -62,7 +74,7 @@ fn contains_entry(entries: &[Entry], key: &EntryKey) -> bool {
 mod tests {
     use std::time::SystemTime;
 
-    use super::{restore_panel_selection, PanelSelection};
+    use super::{restore_panel_selection, PanelSelection, SelectionFallback};
     use crate::domain::{entry::Entry, entry_key::EntryKey};
 
     #[test]
@@ -81,6 +93,7 @@ mod tests {
             &previous,
             None,
             &[entry("beta"), entry("gamma"), entry("alpha")],
+            SelectionFallback::PreserveOnly,
         );
 
         assert_eq!(
@@ -105,6 +118,7 @@ mod tests {
             &previous,
             Some(&history_cursor),
             &[entry("alpha"), entry("gamma")],
+            SelectionFallback::PreserveOnly,
         );
 
         assert_eq!(restored.cursor, Some(history_cursor));
@@ -123,6 +137,7 @@ mod tests {
             &previous,
             None,
             &[Entry::parent_link("Up"), entry("alpha"), entry("beta")],
+            SelectionFallback::PreferParentOrFirst,
         );
 
         assert_eq!(restored.cursor, Some(EntryKey::ParentLink));
@@ -130,6 +145,21 @@ mod tests {
             restored.selected,
             [EntryKey::ParentLink].into_iter().collect()
         );
+    }
+
+    #[test]
+    fn preserve_only_leaves_selection_empty_when_cursor_disappears() {
+        let previous = PanelSelection::single(Some(EntryKey::FilesystemName("gone".into())));
+
+        let restored = restore_panel_selection(
+            &previous,
+            None,
+            &[entry("alpha"), entry("beta")],
+            SelectionFallback::PreserveOnly,
+        );
+
+        assert_eq!(restored.cursor, None);
+        assert!(restored.selected.is_empty());
     }
 
     fn entry(name: &str) -> Entry {

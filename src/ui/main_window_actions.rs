@@ -7,7 +7,6 @@ use gtk::prelude::*;
 use rust_i18n::t;
 
 use crate::{
-    application::ActivePanel,
     archive::ArchiveService,
     config,
     domain::operation::FileOperationKind,
@@ -116,7 +115,6 @@ impl MainWindow {
 
         let this = Rc::clone(self);
         dialogs::prompt_rename(&self.window, selected.display_name, move |new_name| {
-            let refresh_paths = [selected.path.clone()];
             let result = {
                 let mut commander = this.commander.borrow_mut();
                 commander.rename_active(&new_name)
@@ -128,8 +126,7 @@ impl MainWindow {
                     return;
                 }
             }
-            this.queue_async_refresh_for_paths(
-                &refresh_paths,
+            this.set_status_message(
                 t!(
                     "status.renamed",
                     path = selected
@@ -218,10 +215,6 @@ impl MainWindow {
             };
             this.apply_update(update);
             this.apply_theme();
-            this.queue_async_refresh_panels(
-                &[ActivePanel::Left, ActivePanel::Right],
-                t!("status.view_refreshed").into_owned(),
-            );
             this.refresh_localized_labels();
         });
     }
@@ -304,8 +297,7 @@ impl MainWindow {
         let this = Rc::clone(self);
         if let Err(error) =
             editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
-                this.queue_async_refresh_for_paths(
-                    std::slice::from_ref(&path),
+                this.set_status_message(
                     t!("status.saved", path = path.display().to_string()).into_owned(),
                 );
             })
@@ -347,15 +339,6 @@ impl MainWindow {
                     )
                     .into_owned(),
                 );
-                this.queue_async_refresh_for_paths(
-                    &selected_paths,
-                    t!(
-                        "status.permissions_updated",
-                        count = selected_paths.len(),
-                        mode = mode.trim()
-                    )
-                    .into_owned(),
-                );
             },
         );
     }
@@ -382,15 +365,6 @@ impl MainWindow {
                     )
                     .into_owned(),
                 );
-                this.queue_async_refresh_for_paths(
-                    &selected_paths,
-                    t!(
-                        "status.owner_updated",
-                        count = selected_paths.len(),
-                        owner = owner_spec.trim()
-                    )
-                    .into_owned(),
-                );
             },
         );
     }
@@ -398,7 +372,7 @@ impl MainWindow {
     pub fn handle_make_directory(self: &Rc<Self>) {
         let this = Rc::clone(self);
         dialogs::prompt_new_directory(&self.window, move |name| {
-            let changed_paths = [this.active_panel_path().join(name.trim())];
+            let changed_path = this.active_panel_path().join(name.trim());
             let result = {
                 let mut commander = this.commander.borrow_mut();
                 commander.create_directory_in_active(&name)
@@ -410,11 +384,10 @@ impl MainWindow {
                     return;
                 }
             }
-            this.queue_async_refresh_for_paths(
-                &changed_paths,
+            this.set_status_message(
                 t!(
                     "status.created_directory",
-                    path = changed_paths[0].display().to_string()
+                    path = changed_path.display().to_string()
                 )
                 .into_owned(),
             );

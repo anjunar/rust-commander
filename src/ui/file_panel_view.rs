@@ -154,9 +154,7 @@ impl FilePanelView {
     fn sync_store(&self, location: &PanelLocation, entries: &[Entry]) {
         let mut current_entries_path = self.current_entries_path.borrow_mut();
         let location_label = location.display_label();
-        if current_entries_path.as_deref() != Some(std::path::Path::new(&location_label))
-            || self.store.n_items() != entries.len() as u32
-        {
+        if current_entries_path.as_deref() != Some(std::path::Path::new(&location_label)) {
             self.store.remove_all();
             for entry in entries {
                 self.store.append(&FileRowObject::new(location, entry));

@@ -440,33 +440,6 @@ impl MainWindow {
         self.start_directory_load(request);
     }
 
-    fn queue_async_refresh_panels(
-        self: &Rc<Self>,
-        panels: &[ActivePanel],
-        status: impl Into<String>,
-    ) {
-        if panels.is_empty() {
-            return;
-        }
-
-        self.load_scheduler
-            .borrow_mut()
-            .queue_refresh(panels, status.into());
-        self.refresh_dirty_panels_if_idle();
-    }
-
-    fn queue_async_refresh_for_paths(
-        self: &Rc<Self>,
-        changed_paths: &[PathBuf],
-        status: impl Into<String>,
-    ) {
-        let panels = self.affected_panels_for_paths(changed_paths);
-        if panels.is_empty() {
-            return;
-        }
-        self.queue_async_refresh_panels(&panels, status);
-    }
-
     fn trigger_manual_refresh_cooldown(&self) {
         self.watcher_refresh_cooldown_until
             .set(Some(Instant::now() + Duration::from_millis(900)));
@@ -583,8 +556,6 @@ impl MainWindow {
                 self.show_command_failed(error);
                 return;
             }
-
-            self.queue_async_refresh_panels(&[panel], t!("status.view_refreshed").into_owned());
         }
 
         #[cfg(not(target_os = "windows"))]
