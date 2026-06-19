@@ -142,16 +142,6 @@ dialog .button {
     font-weight: 700;
 }
 
-.splash-overlay {
-    background: transparent;
-    background-color: transparent;
-}
-
-.splash-card {
-    padding: 12px;
-    border-radius: 18px;
-}
-
 .navigation-overlay {
     padding: 18px 22px;
     border-radius: 16px;

@@ -4,8 +4,6 @@ use std::{
     rc::Rc,
 };
 
-use gtk::prelude::*;
-
 use rust_i18n::t;
 
 #[cfg(target_os = "windows")]
