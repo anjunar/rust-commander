@@ -19,18 +19,56 @@ headerbar:backdrop {
     color: #a9b7c6;
 }
 
+headerbar button,
+headerbar button:hover,
+headerbar button:active,
+headerbar button:checked,
+headerbar button:focus,
+headerbar button:focus-visible,
+headerbar button:backdrop,
+headerbar button:backdrop:hover,
+headerbar button:backdrop:active,
+headerbar button:backdrop:checked,
+headerbar button:backdrop:focus,
+headerbar button:backdrop:focus-visible,
 headerbar .titlebutton,
+headerbar button.titlebutton,
+headerbar button.titlebutton:hover,
+headerbar button.titlebutton:active,
+headerbar button.titlebutton:checked,
+headerbar button.titlebutton:backdrop,
+headerbar button.titlebutton:backdrop:hover,
+headerbar button.titlebutton:backdrop:active,
+headerbar button.titlebutton:backdrop:checked,
+headerbar windowcontrols button,
+headerbar windowcontrols button:hover,
+headerbar windowcontrols button:active,
+headerbar windowcontrols button:checked,
+headerbar windowcontrols button:backdrop,
+headerbar windowcontrols button:backdrop:hover,
+headerbar windowcontrols button:backdrop:active,
+headerbar windowcontrols button:backdrop:checked,
 window .titlebutton,
 .titlebutton,
 headerbar .titlebutton:hover,
 window .titlebutton:hover,
 .titlebutton:hover,
 headerbar .titlebutton:active,
+.titlebutton:backdrop,
+.titlebutton:backdrop:hover,
+.titlebutton:backdrop:active,
+.titlebutton:checked,
+.titlebutton:backdrop:checked,
 .titlebutton:active {
-    background: #181818;
-    background-color: #181818;
+    background: #262626;
+    background-color: #262626;
+    background-image: none;
     border: none;
+    border-color: transparent;
     box-shadow: none;
+    outline: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
     color: inherit;
 }
 
@@ -189,4 +227,37 @@ messagedialog box,
     background: #1d1d1d;
     color: #a9b7c6;
     border: 1px solid #232323;
+}
+
+.window-control-button {
+    background: transparent;
+    background-color: transparent;
+    background-image: none;
+    color: #d6deea;
+    border: 1px solid transparent;
+    box-shadow: none;
+}
+
+.window-control-button:hover,
+.window-control-button:focus,
+.window-control-button:focus-visible,
+.window-control-button:active {
+    background: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.08);
+    background-image: none;
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.window-close-button:hover,
+.window-close-button:focus,
+.window-close-button:focus-visible,
+.window-close-button:active {
+    background: #c23b3b;
+    background-color: #c23b3b;
+    background-image: none;
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: none;
 }

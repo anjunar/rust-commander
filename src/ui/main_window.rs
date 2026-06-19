@@ -86,6 +86,8 @@ impl MainWindow {
         let title = gtk::Label::new(Some(APP_WINDOW_TITLE));
         title.add_css_class("app-title");
         header.set_title_widget(Some(&title));
+        #[cfg(target_os = "windows")]
+        install_custom_window_controls(&window, &header);
         window.set_titlebar(Some(&header));
 
         let shell = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -209,6 +211,34 @@ impl MainWindow {
                     let update = {
                         let mut commander = this.commander.borrow_mut();
                         commander.select_indices(panel, indices)
+                    };
+                    this.apply_update(update);
+                });
+            }
+
+            {
+                let this = Rc::clone(self);
+                panel_view.connect_focus_enter(move || {
+                    let update = {
+                        let mut commander = this.commander.borrow_mut();
+                        if commander.state().active_panel == panel {
+                            return;
+                        }
+                        commander.set_active_panel(panel)
+                    };
+                    this.apply_update(update);
+                });
+            }
+
+            {
+                let this = Rc::clone(self);
+                panel_view.connect_primary_click(move || {
+                    let update = {
+                        let mut commander = this.commander.borrow_mut();
+                        if commander.state().active_panel == panel {
+                            return;
+                        }
+                        commander.set_active_panel(panel)
                     };
                     this.apply_update(update);
                 });
@@ -927,5 +957,79 @@ fn command_bar_labels() -> Vec<String> {
         t!("command.terminal").into_owned(),
         t!("command.quit").into_owned(),
     ]
+}
+
+#[cfg(target_os = "windows")]
+fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &gtk::HeaderBar) {
+    header.set_show_title_buttons(false);
+
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    controls.add_css_class("window-controls");
+
+    let minimize_button = gtk::Button::with_label("_");
+    minimize_button.add_css_class("window-control-button");
+    minimize_button.add_css_class("window-minimize-button");
+    minimize_button.add_css_class("flat");
+    minimize_button.set_focus_on_click(false);
+    minimize_button.set_size_request(46, 30);
+    {
+        let window = window.clone();
+        minimize_button.connect_clicked(move |_| {
+            window.minimize();
+        });
+    }
+    controls.append(&minimize_button);
+
+    let maximize_button = gtk::Button::new();
+    maximize_button.add_css_class("window-control-button");
+    maximize_button.add_css_class("window-maximize-button");
+    maximize_button.add_css_class("flat");
+    maximize_button.set_focus_on_click(false);
+    maximize_button.set_size_request(46, 30);
+    sync_maximize_button(window, &maximize_button);
+    {
+        let window = window.clone();
+        let maximize_button = maximize_button.clone();
+        maximize_button.connect_clicked(move |_| {
+            if window.is_maximized() {
+                window.unmaximize();
+            } else {
+                window.maximize();
+            }
+        });
+    }
+    {
+        let window = window.clone();
+        let maximize_button = maximize_button.clone();
+        window.connect_maximized_notify(move |window| {
+            sync_maximize_button(window, &maximize_button);
+        });
+    }
+    controls.append(&maximize_button);
+
+    let close_button = gtk::Button::with_label("X");
+    close_button.add_css_class("window-control-button");
+    close_button.add_css_class("window-close-button");
+    close_button.add_css_class("flat");
+    close_button.set_focus_on_click(false);
+    close_button.set_size_request(46, 30);
+    {
+        let window = window.clone();
+        close_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    controls.append(&close_button);
+
+    header.pack_end(&controls);
+}
+
+#[cfg(target_os = "windows")]
+fn sync_maximize_button(window: &gtk::ApplicationWindow, button: &gtk::Button) {
+    if window.is_maximized() {
+        button.set_label("[]");
+    } else {
+        button.set_label("[]");
+    }
 }
 

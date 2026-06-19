@@ -32,6 +32,9 @@ pub(crate) fn build_modal_window(
         .default_height(default_height)
         .build();
 
+    #[cfg(target_os = "windows")]
+    install_dialog_window_controls(&window, title);
+
     let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
     root.set_margin_top(12);
     root.set_margin_bottom(12);
@@ -53,16 +56,65 @@ pub(crate) fn build_modal_window(
     }
 }
 
+#[cfg(target_os = "windows")]
+fn install_dialog_window_controls(window: &gtk::Window, title: &str) {
+    let header = gtk::HeaderBar::new();
+    header.set_show_title_buttons(false);
+
+    let title_label = gtk::Label::new(Some(title));
+    title_label.add_css_class("app-title");
+    header.set_title_widget(Some(&title_label));
+
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    controls.add_css_class("window-controls");
+
+    let close_button = gtk::Button::with_label("X");
+    close_button.add_css_class("window-control-button");
+    close_button.add_css_class("window-close-button");
+    close_button.add_css_class("flat");
+    close_button.set_focus_on_click(false);
+    close_button.set_size_request(46, 30);
+    {
+        let window = window.clone();
+        close_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    controls.append(&close_button);
+
+    header.pack_end(&controls);
+    window.set_titlebar(Some(&header));
+}
+
 pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
-    gtk::AlertDialog::builder()
-        .modal(true)
-        .message(title)
-        .detail(detail)
-        .buttons([t!("common.close").into_owned()])
-        .cancel_button(0)
-        .default_button(0)
-        .build()
-        .show(Some(parent));
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, title, 460, 180);
+
+    let title_label = gtk::Label::new(Some(title));
+    title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.add_css_class("dialog-title");
+    content.append(&title_label);
+
+    let detail_label = gtk::Label::new(Some(detail));
+    detail_label.set_xalign(0.0);
+    detail_label.set_wrap(true);
+    content.append(&detail_label);
+
+    let close_button = gtk::Button::with_label(&t!("common.close"));
+    close_button.add_css_class("suggested-action");
+    actions.append(&close_button);
+    window.set_default_widget(Some(&close_button));
+
+    let window_for_close = window.clone();
+    close_button.connect_clicked(move |_| {
+        window_for_close.close();
+    });
+
+    window.present();
 }
 
 pub fn confirm_operation<F>(
@@ -111,24 +163,54 @@ pub fn confirm_operation<F>(
         ),
     };
 
-    let dialog = gtk::AlertDialog::builder()
-        .modal(true)
-        .message(title)
-        .detail(&detail)
-        .buttons([t!("common.cancel").into_owned(), confirm_label])
-        .cancel_button(0)
-        .default_button(1)
-        .build();
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &title, 480, 160);
 
-    dialog.choose(
-        Some(parent),
-        None::<&gtk::gio::Cancellable>,
-        move |response| {
-            if matches!(response, Ok(1)) {
+    let title_label = gtk::Label::new(Some(&title));
+    title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.add_css_class("dialog-title");
+    content.append(&title_label);
+
+    let detail_label = gtk::Label::new(Some(&detail));
+    detail_label.set_xalign(0.0);
+    detail_label.set_wrap(true);
+    content.append(&detail_label);
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let confirm_button = gtk::Button::with_label(&confirm_label);
+    confirm_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&confirm_button);
+    window.set_default_widget(Some(&confirm_button));
+
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+
+    let callback = Rc::new(RefCell::new(Some(on_confirm)));
+    let request = Rc::new(RefCell::new(Some(request)));
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        let request = Rc::clone(&request);
+        confirm_button.connect_clicked(move |_| {
+            if let (Some(on_confirm), Some(request)) =
+                (callback.borrow_mut().take(), request.borrow_mut().take())
+            {
                 on_confirm(request);
             }
-        },
-    );
+            window.close();
+        });
+    }
+
+    window.present();
 }
 
 pub fn prompt_rename<F>(parent: &gtk::ApplicationWindow, current_name: String, on_confirm: F)
@@ -666,39 +748,80 @@ pub fn show_conflict<F>(
             target = conflict.target.display().to_string()
         )
     );
-    let dialog = gtk::AlertDialog::builder()
-        .modal(true)
-        .message(
-            t!(
-                "dialog.conflict_title",
-                kind = presentation::file_operation_label(&conflict.kind)
-            )
-            .into_owned(),
-        )
-        .detail(&detail)
-        .buttons([
-            t!("common.cancel").into_owned(),
-            t!("common.skip").into_owned(),
-            t!("common.rename").into_owned(),
-            t!("common.overwrite").into_owned(),
-        ])
-        .cancel_button(0)
-        .default_button(1)
-        .build();
+    let title = t!(
+        "dialog.conflict_title",
+        kind = presentation::file_operation_label(&conflict.kind)
+    )
+    .into_owned();
 
-    dialog.choose(
-        Some(parent),
-        None::<&gtk::gio::Cancellable>,
-        move |response| {
-            let resolution = match response {
-                Ok(3) => ConflictResolution::Overwrite,
-                Ok(1) => ConflictResolution::Skip,
-                Ok(2) => ConflictResolution::Rename,
-                _ => ConflictResolution::Cancel,
-            };
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &title, 520, 240);
+
+    let title_label = gtk::Label::new(Some(&title));
+    title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.add_css_class("dialog-title");
+    content.append(&title_label);
+
+    let detail_label = gtk::Label::new(Some(&detail));
+    detail_label.set_xalign(0.0);
+    detail_label.set_wrap(true);
+    content.append(&detail_label);
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let skip_button = gtk::Button::with_label(&t!("common.skip"));
+    let rename_button = gtk::Button::with_label(&t!("common.rename"));
+    let overwrite_button = gtk::Button::with_label(&t!("common.overwrite"));
+    overwrite_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&skip_button);
+    actions.append(&rename_button);
+    actions.append(&overwrite_button);
+    window.set_default_widget(Some(&skip_button));
+
+    let callback = Rc::new(RefCell::new(Some(on_resolution)));
+    let resolve = |resolution: ConflictResolution,
+                   window: &gtk::Window,
+                   callback: &Rc<RefCell<Option<F>>>| {
+        if let Some(on_resolution) = callback.borrow_mut().take() {
             on_resolution(resolution);
-        },
-    );
+        }
+        window.close();
+    };
+
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        cancel_button.connect_clicked(move |_| {
+            resolve(ConflictResolution::Cancel, &window, &callback);
+        });
+    }
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        skip_button.connect_clicked(move |_| {
+            resolve(ConflictResolution::Skip, &window, &callback);
+        });
+    }
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        rename_button.connect_clicked(move |_| {
+            resolve(ConflictResolution::Rename, &window, &callback);
+        });
+    }
+    {
+        let window = window.clone();
+        let callback = Rc::clone(&callback);
+        overwrite_button.connect_clicked(move |_| {
+            resolve(ConflictResolution::Overwrite, &window, &callback);
+        });
+    }
+
+    window.present();
 }
 
 #[derive(Clone)]

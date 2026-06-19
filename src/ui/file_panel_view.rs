@@ -264,6 +264,35 @@ impl FilePanelView {
         });
     }
 
+    pub fn connect_focus_enter<F>(&self, f: F)
+    where
+        F: Fn() + Clone + 'static,
+    {
+        let root_dropdown_callback = f.clone();
+        self.column_view.connect_has_focus_notify(move |view| {
+            if view.has_focus() {
+                f();
+            }
+        });
+        self.root_dropdown.connect_has_focus_notify(move |dropdown| {
+            if dropdown.has_focus() {
+                root_dropdown_callback();
+            }
+        });
+    }
+
+    pub fn connect_primary_click<F>(&self, f: F)
+    where
+        F: Fn() + 'static,
+    {
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gdk::BUTTON_PRIMARY);
+        gesture.connect_pressed(move |_, _, _, _| {
+            f();
+        });
+        self.column_view.add_controller(gesture);
+    }
+
     pub fn connect_activate<F>(&self, f: F)
     where
         F: Fn(usize) + 'static,
