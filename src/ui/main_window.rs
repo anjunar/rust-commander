@@ -54,6 +54,7 @@ pub struct MainWindow {
     load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
+    #[cfg(not(target_os = "windows"))]
     unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
@@ -143,6 +144,7 @@ impl MainWindow {
             load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
+            #[cfg(not(target_os = "windows"))]
             unix_context_menu: Rc::new(RefCell::new(None)),
         });
 
@@ -506,8 +508,8 @@ impl MainWindow {
         self: &Rc<Self>,
         panel: ActivePanel,
         clicked_index: Option<usize>,
-        x: f64,
-        y: f64,
+        _x: f64,
+        _y: f64,
     ) {
         let (request, update) = {
             let mut commander = self.commander.borrow_mut();
@@ -562,7 +564,7 @@ impl MainWindow {
 
         #[cfg(not(target_os = "windows"))]
         {
-            self.show_unix_context_menu(panel, request, x, y);
+            self.show_unix_context_menu(panel, request, _x, _y);
         }
     }
 

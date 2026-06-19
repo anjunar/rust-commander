@@ -1,4 +1,7 @@
-use std::{path::PathBuf, rc::Rc};
+use std::rc::Rc;
+
+#[cfg(not(target_os = "windows"))]
+use std::path::PathBuf;
 
 use gtk::prelude::*;
 use rust_i18n::t;
