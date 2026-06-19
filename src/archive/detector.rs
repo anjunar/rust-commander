@@ -138,6 +138,7 @@ impl ArchiveFormatDetector {
                 format @ (ArchiveFormat::TarGz
                 | ArchiveFormat::TarBz2
                 | ArchiveFormat::TarXz
+                | ArchiveFormat::Iso
                 | ArchiveFormat::Dmg
                 | ArchiveFormat::Arj
                 | ArchiveFormat::Lha

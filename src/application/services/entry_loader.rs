@@ -24,23 +24,11 @@ impl EntryLoader {
     }
 
     pub fn load(&self, requested_location: PanelLocation) -> Result<EntryLoadResult, ArchiveError> {
-        let location = self.resolve_location(requested_location)?;
-        let entries = self.load_entries(&location)?;
-        Ok(EntryLoadResult { location, entries })
-    }
-
-    fn resolve_location(
-        &self,
-        requested_location: PanelLocation,
-    ) -> Result<PanelLocation, ArchiveError> {
-        match &requested_location {
-            PanelLocation::Filesystem(path)
-                if self.archive_service.is_archive_path(path) && path.is_file() =>
-            {
-                self.archive_service.archive_location_for_path(path)
-            }
-            _ => Ok(requested_location),
-        }
+        let entries = self.load_entries(&requested_location)?;
+        Ok(EntryLoadResult {
+            location: requested_location,
+            entries,
+        })
     }
 
     fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>, ArchiveError> {

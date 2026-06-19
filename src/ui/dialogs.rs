@@ -32,6 +32,18 @@ pub(crate) fn build_modal_window(
         .default_height(default_height)
         .build();
 
+    {
+        let parent = parent.clone();
+        window.connect_close_request(move |_| {
+            let parent = parent.clone();
+            glib::idle_add_local_once(move || {
+                parent.present();
+                parent.grab_focus();
+            });
+            glib::Propagation::Proceed
+        });
+    }
+
     #[cfg(target_os = "windows")]
     install_dialog_window_controls(&window, title);
 

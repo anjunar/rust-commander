@@ -1,5 +1,6 @@
 mod detector;
 mod error;
+mod iso_backend;
 mod libarchive;
 mod path;
 mod plugin;
@@ -17,6 +18,7 @@ use std::{
 
 pub use detector::{ArchiveFormat, ArchiveFormatDetector};
 pub use error::ArchiveError;
+pub use iso_backend::IsoBackend;
 pub use libarchive::LibArchiveBackend;
 pub use path::safe_join_extract_path;
 pub use plugin::PluginArchiveBackend;

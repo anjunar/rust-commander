@@ -33,6 +33,17 @@ impl MainWindow {
                 let this = Rc::clone(self);
                 dialogs::prompt_archive_open_action(&self.window, path.clone(), move |open_as_archive| {
                     if open_as_archive {
+                        let next_location = {
+                            let archive_service = this.archive_service.borrow();
+                            match archive_service.archive_location_for_path(&path) {
+                                Ok(location) => location,
+                                Err(error) => {
+                                    this.show_command_failed(error);
+                                    return;
+                                }
+                            }
+                        };
+
                         this.start_directory_load(NavigationRequest {
                             panel,
                             generation: 0,
@@ -42,7 +53,7 @@ impl MainWindow {
                                 path = path.display().to_string()
                             )
                             .into_owned(),
-                            next_location: crate::domain::PanelLocation::filesystem(path.clone()),
+                            next_location,
                             busy_message: t!("status.opening_archive").into_owned(),
                         });
                         return;

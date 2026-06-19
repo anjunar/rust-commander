@@ -1,8 +1,8 @@
 use std::{cmp::Reverse, path::Path, sync::Arc};
 
 use super::{
-    ArchiveBackend, ArchiveError, ArchiveFormatDetector, LibArchiveBackend, PluginArchiveBackend,
-    UnrarBackend, ZipBackend,
+    ArchiveBackend, ArchiveError, ArchiveFormatDetector, IsoBackend, LibArchiveBackend,
+    PluginArchiveBackend, UnrarBackend, ZipBackend,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -21,7 +21,8 @@ impl ArchiveBackendRegistry {
     pub fn with_default_backends() -> Self {
         Self::new(vec![
             Arc::new(ZipBackend::new()),
-            Arc::new(LibArchiveBackend::new_stub()),
+            Arc::new(IsoBackend::new()),
+            Arc::new(LibArchiveBackend::new()),
             Arc::new(UnrarBackend::new()),
             Arc::new(PluginArchiveBackend::new_stub()),
         ])
@@ -37,7 +38,7 @@ impl ArchiveBackendRegistry {
             .find(|backend| backend.can_open(path))
             .cloned()
             .ok_or_else(|| {
-                if self.is_archive_path(path) {
+                if ArchiveFormatDetector::is_supported_archive(path) {
                     ArchiveError::BackendNotFound {
                         backend: "registered archive backend".into(),
                         path: Some(path.to_path_buf()),

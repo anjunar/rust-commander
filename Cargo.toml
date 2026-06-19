@@ -9,6 +9,7 @@ license = "MIT"
 anyhow = "1.0.102"
 chrono = "0.4.45"
 gtk = { package = "gtk4", version = "0.11.3", features = ["v4_12"] }
+iso9660_simple = "0.2.7"
 memchr = "2.7.4"
 notify = "8.2.0"
 sourceview5 = { version = "0.11.0", features = ["gtk_v4_12"] }
@@ -25,6 +26,9 @@ winres = "0.1.11"
 
 [target.'cfg(all(not(target_os = "windows"), not(target_os = "macos")))'.dependencies]
 vte4 = { version = "0.10.0", features = ["v0_72"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+libarchive = "0.1.1"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 x11rb = { version = "0.13.2", features = ["image"] }

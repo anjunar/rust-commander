@@ -946,6 +946,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06432fb54d3be7964ecd3649233cddf80db2832f47fec34c01f65b3d9d774983"
 
 [[package]]
+name = "iso9660_simple"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24bb0456b675bf7afaa0071c16879703ba487431d68f7f6e3c70540100799e3d"
+dependencies = [
+ "bitflags 2.13.0",
+ "ucs2",
+ "zerocopy",
+]
+
+[[package]]
 name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1015,6 +1026,26 @@ name = "lebe"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
+
+[[package]]
+name = "libarchive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3da06b22cd19af338a40f5d44a0aa6352ae43839d0855a049881cbc7e1b9c914"
+dependencies = [
+ "libarchive3-sys",
+ "libc",
+]
+
+[[package]]
+name = "libarchive3-sys"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cd3beae8f59a4c7a806523269b5392037577c150446e88d684dfa6de6031ca7"
+dependencies = [
+ "libc",
+ "pkg-config",
+]
 
 [[package]]
 name = "libc"
@@ -1313,6 +1344,8 @@ dependencies = [
  "gtk4",
  "ico",
  "image",
+ "iso9660_simple",
+ "libarchive",
  "memchr",
  "notify",
  "rust-i18n",
@@ -1775,6 +1808,15 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "ucs2"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df79298e11f316400c57ec268f3c2c29ac3c4d4777687955cd3d4f3a35ce7eba"
+dependencies = [
+ "bit_field",
+]
 
 [[package]]
 name = "unicode-ident"
