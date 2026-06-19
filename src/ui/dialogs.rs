@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
@@ -9,7 +9,7 @@ use crate::{
         ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict,
     },
     fs::{operations::progress_percent, reader::format_bytes},
-    i18n,
+    i18n, presentation,
 };
 
 pub(crate) struct ModalWindow {
@@ -88,7 +88,7 @@ pub fn confirm_operation<F>(
                 target = target_label.as_str()
             )
             .into_owned(),
-            t!("operation.copy").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Copy),
         ),
         FileOperationKind::Move => (
             t!("dialog.move_confirmation_title").into_owned(),
@@ -98,7 +98,7 @@ pub fn confirm_operation<F>(
                 target = target_label.as_str()
             )
             .into_owned(),
-            t!("operation.move").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Move),
         ),
         FileOperationKind::Delete => (
             t!("dialog.delete_confirmation_title").into_owned(),
@@ -107,7 +107,7 @@ pub fn confirm_operation<F>(
                 source = source_label.as_str()
             )
             .into_owned(),
-            t!("operation.delete").into_owned(),
+            presentation::file_operation_label(&FileOperationKind::Delete),
         ),
     };
 
@@ -232,6 +232,144 @@ where
     glib::idle_add_local_once(move || {
         window.present();
         entry.grab_focus();
+    });
+}
+
+pub fn prompt_unix_chmod<F>(
+    parent: &gtk::ApplicationWindow,
+    selected_paths: Vec<PathBuf>,
+    on_confirm: F,
+) where
+    F: FnOnce(String, bool) + 'static,
+{
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &t!("dialog.chmod_title"), 460, 180);
+
+    let label = gtk::Label::new(Some(&t!("dialog.chmod_prompt")));
+    label.set_xalign(0.0);
+    content.append(&label);
+
+    let summary = gtk::Label::new(Some(&selected_paths_summary(&selected_paths)));
+    summary.set_xalign(0.0);
+    summary.set_wrap(true);
+    summary.add_css_class("dim-label");
+    content.append(&summary);
+
+    let mode_entry = gtk::Entry::new();
+    mode_entry.set_hexpand(true);
+    mode_entry.set_placeholder_text(Some(&t!("dialog.chmod_placeholder")));
+    content.append(&mode_entry);
+
+    let recursive_switch = gtk::Switch::new();
+    content.append(&switch_row(
+        &t!("dialog.recursive_apply"),
+        &recursive_switch,
+    ));
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let confirm_button = gtk::Button::with_label(&t!("common.apply"));
+    confirm_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&confirm_button);
+    window.set_default_widget(Some(&confirm_button));
+
+    let callback = Rc::new(RefCell::new(Some(on_confirm)));
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    {
+        let window = window.clone();
+        let mode_entry = mode_entry.clone();
+        let recursive_switch = recursive_switch.clone();
+        let callback = Rc::clone(&callback);
+        confirm_button.connect_clicked(move |_| {
+            let mode = mode_entry.text().to_string();
+            let recursive = recursive_switch.is_active();
+            if let Some(on_confirm) = callback.borrow_mut().take() {
+                on_confirm(mode, recursive);
+            }
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
+        mode_entry.grab_focus();
+    });
+}
+
+pub fn prompt_unix_chown<F>(
+    parent: &gtk::ApplicationWindow,
+    selected_paths: Vec<PathBuf>,
+    on_confirm: F,
+) where
+    F: FnOnce(String, bool) + 'static,
+{
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &t!("dialog.chown_title"), 460, 180);
+
+    let label = gtk::Label::new(Some(&t!("dialog.chown_prompt")));
+    label.set_xalign(0.0);
+    content.append(&label);
+
+    let summary = gtk::Label::new(Some(&selected_paths_summary(&selected_paths)));
+    summary.set_xalign(0.0);
+    summary.set_wrap(true);
+    summary.add_css_class("dim-label");
+    content.append(&summary);
+
+    let owner_entry = gtk::Entry::new();
+    owner_entry.set_hexpand(true);
+    owner_entry.set_placeholder_text(Some(&t!("dialog.chown_placeholder")));
+    content.append(&owner_entry);
+
+    let recursive_switch = gtk::Switch::new();
+    content.append(&switch_row(
+        &t!("dialog.recursive_apply"),
+        &recursive_switch,
+    ));
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let confirm_button = gtk::Button::with_label(&t!("common.apply"));
+    confirm_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&confirm_button);
+    window.set_default_widget(Some(&confirm_button));
+
+    let callback = Rc::new(RefCell::new(Some(on_confirm)));
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+    {
+        let window = window.clone();
+        let owner_entry = owner_entry.clone();
+        let recursive_switch = recursive_switch.clone();
+        let callback = Rc::clone(&callback);
+        confirm_button.connect_clicked(move |_| {
+            let owner = owner_entry.text().to_string();
+            let recursive = recursive_switch.is_active();
+            if let Some(on_confirm) = callback.borrow_mut().take() {
+                on_confirm(owner, recursive);
+            }
+            window.close();
+        });
+    }
+
+    glib::idle_add_local_once(move || {
+        window.present();
+        owner_entry.grab_focus();
     });
 }
 
@@ -530,7 +668,13 @@ pub fn show_conflict<F>(
     );
     let dialog = gtk::AlertDialog::builder()
         .modal(true)
-        .message(t!("dialog.conflict_title", kind = conflict.kind.label()).into_owned())
+        .message(
+            t!(
+                "dialog.conflict_title",
+                kind = presentation::file_operation_label(&conflict.kind)
+            )
+            .into_owned(),
+        )
         .detail(&detail)
         .buttons([
             t!("common.cancel").into_owned(),
@@ -617,8 +761,10 @@ impl ProgressDialog {
 
     pub fn update_progress(&self, snapshot: &crate::domain::operation::OperationSnapshot) {
         let fraction = progress_percent(snapshot);
-        self.title
-            .set_label(&t!("progress.in_progress", kind = snapshot.kind.label()));
+        self.title.set_label(&t!(
+            "progress.in_progress",
+            kind = presentation::file_operation_label(&snapshot.kind)
+        ));
         self.detail.set_label(&t!(
             "progress.file_operation_detail",
             processed = format_bytes(snapshot.processed_bytes),
@@ -722,4 +868,12 @@ fn source_label(request: &FileOperationRequest) -> String {
     } else {
         t!("common.items_count", count = request.sources.len()).into_owned()
     }
+}
+
+fn selected_paths_summary(paths: &[PathBuf]) -> String {
+    if paths.len() == 1 {
+        return paths[0].display().to_string();
+    }
+
+    t!("common.items_count", count = paths.len()).into_owned()
 }

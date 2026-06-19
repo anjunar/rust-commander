@@ -27,6 +27,8 @@ operation:
 common:
   close: Schliessen
   cancel: Abbrechen
+  apply: Anwenden
+  open: Oeffnen
   rename: Umbenennen
   create: Erstellen
   save: Speichern
@@ -91,6 +93,13 @@ dialog:
   rename_prompt: "Neuen Namen eingeben:"
   mkdir_title: Ordner erstellen
   mkdir_prompt: "Namen fuer den neuen Ordner eingeben:"
+  chmod_title: Chmod
+  chmod_prompt: "Dateimodus setzen:"
+  chmod_placeholder: "Beispiel: 755 oder u+rwX"
+  chown_title: Chown
+  chown_prompt: "Besitzer oder Besitzer:Gruppe setzen:"
+  chown_placeholder: "Beispiel: root:users"
+  recursive_apply: Rekursiv anwenden
   conflict_title: "%{kind}-Konflikt"
   conflict_detail: "Das Ziel existiert bereits.\n\nQuelle: %{source}\nZiel: %{target}"
 
@@ -190,6 +199,8 @@ status:
   archive_copy_cancelled: Archivkopie abgebrochen.
   archive_copy_failed: "Archivkopie fehlgeschlagen: %{error}"
   command_failed: "Befehl fehlgeschlagen: %{error}"
+  permissions_updated: "Modus fuer %{count} Element(e) auf %{mode} gesetzt."
+  owner_updated: "Besitzer fuer %{count} Element(e) auf %{owner} gesetzt."
 
 error:
   no_entry_selected: Kein Eintrag ist ausgewaehlt.

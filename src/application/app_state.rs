@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-use rust_i18n::t;
-
 use crate::domain::{Panel, RootLocation};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -17,13 +15,6 @@ impl ActivePanel {
             Self::Right => Self::Left,
         }
     }
-
-    pub fn label(self) -> String {
-        match self {
-            Self::Left => t!("panel.left").into_owned(),
-            Self::Right => t!("panel.right").into_owned(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -36,13 +27,13 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(left: Panel, right: Panel, roots: Vec<RootLocation>) -> Self {
+    pub fn new(left: Panel, right: Panel, roots: Vec<RootLocation>, status: String) -> Self {
         Self {
             left,
             right,
             roots,
             active_panel: ActivePanel::Left,
-            status: t!("status.ready").into_owned(),
+            status,
         }
     }
 
@@ -84,35 +75,5 @@ impl AppState {
         self.roots
             .iter()
             .position(|root| path.starts_with(&root.path))
-    }
-
-    pub fn status_line(&self) -> String {
-        let active = self.active_panel();
-        let inactive = self.inactive_panel();
-        let active_selected = active.selected_count();
-        let inactive_selected = inactive.selected_count();
-
-        match (active_selected, inactive_selected) {
-            (0, 0) => self.status.clone(),
-            (active_count, 0) => t!(
-                "status.selected_active",
-                status = self.status.as_str(),
-                count = active_count
-            )
-            .into_owned(),
-            (0, inactive_count) => t!(
-                "status.selected_inactive",
-                status = self.status.as_str(),
-                count = inactive_count
-            )
-            .into_owned(),
-            (active_count, inactive_count) => t!(
-                "status.selected_both",
-                status = self.status.as_str(),
-                active = active_count,
-                inactive = inactive_count
-            )
-            .into_owned(),
-        }
     }
 }

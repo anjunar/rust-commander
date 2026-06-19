@@ -2,13 +2,13 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
     Name="RCommander"
-    Manufacturer="Patrick"
+    Manufacturer="Anjunar"
     Version="$(var.ProductVersion)"
     UpgradeCode="B701A0C0-1A9F-4A45-96D4-7D6493958D02"
     Language="1031"
     Scope="perMachine">
 
-    <SummaryInformation Description="RCommander Installer" Manufacturer="Patrick" />
+    <SummaryInformation Description="RCommander Installer" Manufacturer="Anjunar" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of RCommander is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Icon Id="AppIcon" SourceFile="$(var.AppIconPath)" />

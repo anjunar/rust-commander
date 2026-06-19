@@ -3,9 +3,10 @@ use std::{
     process::{Command, Stdio},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 use crate::domain::roots::RootLocation;
+use crate::platform::context_menu::ContextMenuRequest;
 
 pub fn available_roots() -> Vec<RootLocation> {
     let mut roots = Vec::new();
@@ -110,7 +111,7 @@ pub fn open_console(path: &Path) -> Result<()> {
         }
     }
 
-    anyhow::bail!(
+    bail!(
         "No supported terminal application was found for {}",
         path.display()
     )
@@ -118,8 +119,69 @@ pub fn open_console(path: &Path) -> Result<()> {
 
 #[cfg(not(unix))]
 pub fn open_console(path: &Path) -> Result<()> {
-    anyhow::bail!(
+    bail!(
         "No supported terminal application was found for {}",
         path.display()
     )
+}
+
+pub fn show_context_menu(_request: &ContextMenuRequest) -> Result<()> {
+    bail!("Native context menus are not implemented for this platform yet")
+}
+
+pub fn chmod_paths(paths: &[PathBuf], mode: &str, recursive: bool) -> Result<()> {
+    if paths.is_empty() {
+        bail!("No filesystem entries were selected");
+    }
+
+    let mode = mode.trim();
+    if mode.is_empty() {
+        bail!("The chmod mode must not be empty");
+    }
+
+    let mut command = Command::new("chmod");
+    if recursive {
+        command.arg("-R");
+    }
+    command.arg(mode);
+    command.args(paths);
+
+    run_privileged_command(command, "chmod")
+}
+
+pub fn chown_paths(paths: &[PathBuf], owner_spec: &str, recursive: bool) -> Result<()> {
+    if paths.is_empty() {
+        bail!("No filesystem entries were selected");
+    }
+
+    let owner_spec = owner_spec.trim();
+    if owner_spec.is_empty() {
+        bail!("The owner specification must not be empty");
+    }
+
+    let mut command = Command::new("chown");
+    if recursive {
+        command.arg("-R");
+    }
+    command.arg(owner_spec);
+    command.args(paths);
+
+    run_privileged_command(command, "chown")
+}
+
+fn run_privileged_command(mut command: Command, program: &str) -> Result<()> {
+    let output = command
+        .output()
+        .with_context(|| format!("Could not start {program}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        bail!("{program} failed with exit code {:?}", output.status.code());
+    }
+
+    bail!("{program} failed: {stderr}")
 }

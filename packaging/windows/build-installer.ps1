@@ -1,7 +1,7 @@
 param(
     [string]$Configuration = "release",
     [string]$MingwRoot = "C:\msys64\mingw64",
-    [string]$OutputDir = "dist/windows"
+    [string]$OutputDir = "target/dist/windows"
 )
 
 Set-StrictMode -Version Latest

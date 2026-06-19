@@ -3,8 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rust_i18n::t;
-
 use crate::archive::ArchiveSession;
 
 #[derive(Clone, Debug)]
@@ -12,24 +10,6 @@ pub enum FileOperationKind {
     Copy,
     Move,
     Delete,
-}
-
-impl FileOperationKind {
-    pub fn label(&self) -> String {
-        match self {
-            Self::Copy => t!("operation.copy").into_owned(),
-            Self::Move => t!("operation.move").into_owned(),
-            Self::Delete => t!("operation.delete").into_owned(),
-        }
-    }
-
-    pub fn verb(&self) -> String {
-        match self {
-            Self::Copy => t!("operation.copy_verb").into_owned(),
-            Self::Move => t!("operation.move_verb").into_owned(),
-            Self::Delete => t!("operation.delete_verb").into_owned(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod context_menu;
 pub mod icons;
 pub mod open;
 pub mod terminal;
@@ -13,6 +14,7 @@ pub mod x11_window_icon;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+pub use context_menu::{show_context_menu, ContextMenuRequest};
 pub use icons::icon_for_entry;
 pub use open::open_path;
 pub use terminal::open_console;
@@ -21,7 +23,11 @@ pub use window_geometry::{
 };
 
 #[cfg(target_os = "windows")]
+pub use windows::apply_runtime_window_icon;
+#[cfg(target_os = "windows")]
 pub use windows::available_roots;
 
 #[cfg(not(target_os = "windows"))]
 pub use unix::available_roots;
+#[cfg(not(target_os = "windows"))]
+pub use unix::{chmod_paths, chown_paths};

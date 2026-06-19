@@ -2,36 +2,40 @@ use std::{
     cell::{Cell, RefCell},
     path::PathBuf,
     rc::Rc,
-    sync::mpsc::{self, TryRecvError},
-    thread,
     time::{Duration, Instant},
 };
 
-use gtk::{gdk, gio, glib, prelude::*};
+use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
 #[cfg(target_os = "windows")]
 use crate::platform::restore_window_placement;
 
 use crate::{
-    application::{ActivePanel, Commander, ViewUpdate},
-    archive::{ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
+    application::{ActivePanel, Commander, LoadScheduler, ViewUpdate},
+    archive::ArchiveService,
     config::{self, AppConfig, WindowConfig, WindowPosition},
-    domain::{
-        operation::{FileOperationKind, FileOperationRequest, OperationEvent},
-        sorting::SortDirection,
-        PanelLocation,
-    },
-    fs::{
-        operations::{start_operation, OperationHandle},
-        watcher::{start_file_watcher, WatchCommand, WatchEvent},
-    },
-    platform::{assets::asset_path, current_window_placement},
+    domain::sorting::SortDirection,
+    fs::watcher::{start_file_watcher, WatchCommand, WatchEvent},
+    platform::{assets::asset_path, current_window_placement, ContextMenuRequest},
+    presentation,
     ui::{
-        commander_view::CommanderView, dialogs, editor_dialog, file_viewer_dialog, shortcuts,
-        terminal_controller::TerminalAction, terminal_dock::TerminalDock,
+        commander_view::CommanderView,
+        dialogs,
+        navigation::{self, NavigationRequest},
+        operations::ActiveOperationHandle,
+        shortcuts,
+        terminal_controller::TerminalAction,
+        terminal_dock::TerminalDock,
     },
 };
+
+#[path = "main_window_actions.rs"]
+mod actions;
+#[path = "main_window_navigation.rs"]
+mod navigation_controller;
+#[path = "main_window_operations.rs"]
+mod operations_controller;
 
 const APP_WINDOW_TITLE: &str = "RCommander";
 
@@ -43,53 +47,14 @@ pub struct MainWindow {
     busy_spinner: gtk::Spinner,
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
+    archive_service: Rc<RefCell<ArchiveService>>,
     active_operation: Rc<RefCell<Option<ActiveOperationHandle>>>,
     navigation_busy: Rc<Cell<bool>>,
     watcher_refresh_cooldown_until: Rc<Cell<Option<Instant>>>,
+    load_scheduler: Rc<RefCell<LoadScheduler>>,
     watch_command_tx: std::sync::mpsc::Sender<WatchCommand>,
     app_config_cache: Rc<RefCell<AppConfig>>,
-}
-
-struct DirectoryLoadResult {
-    panel: ActivePanel,
-    next_location: PanelLocation,
-    entries: Vec<crate::domain::Entry>,
-    status: String,
-}
-
-fn load_entries_for_location(
-    archive_service: &crate::archive::ArchiveService,
-    location: &PanelLocation,
-    show_hidden_files: bool,
-) -> Result<Vec<crate::domain::Entry>, crate::archive::ArchiveError> {
-    match location {
-        PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path, show_hidden_files)
-            .map_err(|error| crate::archive::ArchiveError::IoError {
-                detail: error.to_string(),
-            }),
-        PanelLocation::Archive(_) => archive_service.entries_for_location(location),
-    }
-}
-
-#[derive(Clone)]
-enum ActiveOperationHandle {
-    File(OperationHandle),
-    Archive(ArchiveTaskHandle),
-}
-
-impl ActiveOperationHandle {
-    fn cancel(&self) {
-        match self {
-            Self::File(handle) => handle.cancel(),
-            Self::Archive(handle) => handle.cancel(),
-        }
-    }
-
-    fn resolve_conflict(&self, resolution: crate::domain::operation::ConflictResolution) {
-        if let Self::File(handle) = self {
-            handle.resolve_conflict(resolution);
-        }
-    }
+    unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
 }
 
 impl MainWindow {
@@ -160,6 +125,7 @@ impl MainWindow {
         window.set_child(Some(&shell));
 
         let commander = Rc::new(RefCell::new(commander));
+        let archive_service = Rc::new(RefCell::new(ArchiveService::with_default_backends()));
         let (watch_command_tx, watch_event_rx) = start_file_watcher();
 
         let this = Rc::new(Self {
@@ -170,11 +136,14 @@ impl MainWindow {
             busy_spinner,
             status_label,
             commander,
+            archive_service,
             active_operation: Rc::new(RefCell::new(None)),
             navigation_busy: Rc::new(Cell::new(false)),
             watcher_refresh_cooldown_until: Rc::new(Cell::new(None)),
+            load_scheduler: Rc::new(RefCell::new(LoadScheduler::default())),
             watch_command_tx,
             app_config_cache: Rc::new(RefCell::new(app_config.clone())),
+            unix_context_menu: Rc::new(RefCell::new(None)),
         });
 
         this.apply_update(ViewUpdate::all());
@@ -199,53 +168,8 @@ impl MainWindow {
         {
             // Defer to idle so the window is realized
             glib::idle_add_local_once(move || {
-                unsafe {
-                    use std::ffi::OsStr;
-                    use std::os::windows::ffi::OsStrExt;
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{
-                        FindWindowW, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
-                        LR_LOADFROMFILE, WM_SETICON,
-                    };
-
-                    // find top-level window by title
-                    let title_w: Vec<u16> = OsStr::new(APP_WINDOW_TITLE)
-                        .encode_wide()
-                        .chain(std::iter::once(0))
-                        .collect();
-                    let hwnd = FindWindowW(std::ptr::null(), title_w.as_ptr());
-                    if !hwnd.is_null() {
-                        let ico_path = asset_path("assets/icons/app_icon.ico");
-                        if ico_path.exists() {
-                            let wide: Vec<u16> = ico_path
-                                .as_os_str()
-                                .encode_wide()
-                                .chain(std::iter::once(0))
-                                .collect();
-                            let hicon = LoadImageW(
-                                std::ptr::null_mut(),
-                                wide.as_ptr(),
-                                IMAGE_ICON,
-                                0,
-                                0,
-                                LR_LOADFROMFILE,
-                            );
-                            if !hicon.is_null() {
-                                // SendMessageW expects msg: u32, wparam: usize, lparam: isize
-                                let _ = SendMessageW(
-                                    hwnd,
-                                    WM_SETICON as u32,
-                                    ICON_BIG as usize,
-                                    hicon as isize,
-                                );
-                                let _ = SendMessageW(
-                                    hwnd,
-                                    WM_SETICON as u32,
-                                    ICON_SMALL as usize,
-                                    hicon as isize,
-                                );
-                            }
-                        }
-                    }
+                if let Err(error) = crate::platform::apply_runtime_window_icon(APP_WINDOW_TITLE) {
+                    eprintln!("Could not apply Windows runtime icon: {error}");
                 }
             });
         }
@@ -265,858 +189,6 @@ impl MainWindow {
         this.queue_initial_panel_loads();
 
         this
-    }
-
-    pub fn handle_switch_panel(self: &Rc<Self>) {
-        let update = {
-            let mut commander = self.commander.borrow_mut();
-            commander.switch_panel()
-        };
-        self.apply_update(update);
-    }
-
-    pub fn handle_open_active(self: &Rc<Self>) {
-        if self.terminal_dock.has_focus() {
-            return;
-        }
-        let active_panel = self.commander.borrow().state().active_panel;
-        self.start_selected_navigation(active_panel);
-    }
-
-    pub fn handle_view(self: &Rc<Self>) {
-        let selected = self
-            .commander
-            .borrow()
-            .state()
-            .active_panel()
-            .selected_item();
-
-        let Some(selected) = selected else {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.view_unavailable"),
-                &t!("error.no_entry_selected"),
-            );
-            return;
-        };
-
-        if selected.is_parent_link {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.view_unavailable"),
-                &t!("error.parent_cannot_be_viewed"),
-            );
-            return;
-        }
-
-        if selected.is_dir {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.view_unavailable"),
-                &t!("error.directory_cannot_be_viewed"),
-            );
-            return;
-        }
-
-        if selected.archive_path.is_some() {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.view_unavailable"),
-                &t!("error.archive_view_not_wired"),
-            );
-            return;
-        }
-
-        if let Err(error) = file_viewer_dialog::open(
-            &self.window,
-            selected.path.clone(),
-            self.app_config_cache.borrow().viewer.clone(),
-        ) {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.could_not_open_viewer"),
-                &error.to_string(),
-            );
-        }
-    }
-
-    pub fn handle_rename(self: &Rc<Self>) {
-        let selected = self
-            .commander
-            .borrow()
-            .state()
-            .active_panel()
-            .selected_item();
-
-        let Some(selected) = selected else {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.rename_unavailable"),
-                &t!("error.no_entry_selected"),
-            );
-            return;
-        };
-
-        if selected.is_parent_link {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.rename_unavailable"),
-                &t!("error.parent_cannot_be_renamed"),
-            );
-            return;
-        }
-
-        let this = Rc::clone(self);
-        dialogs::prompt_rename(&self.window, selected.display_name, move |new_name| {
-            this.run_command(|commander| commander.rename_active(&new_name));
-        });
-    }
-
-    pub fn handle_open_console(self: &Rc<Self>) {
-        let path = self
-            .commander
-            .borrow()
-            .state()
-            .active_panel()
-            .location
-            .host_directory();
-
-        if let Err(error) = crate::platform::open_console(&path) {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.could_not_open_console"),
-                &error.to_string(),
-            );
-            return;
-        }
-
-        let update = {
-            let mut commander = self.commander.borrow_mut();
-            commander.set_status(
-                t!(
-                    "status.console_opened_at",
-                    path = path.display().to_string()
-                )
-                .into_owned(),
-            )
-        };
-        self.apply_update(update);
-    }
-
-    pub fn handle_help(self: &Rc<Self>) {
-        let current_config = self.app_config_cache.borrow().clone();
-        let this = Rc::clone(self);
-        dialogs::show_settings(&self.window, current_config, move |next_config| {
-            if let Err(error) = config::save(&next_config) {
-                dialogs::show_error(
-                    &this.window,
-                    &t!("error.could_not_save_settings"),
-                    &error.to_string(),
-                );
-                return;
-            }
-
-            let previous_config = this.app_config_cache.borrow().clone();
-            this.app_config_cache.replace(next_config.clone());
-            let selected_locale = crate::i18n::apply_locale(next_config.locale.language.as_deref());
-
-            let update = {
-                let mut commander = this.commander.borrow_mut();
-                commander.apply_archive_config(next_config.archive.clone());
-                let mut update = match commander.apply_panel_settings(next_config.panels.clone()) {
-                    Ok(update) => update,
-                    Err(error) => {
-                        dialogs::show_error(
-                            &this.window,
-                            &t!("error.could_not_save_settings"),
-                            &error.to_string(),
-                        );
-                        return;
-                    }
-                };
-                commander.set_status(
-                    t!(
-                        "status.language_changed",
-                        language = crate::i18n::locale_display_name(selected_locale)
-                    )
-                    .into_owned(),
-                );
-                update.status = true;
-                update
-            };
-            this.apply_update(update);
-            this.refresh_localized_labels();
-            if previous_config.general.theme != next_config.general.theme {
-                dialogs::show_error(
-                    &this.window,
-                    &t!("settings.title"),
-                    &t!("settings.restart_notice"),
-                );
-            }
-        });
-    }
-
-    pub fn handle_copy(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Copy);
-    }
-
-    pub fn handle_toggle_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
-            self.handle_open_console();
-            return;
-        }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.toggle());
-    }
-
-    pub fn handle_focus_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
-            self.handle_open_console();
-            return;
-        }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.focus_terminal());
-    }
-
-    pub fn handle_restart_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
-            self.handle_open_console();
-            return;
-        }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.restart_in_panel_dir());
-    }
-
-    pub fn handle_edit(self: &Rc<Self>) {
-        let selected = self
-            .commander
-            .borrow()
-            .state()
-            .active_panel()
-            .selected_item();
-
-        let Some(selected) = selected else {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.edit_unavailable"),
-                &t!("error.no_entry_selected"),
-            );
-            return;
-        };
-
-        if selected.is_parent_link {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.edit_unavailable"),
-                &t!("error.parent_cannot_be_edited"),
-            );
-            return;
-        }
-
-        if selected.is_dir {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.edit_unavailable"),
-                &t!("error.directory_cannot_be_edited"),
-            );
-            return;
-        }
-
-        if selected.archive_path.is_some() {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.edit_unavailable"),
-                &t!("error.archive_edit_not_supported"),
-            );
-            return;
-        }
-
-        let this = Rc::clone(self);
-        if let Err(error) =
-            editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
-                let update = {
-                    let mut commander = this.commander.borrow_mut();
-                    commander.refresh_with_status(
-                        t!("status.saved", path = path.display().to_string()).into_owned(),
-                    )
-                };
-                this.apply_update(update);
-                this.trigger_manual_refresh_cooldown();
-            })
-        {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.could_not_open_editor"),
-                &error.to_string(),
-            );
-        }
-    }
-
-    pub fn handle_move(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Move);
-    }
-
-    pub fn handle_delete(self: &Rc<Self>) {
-        self.handle_operation(FileOperationKind::Delete);
-    }
-
-    pub fn handle_make_directory(self: &Rc<Self>) {
-        let this = Rc::clone(self);
-        dialogs::prompt_new_directory(&self.window, move |name| {
-            this.run_command(|commander| commander.create_directory_in_active(&name));
-            this.trigger_manual_refresh_cooldown();
-        });
-    }
-
-    pub fn handle_quit(self: &Rc<Self>) {
-        self.window.close();
-    }
-
-    fn start_selected_navigation(self: &Rc<Self>, panel: ActivePanel) {
-        let selected = {
-            let commander = self.commander.borrow();
-            commander.state().panel(panel).selected_item()
-        };
-
-        let Some(selected) = selected else {
-            self.run_command(|commander| commander.activate_selected(panel));
-            return;
-        };
-
-        if selected.is_parent_link {
-            let next_location = {
-                let commander = self.commander.borrow();
-                commander.state().panel(panel).location.parent()
-            };
-            if let Some(next_location) = next_location {
-                let status =
-                    t!("status.up_one_level", path = next_location.display_label()).into_owned();
-                self.start_directory_load(
-                    panel,
-                    next_location,
-                    status,
-                    &t!("status.loading_parent_directory"),
-                );
-            }
-        }
-
-        if selected.is_dir {
-            let status =
-                t!("status.opened", path = selected.path.display().to_string()).into_owned();
-            let next_location = {
-                let commander = self.commander.borrow();
-                match commander.state().panel(panel).location.clone() {
-                    PanelLocation::Filesystem(_) => PanelLocation::filesystem(selected.path),
-                    PanelLocation::Archive(view) => {
-                        let Some(archive_path) = selected.archive_path else {
-                            return;
-                        };
-                        PanelLocation::archive(view.session, archive_path)
-                    }
-                }
-            };
-            self.start_directory_load(
-                panel,
-                next_location,
-                status,
-                &t!("status.loading_directory"),
-            );
-            return;
-        }
-
-        if selected.archive_path.is_none()
-            && self
-                .commander
-                .borrow()
-                .archive_service()
-                .is_archive_path(&selected.path)
-        {
-            let status = t!(
-                "status.opened_archive",
-                path = selected.path.display().to_string()
-            )
-            .into_owned();
-            self.start_directory_load(
-                panel,
-                PanelLocation::filesystem(selected.path),
-                status,
-                &t!("status.opening_archive"),
-            );
-            return;
-        }
-
-        self.run_command(|commander| commander.activate_selected(panel));
-    }
-
-    fn start_root_navigation(self: &Rc<Self>, panel: ActivePanel, index: usize) {
-        let target_path = {
-            let commander = self.commander.borrow();
-            commander
-                .state()
-                .roots
-                .get(index)
-                .map(|root| root.path.clone())
-        };
-
-        let Some(target_path) = target_path else {
-            return;
-        };
-
-        let status = t!(
-            "status.switched_panel",
-            panel = panel.label(),
-            path = target_path.display().to_string()
-        )
-        .into_owned();
-        self.start_directory_load(
-            panel,
-            PanelLocation::filesystem(target_path),
-            status,
-            &t!("status.loading_drive"),
-        );
-    }
-
-    fn start_directory_load(
-        self: &Rc<Self>,
-        panel: ActivePanel,
-        next_location: PanelLocation,
-        status: String,
-        busy_message: &str,
-    ) {
-        if self.navigation_busy.get() || self.active_operation.borrow().is_some() {
-            return;
-        }
-
-        self.set_navigation_busy(true, busy_message);
-
-        let (tx, rx) = mpsc::channel();
-        let worker_location = next_location.clone();
-        let worker_status = status.clone();
-        let archive_service = self.commander.borrow().archive_service();
-        let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
-        thread::spawn(move || {
-            let actual_location = match &worker_location {
-                PanelLocation::Filesystem(path)
-                    if archive_service.is_archive_path(path) && path.is_file() =>
-                {
-                    archive_service.archive_location_for_path(path)
-                }
-                _ => Ok(worker_location.clone()),
-            };
-            let result = actual_location
-                .and_then(|location| {
-                    load_entries_for_location(&archive_service, &location, show_hidden_files).map(
-                        |entries| DirectoryLoadResult {
-                            panel,
-                            next_location: location,
-                            entries,
-                            status: worker_status,
-                        },
-                    )
-                })
-                .map_err(|error| error.to_string());
-            let _ = tx.send(result);
-        });
-
-        let this = Rc::clone(self);
-        glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
-            Ok(result) => {
-                this.set_navigation_busy(false, "");
-                match result {
-                    Ok(load) => {
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.navigate_to_loaded(
-                                load.panel,
-                                load.next_location,
-                                load.entries,
-                                load.status,
-                            )
-                        };
-                        this.apply_update(update);
-                        this.commander_view
-                            .apply_roots(this.commander.borrow().state());
-                        this.focus_active_panel();
-                        this.trigger_manual_refresh_cooldown();
-                    }
-                    Err(error) => {
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.navigation_failed", error = error.as_str()).into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                        this.commander_view
-                            .apply_roots(this.commander.borrow().state());
-                        this.focus_active_panel();
-                        dialogs::show_error(
-                            &this.window,
-                            &t!("error.could_not_open_directory"),
-                            &error,
-                        );
-                    }
-                }
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => {
-                this.set_navigation_busy(false, "");
-                let update = {
-                    let mut commander = this.commander.borrow_mut();
-                    commander.set_status(t!("status.navigation_loader_disconnected").into_owned())
-                };
-                this.apply_update(update);
-                this.commander_view
-                    .apply_roots(this.commander.borrow().state());
-                this.focus_active_panel();
-                glib::ControlFlow::Break
-            }
-        });
-    }
-
-    fn queue_initial_panel_loads(self: &Rc<Self>) {
-        for panel in [ActivePanel::Left, ActivePanel::Right] {
-            let this = Rc::clone(self);
-            glib::idle_add_local_once(move || {
-                this.start_initial_panel_load(panel);
-            });
-        }
-    }
-
-    fn start_initial_panel_load(self: &Rc<Self>, panel: ActivePanel) {
-        let next_location = {
-            let commander = self.commander.borrow();
-            commander.state().panel(panel).location.clone()
-        };
-
-        let archive_service = self.commander.borrow().archive_service();
-        let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
-        let (tx, rx) = std::sync::mpsc::channel::<Result<DirectoryLoadResult, String>>();
-
-        std::thread::spawn(move || {
-            let result =
-                load_entries_for_location(&archive_service, &next_location, show_hidden_files)
-                    .map(|entries| DirectoryLoadResult {
-                        panel,
-                        next_location,
-                        entries,
-                        status: t!("status.ready").into_owned(),
-                    })
-                    .map_err(|error| error.to_string());
-            let _ = tx.send(result);
-        });
-
-        let this = Rc::clone(self);
-        glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
-            Ok(result) => {
-                match result {
-                    Ok(load) => {
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.navigate_to_loaded(
-                                load.panel,
-                                load.next_location,
-                                load.entries,
-                                load.status,
-                            )
-                        };
-                        this.apply_update(update);
-                        this.sync_watched_paths();
-                    }
-                    Err(error) => {
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.navigation_failed", error = error.as_str()).into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                    }
-                }
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
-        });
-    }
-
-    fn handle_operation(self: &Rc<Self>, kind: FileOperationKind) {
-        if self.active_operation.borrow().is_some() {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.file_operation_running"),
-                &t!("error.cancel_or_finish_current_operation"),
-            );
-            return;
-        }
-
-        let is_delete = matches!(kind, FileOperationKind::Delete);
-        let request = match self.commander.borrow().operation_request(kind) {
-            Ok(request) => request,
-            Err(error) => {
-                dialogs::show_error(
-                    &self.window,
-                    &t!("error.operation_unavailable"),
-                    &error.to_string(),
-                );
-                return;
-            }
-        };
-
-        if is_delete
-            && !self
-                .app_config_cache
-                .borrow()
-                .file_operations
-                .confirm_delete
-        {
-            self.start_file_operation(request);
-            return;
-        }
-
-        let this = Rc::clone(self);
-        dialogs::confirm_operation(&self.window, request, move |request| {
-            this.start_file_operation(request);
-        });
-    }
-
-    fn start_file_operation(self: &Rc<Self>, request: FileOperationRequest) {
-        if request.archive_source.is_some() {
-            self.start_archive_extract_operation(request);
-            return;
-        }
-
-        let (handle, receiver) = start_operation(request.clone());
-        self.active_operation
-            .borrow_mut()
-            .replace(ActiveOperationHandle::File(handle.clone()));
-
-        let active_operation = Rc::clone(&self.active_operation);
-        let progress_dialog = dialogs::ProgressDialog::new(
-            &self.window,
-            &t!("progress.operation_title", kind = request.kind.label()),
-            move || {
-                if let Some(handle) = active_operation.borrow().as_ref() {
-                    handle.cancel();
-                }
-            },
-        );
-
-        let this = Rc::clone(self);
-        glib::timeout_add_local(Duration::from_millis(80), move || {
-            let mut keep_running = true;
-
-            while let Ok(event) = receiver.try_recv() {
-                match event {
-                    OperationEvent::Progress(snapshot) => {
-                        progress_dialog.update_progress(&snapshot);
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!(
-                                    "status.operation_current_item",
-                                    kind = snapshot.kind.label(),
-                                    item = snapshot.current_item.as_str()
-                                )
-                                .into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                    }
-                    OperationEvent::Conflict(conflict) => {
-                        progress_dialog.set_waiting_for_conflict();
-                        if !this
-                            .app_config_cache
-                            .borrow()
-                            .file_operations
-                            .confirm_overwrite
-                        {
-                            if let Some(handle) = this.active_operation.borrow().as_ref() {
-                                handle.resolve_conflict(
-                                    crate::domain::operation::ConflictResolution::Overwrite,
-                                );
-                            }
-                            continue;
-                        }
-                        let handle = this.active_operation.borrow().clone();
-                        dialogs::show_conflict(&this.window, conflict, move |resolution| {
-                            if let Some(handle) = handle.as_ref() {
-                                handle.resolve_conflict(resolution);
-                            }
-                        });
-                    }
-                    OperationEvent::Finished(summary) => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let status = t!(
-                            "status.operation_completed",
-                            kind = summary.kind.label(),
-                            count = summary.total_entries,
-                            size = crate::fs::reader::format_bytes(summary.total_bytes),
-                            seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
-                        )
-                        .into_owned();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(status)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
-                        keep_running = false;
-                    }
-                    OperationEvent::Cancelled(summary) => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let status = t!(
-                            "status.operation_cancelled",
-                            kind = summary.kind.label(),
-                            count = summary.total_entries,
-                            size = crate::fs::reader::format_bytes(summary.total_bytes)
-                        )
-                        .into_owned();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(status)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
-                        keep_running = false;
-                    }
-                    OperationEvent::Failed(error) => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.file_operation_failed", error = error.as_str())
-                                    .into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                        dialogs::show_error(
-                            &this.window,
-                            &t!("error.file_operation_failed"),
-                            &error,
-                        );
-                        keep_running = false;
-                    }
-                }
-            }
-
-            if keep_running {
-                glib::ControlFlow::Continue
-            } else {
-                glib::ControlFlow::Break
-            }
-        });
-    }
-
-    fn start_archive_extract_operation(self: &Rc<Self>, request: FileOperationRequest) {
-        let Some(archive_source) = request.archive_source.clone() else {
-            return;
-        };
-        let Some(target_dir) = request.target_directory.clone() else {
-            dialogs::show_error(
-                &self.window,
-                &t!("error.archive_copy_unavailable"),
-                &t!("error.no_filesystem_target_directory"),
-            );
-            return;
-        };
-
-        let archive_service = self.commander.borrow().archive_service();
-        let (handle, receiver) = archive_service.start_task(ArchiveTaskRequest::ExtractSelection {
-            session: archive_source.session,
-            entry_paths: archive_source.entry_paths,
-            target_dir,
-        });
-        self.active_operation
-            .borrow_mut()
-            .replace(ActiveOperationHandle::Archive(handle.clone()));
-
-        let active_operation = Rc::clone(&self.active_operation);
-        let progress_dialog =
-            dialogs::ProgressDialog::new(&self.window, &t!("progress.archive_copy"), move || {
-                if let Some(handle) = active_operation.borrow().as_ref() {
-                    handle.cancel();
-                }
-            });
-
-        let this = Rc::clone(self);
-        glib::timeout_add_local(Duration::from_millis(80), move || {
-            let mut keep_running = true;
-
-            while let Ok(event) = receiver.try_recv() {
-                match event {
-                    ArchiveTaskEvent::Progress(progress) => {
-                        progress_dialog.update_archive_progress(&progress);
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!(
-                                    "status.copy_current_path",
-                                    path = progress.current_path.clone().unwrap_or_else(|| t!(
-                                        "status.archive_extraction_in_progress"
-                                    )
-                                    .into_owned())
-                                )
-                                .into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                    }
-                    ArchiveTaskEvent::Finished(message) => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(message)
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
-                        keep_running = false;
-                    }
-                    ArchiveTaskEvent::Cancelled => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.refresh_with_status(
-                                t!("status.archive_copy_cancelled").into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                        this.trigger_manual_refresh_cooldown();
-                        keep_running = false;
-                    }
-                    ArchiveTaskEvent::Failed(error) => {
-                        progress_dialog.close();
-                        this.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = this.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.archive_copy_failed", error = error.to_string())
-                                    .into_owned(),
-                            )
-                        };
-                        this.apply_update(update);
-                        dialogs::show_error(
-                            &this.window,
-                            &t!("error.archive_copy_failed"),
-                            &error.to_string(),
-                        );
-                        keep_running = false;
-                    }
-                }
-            }
-
-            if keep_running {
-                glib::ControlFlow::Continue
-            } else {
-                glib::ControlFlow::Break
-            }
-        });
     }
 
     fn connect_panel_events(self: &Rc<Self>) {
@@ -1171,10 +243,10 @@ impl MainWindow {
 
             {
                 let this = Rc::clone(self);
-                panel_view.connect_context_requested(move |x, y| {
+                panel_view.connect_secondary_click(move |clicked_index, x, y| {
                     let this = Rc::clone(&this);
                     glib::idle_add_local_once(move || {
-                        this.show_panel_context_menu(panel, x, y);
+                        this.handle_panel_context_menu(panel, clicked_index, x, y);
                     });
                 });
             }
@@ -1255,95 +327,15 @@ impl MainWindow {
                 changed_paths.extend(event.paths);
             }
 
-            if !changed_paths.is_empty()
-                && this.active_operation.borrow().is_none()
-                && !this.navigation_busy.get()
-                && !this.is_watcher_refresh_suppressed()
-            {
+            if !changed_paths.is_empty() {
                 let affected_panels = this.affected_panels_for_paths(&changed_paths);
-                if !affected_panels.is_empty() {
-                    this.run_command(|commander| {
-                        Ok(commander.refresh_panels(
-                            &affected_panels,
-                            t!("status.view_refreshed").into_owned(),
-                        ))
-                    });
-                    this.trigger_manual_refresh_cooldown();
-                }
+                this.mark_panels_dirty(&affected_panels);
             }
+
+            this.refresh_dirty_panels_if_idle();
 
             glib::ControlFlow::Continue
         });
-    }
-
-    fn show_panel_context_menu(self: &Rc<Self>, panel: ActivePanel, x: f64, y: f64) {
-        let update = {
-            let mut commander = self.commander.borrow_mut();
-            commander.set_active_panel(panel)
-        };
-        self.apply_update(update);
-
-        if self
-            .commander
-            .borrow()
-            .state()
-            .panel(panel)
-            .selected_item()
-            .is_none()
-        {
-            return;
-        }
-
-        let menu = gio::Menu::new();
-        menu.append(Some(&t!("context.open")), Some("win.open"));
-        menu.append(Some(&t!("context.view")), Some("win.view"));
-        menu.append(Some(&t!("context.edit")), Some("win.edit"));
-        menu.append(Some(&t!("context.rename")), Some("win.rename"));
-        menu.append(Some(&t!("context.delete")), Some("win.delete"));
-        menu.append(Some(&t!("context.open_terminal")), Some("win.console"));
-
-        let panel_view = self.commander_view.panel(panel);
-        let popover = gtk::PopoverMenu::from_model(Some(&menu));
-        popover.set_has_arrow(true);
-        popover.set_parent(&panel_view.column_view);
-        popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-
-        let popover_weak = popover.downgrade();
-        popover.connect_closed(move |_| {
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.unparent();
-            }
-        });
-
-        popover.popup();
-    }
-
-    fn run_command<F>(self: &Rc<Self>, command: F)
-    where
-        F: FnOnce(&mut Commander) -> anyhow::Result<ViewUpdate>,
-    {
-        let result = {
-            let mut commander = self.commander.borrow_mut();
-            command(&mut commander)
-        };
-
-        match result {
-            Ok(update) => self.apply_update(update),
-            Err(error) => {
-                let update = {
-                    let mut commander = self.commander.borrow_mut();
-                    commander.set_status(
-                        t!("status.command_failed", error = error.to_string()).into_owned(),
-                    )
-                };
-                self.apply_update(update);
-                dialogs::show_error(
-                    &self.window,
-                    &t!("error.command_failed"),
-                    &error.to_string(),
-                );
-            }
-        }
     }
 
     fn apply_update(&self, update: ViewUpdate) {
@@ -1363,7 +355,8 @@ impl MainWindow {
             self.commander_view.apply_active_panel(state.active_panel);
         }
         if update.status || update.selection || update.active_panel {
-            self.status_label.set_label(&state.status_line());
+            self.status_label
+                .set_label(&presentation::status_line(state));
         }
 
         self.terminal_dock
@@ -1374,6 +367,77 @@ impl MainWindow {
     fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
         let _ = self.watch_command_tx.send(WatchCommand::SetPaths(paths));
+    }
+
+    fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
+        self.load_scheduler.borrow_mut().prepare_request(request)
+    }
+
+    fn commit_loaded_generation(&self, panel: ActivePanel, generation: u64) -> bool {
+        self.load_scheduler
+            .borrow_mut()
+            .commit_loaded(panel, generation)
+    }
+
+    fn finish_in_flight_load(&self, panel: ActivePanel, generation: u64) {
+        self.load_scheduler
+            .borrow_mut()
+            .finish_in_flight(panel, generation);
+    }
+
+    fn mark_panels_dirty(&self, panels: &[ActivePanel]) {
+        self.load_scheduler
+            .borrow_mut()
+            .queue_refresh(panels, t!("status.view_refreshed").into_owned());
+    }
+
+    fn refresh_dirty_panels_if_idle(self: &Rc<Self>) {
+        if self.active_operation.borrow().is_some()
+            || self.navigation_busy.get()
+            || self.is_watcher_refresh_suppressed()
+        {
+            return;
+        }
+
+        let Some((panel, status)) = self
+            .load_scheduler
+            .borrow_mut()
+            .take_next_refresh(&t!("status.view_refreshed").into_owned())
+        else {
+            return;
+        };
+        let request = {
+            let commander = self.commander.borrow();
+            navigation::refresh_request(&commander, panel, status)
+        };
+        self.start_directory_load(request);
+    }
+
+    fn queue_async_refresh_panels(
+        self: &Rc<Self>,
+        panels: &[ActivePanel],
+        status: impl Into<String>,
+    ) {
+        if panels.is_empty() {
+            return;
+        }
+
+        self.load_scheduler
+            .borrow_mut()
+            .queue_refresh(panels, status.into());
+        self.refresh_dirty_panels_if_idle();
+    }
+
+    fn queue_async_refresh_for_paths(
+        self: &Rc<Self>,
+        changed_paths: &[PathBuf],
+        status: impl Into<String>,
+    ) {
+        let panels = self.affected_panels_for_paths(changed_paths);
+        if panels.is_empty() {
+            return;
+        }
+        self.queue_async_refresh_panels(&panels, status);
     }
 
     fn trigger_manual_refresh_cooldown(&self) {
@@ -1407,6 +471,20 @@ impl MainWindow {
         self.commander_view.focus_active_panel(active_panel);
     }
 
+    fn set_status_message(&self, status: String) {
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.set_status(status)
+        };
+        self.apply_update(update);
+    }
+
+    fn show_command_failed(&self, error: impl std::fmt::Display) {
+        let error = error.to_string();
+        self.set_status_message(t!("status.command_failed", error = error.as_str()).into_owned());
+        dialogs::show_error(&self.window, &t!("error.command_failed"), &error);
+    }
+
     fn handle_terminal_action(&self, action: TerminalAction) {
         match action {
             TerminalAction::None => {
@@ -1421,6 +499,209 @@ impl MainWindow {
             TerminalAction::ShowError(error) => {
                 dialogs::show_error(&self.window, &t!("error.could_not_start_terminal"), &error);
             }
+        }
+    }
+
+    fn handle_panel_context_menu(
+        self: &Rc<Self>,
+        panel: ActivePanel,
+        clicked_index: Option<usize>,
+        x: f64,
+        y: f64,
+    ) {
+        let (request, update) = {
+            let mut commander = self.commander.borrow_mut();
+            let mut update = commander.set_active_panel(panel);
+            if let Some(index) = clicked_index {
+                let keep_multi_selection = commander
+                    .state()
+                    .panel(panel)
+                    .selection_indices()
+                    .contains(&index);
+                if !keep_multi_selection {
+                    update = commander.select_single(panel, index);
+                }
+            }
+            let panel_state = commander.state().panel(panel);
+            let Some(directory) = panel_state.location.filesystem_path().map(PathBuf::from) else {
+                dialogs::show_error(
+                    &self.window,
+                    &t!("error.command_failed"),
+                    "The native context menu is currently only available in filesystem views.",
+                );
+                return;
+            };
+
+            let selected_paths = panel_state
+                .selected_items()
+                .into_iter()
+                .filter(|item| item.archive_path.is_none())
+                .map(|item| item.path)
+                .collect::<Vec<_>>();
+
+            (
+                ContextMenuRequest {
+                    directory,
+                    selected_paths,
+                },
+                update,
+            )
+        };
+
+        self.apply_update(update);
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Err(error) = crate::platform::show_context_menu(&request) {
+                self.show_command_failed(error);
+                return;
+            }
+
+            self.queue_async_refresh_panels(&[panel], t!("status.view_refreshed").into_owned());
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.show_unix_context_menu(panel, request, x, y);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn show_unix_context_menu(
+        self: &Rc<Self>,
+        panel: ActivePanel,
+        request: ContextMenuRequest,
+        x: f64,
+        y: f64,
+    ) {
+        self.close_unix_context_menu();
+
+        let panel_view = self.commander_view.panel(panel);
+        let popover = gtk::Popover::new();
+        popover.set_has_arrow(false);
+        popover.set_autohide(true);
+        popover.set_parent(&panel_view.root);
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.set_margin_top(6);
+        content.set_margin_bottom(6);
+        content.set_margin_start(6);
+        content.set_margin_end(6);
+
+        if request.selected_paths.len() == 1 {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("common.open"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_open_active();
+            });
+            content.append(&button);
+        }
+
+        if request.selected_paths.len() == 1 {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("common.rename"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_rename();
+            });
+            content.append(&button);
+        }
+
+        if !request.selected_paths.is_empty() {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.copy"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_copy();
+            });
+            content.append(&button);
+
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.move"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_move();
+            });
+            content.append(&button);
+
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("operation.delete"));
+            button.add_css_class("destructive-action");
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_delete();
+            });
+            content.append(&button);
+        }
+
+        {
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("command.mkdir"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_make_directory();
+            });
+            content.append(&button);
+        }
+
+        if !request.selected_paths.is_empty() {
+            content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+            let chmod_paths = request.selected_paths.clone();
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("dialog.chmod_title"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_unix_chmod(chmod_paths.clone());
+            });
+            content.append(&button);
+
+            let chown_paths = request.selected_paths.clone();
+            let this = Rc::clone(self);
+            let menu = popover.clone();
+            let button = gtk::Button::with_label(&t!("dialog.chown_title"));
+            button.set_halign(gtk::Align::Fill);
+            button.connect_clicked(move |_| {
+                menu.popdown();
+                this.close_unix_context_menu();
+                this.handle_unix_chown(chown_paths.clone());
+            });
+            content.append(&button);
+        }
+
+        popover.set_child(Some(&content));
+        popover.popup();
+        self.unix_context_menu.replace(Some(popover));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn close_unix_context_menu(&self) {
+        if let Some(popover) = self.unix_context_menu.borrow_mut().take() {
+            popover.popdown();
+            popover.unparent();
         }
     }
 
@@ -1454,7 +735,7 @@ impl MainWindow {
             self.status_label.set_label(message);
         } else {
             self.status_label
-                .set_label(&self.commander.borrow().state().status_line());
+                .set_label(&presentation::status_line(self.commander.borrow().state()));
         }
     }
 
@@ -1571,6 +852,14 @@ impl MainWindow {
                 vertical.set_position(vertical_height / 2);
             }
         });
+    }
+
+    fn queue_initial_panel_loads(self: &Rc<Self>) {
+        self.load_scheduler.borrow_mut().queue_refresh(
+            &[ActivePanel::Left, ActivePanel::Right],
+            t!("status.view_refreshed").into_owned(),
+        );
+        self.refresh_dirty_panels_if_idle();
     }
 
     fn refresh_localized_labels(&self) {

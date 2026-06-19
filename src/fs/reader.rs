@@ -1,9 +1,8 @@
 use std::{fs, path::Path, time::SystemTime};
 
 use anyhow::{Context, Result};
-use rust_i18n::t;
 
-use crate::domain::entry::Entry;
+use crate::{domain::entry::Entry, presentation};
 
 pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
@@ -29,11 +28,7 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
             is_dir: metadata.is_dir(),
             size_bytes: metadata.len(),
             size_label: format_size(&metadata, metadata.is_dir()),
-            type_label: if metadata.is_dir() {
-                t!("entry.folder").into_owned()
-            } else {
-                t!("entry.file").into_owned()
-            },
+            type_label: presentation::filesystem_entry_type_label(metadata.is_dir()),
             modified_at,
             modified_label: format_modified(modified_at),
             attributes_label: format_attributes(&metadata, &file_name),
@@ -42,7 +37,10 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
     }
 
     if path.parent().is_some() {
-        entries.insert(0, Entry::parent_link());
+        entries.insert(
+            0,
+            Entry::parent_link(presentation::parent_entry_type_label()),
+        );
     }
 
     Ok(entries)

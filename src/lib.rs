@@ -10,6 +10,7 @@ pub mod domain;
 pub mod fs;
 pub mod i18n;
 pub mod platform;
+pub mod presentation;
 pub mod ui;
 pub mod viewer;
 
