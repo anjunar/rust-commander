@@ -116,6 +116,20 @@ RCommander is developed with Windows as an important target platform.
 
 The application can be distributed through an installer so end users do not have to set up a Rust development environment. Developers building from source still need the GTK4 development setup.
 
+The Windows packaging scripts stage the runtime and final `.msi` under `target/packages/`.
+
+Create the staged runtime:
+
+```powershell
+.\packaging\windows\stage-runtime.ps1
+```
+
+Create the distributable MSI:
+
+```powershell
+.\packaging\windows\build-installer.ps1
+```
+
 The embedded terminal is intentionally not implemented as a fake textbox-based terminal emulator on Windows. Microsoft's ConPTY provides a pseudoconsole stream, but the host application would still have to implement terminal rendering, input encoding, scrollback, selection, cursor behavior, and control sequence handling.
 
 RCommander avoids that class of homemade terminal emulation. The Windows terminal direction is to integrate a proper native terminal host/control behind the existing terminal backend boundary.

@@ -1,7 +1,7 @@
 param(
     [string]$Configuration = "release",
     [string]$MingwRoot = "C:\msys64\mingw64",
-    [string]$OutputDir = "target/dist/windows"
+    [string]$OutputDir = ""
 )
 
 Set-StrictMode -Version Latest
@@ -141,10 +141,17 @@ function New-ComponentXml {
 $repoRoot = Get-RepoRoot
 $cargoTomlPath = Join-Path $repoRoot "Cargo.toml"
 $version = Get-PackageVersion -CargoTomlPath $cargoTomlPath
+$packageName = "rust-commander"
+$packageRoot = Join-Path $repoRoot "target\packages\${packageName}_${version}_windows-x64"
+$stageRoot = Join-Path $packageRoot "stage"
+
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $OutputDir = $packageRoot
+}
 
 Push-Location $repoRoot
 try {
-    & (Join-Path $PSScriptRoot "stage-runtime.ps1") -Configuration $Configuration -MingwRoot $MingwRoot
+    & (Join-Path $PSScriptRoot "stage-runtime.ps1") -Configuration $Configuration -MingwRoot $MingwRoot -StageRoot $stageRoot
     if ($LASTEXITCODE -ne 0) {
         throw "Runtime staging failed."
     }
@@ -153,8 +160,12 @@ finally {
     Pop-Location
 }
 
-$stageRoot = Join-Path $repoRoot "dist\windows\stage"
-$outputRoot = Join-Path $repoRoot $OutputDir
+$outputRoot = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
+    $OutputDir
+}
+else {
+    Join-Path $repoRoot $OutputDir
+}
 $productWxs = Join-Path $PSScriptRoot "Product.wxs"
 $msiPath = Join-Path $outputRoot "RCommander-$version-x64.msi"
 $appIconPath = Join-Path $repoRoot "assets\icons\app_icon.ico"

@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = "release",
-    [string]$StageRoot = "dist/windows/stage",
+    [string]$StageRoot = "",
     [string]$MingwRoot = "C:\msys64\mingw64"
 )
 
@@ -160,10 +160,21 @@ function Copy-RuntimeClosure {
 $repoRoot = Get-RepoRoot
 $cargoTomlPath = Join-Path $repoRoot "Cargo.toml"
 $version = Get-PackageVersion -CargoTomlPath $cargoTomlPath
+$packageName = "rust-commander"
+$packageRoot = Join-Path $repoRoot "target\packages\${packageName}_${version}_windows-x64"
+
+if ([string]::IsNullOrWhiteSpace($StageRoot)) {
+    $StageRoot = Join-Path $packageRoot "stage"
+}
 
 $targetRoot = Join-Path $repoRoot "target\$Configuration"
 $exePath = Join-Path $targetRoot "rust-commander.exe"
-$stagePath = Join-Path $repoRoot $StageRoot
+$stagePath = if ([System.IO.Path]::IsPathRooted($StageRoot)) {
+    $StageRoot
+}
+else {
+    Join-Path $repoRoot $StageRoot
+}
 $stageBinPath = Join-Path $stagePath "bin"
 
 $mingwBin = Join-Path $MingwRoot "bin"
