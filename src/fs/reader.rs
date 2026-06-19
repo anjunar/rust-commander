@@ -125,6 +125,7 @@ fn format_modified(modified_at: Option<SystemTime>) -> String {
         .unwrap_or_else(|| "-".into())
 }
 
+#[cfg(target_os = "windows")]
 fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
     let mut flags = Vec::new();
 
@@ -158,6 +159,62 @@ fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
         "-".into()
     } else {
         flags.join("")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn format_attributes(metadata: &fs::Metadata, _name: &str) -> String {
+    format_unix_attributes(metadata)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn format_unix_attributes(metadata: &fs::Metadata) -> String {
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+
+    let file_type = metadata.file_type();
+    let kind = if file_type.is_dir() {
+        'd'
+    } else if file_type.is_symlink() {
+        'l'
+    } else if file_type.is_socket() {
+        's'
+    } else if file_type.is_fifo() {
+        'p'
+    } else if file_type.is_char_device() {
+        'c'
+    } else if file_type.is_block_device() {
+        'b'
+    } else {
+        '-'
+    };
+
+    let mode = metadata.permissions().mode();
+    let mut attributes = String::with_capacity(10);
+    attributes.push(kind);
+    attributes.push(permission_char(mode, 0o400, 'r'));
+    attributes.push(permission_char(mode, 0o200, 'w'));
+    attributes.push(execute_char(mode, 0o100, 0o4000, 's', 'S'));
+    attributes.push(permission_char(mode, 0o040, 'r'));
+    attributes.push(permission_char(mode, 0o020, 'w'));
+    attributes.push(execute_char(mode, 0o010, 0o2000, 's', 'S'));
+    attributes.push(permission_char(mode, 0o004, 'r'));
+    attributes.push(permission_char(mode, 0o002, 'w'));
+    attributes.push(execute_char(mode, 0o001, 0o1000, 't', 'T'));
+    attributes
+}
+
+#[cfg(not(target_os = "windows"))]
+fn permission_char(mode: u32, bit: u32, value: char) -> char {
+    if mode & bit != 0 { value } else { '-' }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn execute_char(mode: u32, execute_bit: u32, special_bit: u32, set_char: char, unset_char: char) -> char {
+    match (mode & execute_bit != 0, mode & special_bit != 0) {
+        (true, true) => set_char,
+        (false, true) => unset_char,
+        (true, false) => 'x',
+        (false, false) => '-',
     }
 }
 

@@ -153,16 +153,25 @@ impl ContextMenuController {
         &self,
         panel: ActivePanel,
         request: ContextMenuRequest,
-        _x: f64,
-        _y: f64,
+        x: f64,
+        y: f64,
     ) {
         self.close_unix_context_menu();
 
-        let _panel_root = match panel {
+        let panel_root = match panel {
             ActivePanel::Left => self.left_panel_root.clone(),
             ActivePanel::Right => self.right_panel_root.clone(),
         };
         let popover = gtk::Popover::new();
+        popover.set_parent(&panel_root);
+        popover.set_has_arrow(false);
+        popover.set_position(gtk::PositionType::Bottom);
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+            x.round() as i32,
+            y.round() as i32,
+            1,
+            1,
+        )));
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.set_margin_top(6);

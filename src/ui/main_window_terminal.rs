@@ -1,10 +1,14 @@
 use std::rc::Rc;
 
+use gtk::prelude::*;
 use rust_i18n::t;
 
 use crate::ui::{terminal_controller::TerminalAction, terminal_dock::TerminalDock};
 
 use super::hosts::TerminalHost;
+
+const MIN_TERMINAL_HEIGHT: i32 = 180;
+const MIN_PANELS_HEIGHT: i32 = 220;
 
 #[derive(Clone)]
 pub struct TerminalController {
@@ -48,7 +52,17 @@ impl TerminalController {
                 self.terminal_dock.sync_visibility();
                 if self.terminal_dock.state().borrow().visible && self.content_paned.position() < 320
                 {
-                    self.content_paned.set_position(600);
+                    let available_height = self.content_paned.height();
+                    if available_height > 0 {
+                        let max_position = (available_height - MIN_TERMINAL_HEIGHT).max(0);
+                        let preferred_position = (available_height * 2) / 3;
+                        let position = if max_position <= MIN_PANELS_HEIGHT {
+                            max_position
+                        } else {
+                            preferred_position.clamp(MIN_PANELS_HEIGHT, max_position)
+                        };
+                        self.content_paned.set_position(position);
+                    }
                 }
             }
             TerminalAction::FocusPanels => self.host.focus_active_panel(),

@@ -14,6 +14,7 @@ pub struct FileColumnBinding {
 }
 
 pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
+    let attributes_width = if cfg!(target_os = "windows") { 96 } else { 128 };
     let specs = [
         (column_title(SortColumn::Name), SortColumn::Name, 320, true),
         (column_title(SortColumn::Size), SortColumn::Size, 96, false),
@@ -27,7 +28,7 @@ pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
         (
             column_title(SortColumn::Attributes),
             SortColumn::Attributes,
-            96,
+            attributes_width,
             false,
         ),
     ];

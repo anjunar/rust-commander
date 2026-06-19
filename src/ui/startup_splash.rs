@@ -21,12 +21,15 @@ impl StartupSplash {
         window.set_decorated(false);
         window.set_resizable(false);
 
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let root = gtk::Overlay::new();
         root.set_hexpand(true);
         root.set_vexpand(true);
-        root.set_halign(gtk::Align::Fill);
-        root.set_valign(gtk::Align::Fill);
-        root.add_css_class("splash-overlay");
+
+        let background = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        background.set_hexpand(true);
+        background.set_vexpand(true);
+        background.add_css_class("splash-overlay");
+        root.set_child(Some(&background));
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 16);
         content.set_margin_top(24);
@@ -61,15 +64,17 @@ impl StartupSplash {
         subtitle.add_css_class("status-line");
         content.append(&subtitle);
 
-        root.append(&content);
+        root.add_overlay(&content);
         window.set_child(Some(&root));
 
         Self { window }
     }
 
     pub fn present(&self) {
+        if let Some((width, height)) = current_monitor_size() {
+            self.window.set_default_size(width, height);
+        }
         self.window.present();
-        self.window.fullscreen();
     }
 
     pub fn close(&self) {
@@ -97,4 +102,14 @@ fn load_scaled_texture(path: &std::path::Path) -> Option<gdk::Texture> {
         stride,
     );
     Some(texture.upcast())
+}
+
+fn current_monitor_size() -> Option<(i32, i32)> {
+    let display = gdk::Display::default()?;
+    let monitor = display
+        .monitors()
+        .item(0)
+        .and_downcast::<gdk::Monitor>()?;
+    let geometry = monitor.geometry();
+    Some((geometry.width(), geometry.height()))
 }
