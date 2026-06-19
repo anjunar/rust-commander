@@ -8,4 +8,4 @@ Icon=dev.rcommander.Gtk
 Terminal=false
 Categories=System;FileTools;FileManager;
 StartupNotify=true
-StartupWMClass=rust-commander
+StartupWMClass=rcommander

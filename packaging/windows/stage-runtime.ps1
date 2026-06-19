@@ -160,7 +160,7 @@ function Copy-RuntimeClosure {
 $repoRoot = Get-RepoRoot
 $cargoTomlPath = Join-Path $repoRoot "Cargo.toml"
 $version = Get-PackageVersion -CargoTomlPath $cargoTomlPath
-$packageName = "rust-commander"
+$packageName = "rcommander"
 $packageRoot = Join-Path $repoRoot "target\packages\${packageName}_${version}_windows-x64"
 
 if ([string]::IsNullOrWhiteSpace($StageRoot)) {
@@ -168,7 +168,7 @@ if ([string]::IsNullOrWhiteSpace($StageRoot)) {
 }
 
 $targetRoot = Join-Path $repoRoot "target\$Configuration"
-$exePath = Join-Path $targetRoot "rust-commander.exe"
+$exePath = Join-Path $targetRoot "rcommander.exe"
 $stagePath = if ([System.IO.Path]::IsPathRooted($StageRoot)) {
     $StageRoot
 }
@@ -207,12 +207,12 @@ if (Test-Path $stagePath) {
 
 New-Item -ItemType Directory -Path $stageBinPath -Force | Out-Null
 
-Copy-Item -LiteralPath $exePath -Destination (Join-Path $stageBinPath "rust-commander.exe") -Force
+Copy-Item -LiteralPath $exePath -Destination (Join-Path $stageBinPath "rcommander.exe") -Force
 Copy-Item -LiteralPath (Join-Path $mingwBin "gdbus.exe") -Destination $stageBinPath -Force
 Copy-Item -LiteralPath (Join-Path $mingwBin "gspawn-win64-helper.exe") -Destination $stageBinPath -Force
 Copy-Item -LiteralPath (Join-Path $mingwBin "gspawn-win64-helper-console.exe") -Destination $stageBinPath -Force
 
-Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "rust-commander.exe") -BinSource $mingwBin -BinDestination $stageBinPath
+Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "rcommander.exe") -BinSource $mingwBin -BinDestination $stageBinPath
 Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gdbus.exe") -BinSource $mingwBin -BinDestination $stageBinPath
 Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper.exe") -BinSource $mingwBin -BinDestination $stageBinPath
 Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper-console.exe") -BinSource $mingwBin -BinDestination $stageBinPath
@@ -232,7 +232,7 @@ $manifest = [ordered]@{
     ProductName = "RCommander"
     Version = $version
     StageRoot = (Resolve-Path $stagePath).Path
-    Executable = "bin\rust-commander.exe"
+    Executable = "bin\rcommander.exe"
     GeneratedAtUtc = [DateTime]::UtcNow.ToString("o")
     MingwRoot = $MingwRoot
 }

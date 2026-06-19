@@ -5,7 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
-package_name="rust-commander"
+package_name="rcommander"
 app_name="RCommander"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
 arch="${MACOS_ARCH:-$(uname -m)}"

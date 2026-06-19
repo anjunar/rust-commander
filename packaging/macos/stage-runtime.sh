@@ -6,7 +6,7 @@ shopt -s nullglob
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
-package_name="rust-commander"
+package_name="rcommander"
 app_name="RCommander"
 bundle_id="dev.rcommander.Gtk"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
@@ -36,7 +36,7 @@ iconset_dir="$package_root/iconset"
 icnsset_dir="$package_root/${app_name}.iconset"
 source_png="$repo_root/assets/icons/dev.rcommander.Gtk.png"
 app_icon="$resources_dir/${app_name}.icns"
-release_binary="$repo_root/target/release/rust-commander"
+release_binary="$repo_root/target/release/rcommander"
 resource_bin_dir="$resources_dir/bin"
 
 declare -a helper_bins=(
@@ -273,7 +273,7 @@ macos_rustflags+="-C link-arg=-Wl,-headerpad_max_install_names"
 
 MACOSX_DEPLOYMENT_TARGET="$deployment_target" \
 RUSTFLAGS="$macos_rustflags" \
-cargo build --release --bin rust-commander
+cargo build --release --bin rcommander
 
 rm -rf "$package_root"
 mkdir -p \

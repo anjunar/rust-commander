@@ -1,4 +1,4 @@
-Package: rust-commander
+Package: rcommander
 Version: @VERSION@
 Section: utils
 Priority: optional

@@ -17,7 +17,7 @@ packages=(
     libunrar-dev
 )
 
-echo "Installing Ubuntu build dependencies for rust-commander..."
+echo "Installing Ubuntu build dependencies for rcommander..."
 sudo apt-get update
 sudo apt-get install -y "${packages[@]}"
 
@@ -25,4 +25,4 @@ echo
 echo "System dependencies installed."
 echo "Next steps:"
 echo "  cargo check"
-echo "  cargo run --bin rust-commander"
+echo "  cargo run --bin rcommander"

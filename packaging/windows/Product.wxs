@@ -34,7 +34,7 @@
         <Shortcut
           Id="StartMenuShortcut"
           Name="RCommander"
-          Target="[INSTALLFOLDER]bin\rust-commander.exe"
+          Target="[INSTALLFOLDER]bin\rcommander.exe"
           WorkingDirectory="INSTALLFOLDER"
           Icon="AppIcon"
           IconIndex="0" />

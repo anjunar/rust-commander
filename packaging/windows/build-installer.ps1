@@ -141,7 +141,7 @@ function New-ComponentXml {
 $repoRoot = Get-RepoRoot
 $cargoTomlPath = Join-Path $repoRoot "Cargo.toml"
 $version = Get-PackageVersion -CargoTomlPath $cargoTomlPath
-$packageName = "rust-commander"
+$packageName = "rcommander"
 $packageRoot = Join-Path $repoRoot "target\packages\${packageName}_${version}_windows-x64"
 $stageRoot = Join-Path $packageRoot "stage"
 

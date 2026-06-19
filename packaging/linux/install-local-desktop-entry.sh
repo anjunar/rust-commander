@@ -14,10 +14,10 @@ icon_stage="$repo_root/target/iconset/local"
 
 mkdir -p "$desktop_dir" "$icon_root" "$pixmaps_dir" "$bin_dir"
 
-launcher_path="$bin_dir/rust-commander-dev"
-binary_path="$repo_root/target/debug/rust-commander"
+launcher_path="$bin_dir/rcommander-dev"
+binary_path="$repo_root/target/debug/rcommander"
 if [ ! -x "$binary_path" ]; then
-    cargo build --bin rust-commander
+    cargo build --bin rcommander
 fi
 cargo run --quiet --bin generate_icon -- --output-dir "$icon_stage"
 cat > "$launcher_path" <<EOF
@@ -34,7 +34,7 @@ chmod 0644 "$desktop_dir/${app_id}.desktop"
 
 cp -a "$icon_stage/hicolor/." "$icon_root/"
 cp -a "$icon_stage/pixmaps/." "$pixmaps_dir/"
-rm -f "$desktop_dir/rust-commander.desktop"
+rm -f "$desktop_dir/rcommander.desktop"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$desktop_dir" || true
