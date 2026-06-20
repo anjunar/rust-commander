@@ -7,10 +7,12 @@ use std::{
 use std::path::PathBuf;
 
 use gtk::{glib, prelude::*};
-use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, SessionStore, ViewUpdate},
+    application::{
+        ActivePanel, Commander, ConfigStore, SessionStore, SharedPlatformPort, TaskSpawner,
+        ViewUpdate,
+    },
     archive::ArchiveService,
     config::{AppConfig, WindowConfig},
     platform::assets::asset_path,
@@ -24,10 +26,16 @@ use crate::{
 
 #[path = "main_window_actions.rs"]
 mod actions;
+#[path = "main_window_command_bar.rs"]
+mod command_bar;
 #[path = "main_window_context_menu.rs"]
 mod context_menu;
+#[path = "main_window_controllers.rs"]
+mod controllers;
 #[path = "main_window_hosts.rs"]
 mod hosts;
+#[path = "main_window_hosts_impl.rs"]
+mod hosts_impl;
 #[path = "main_window_navigation.rs"]
 mod navigation_controller;
 #[path = "main_window_operations.rs"]
@@ -36,6 +44,8 @@ mod operations_controller;
 mod panel_wiring;
 #[path = "main_window_runtime.rs"]
 mod runtime;
+#[path = "main_window_startup.rs"]
+mod startup;
 #[path = "main_window_terminal.rs"]
 mod terminal_wiring;
 #[path = "main_window_window_chrome.rs"]
@@ -45,42 +55,19 @@ mod window_state_controller;
 
 const APP_WINDOW_TITLE: &str = "RCommander";
 
-use context_menu::ContextMenuController;
+use command_bar::build_command_bar;
 use context_menu::ContextMenuRuntime;
-#[cfg(not(target_os = "windows"))]
-use context_menu::UnixContextMenuActions;
-use hosts::{NavigationHost, OperationsHost, ViewHost};
+use controllers::MainWindowControllers;
 use navigation_controller::{NavigationController, NavigationRuntime};
 use operations_controller::{OperationRuntime, OperationsController};
 use panel_wiring::PanelWiring;
 pub(crate) use runtime::MainWindowRuntime;
+use startup::StartupLoadState;
 use terminal_wiring::TerminalController;
 #[cfg(target_os = "windows")]
 use window_chrome::install_custom_window_controls;
 use window_chrome::WindowChromeController;
 use window_state_controller::WindowStateController;
-
-struct StartupLoadState {
-    wait_for_initial_panels: bool,
-    left_done: bool,
-    right_done: bool,
-    on_ready: Option<Rc<dyn Fn()>>,
-}
-
-impl StartupLoadState {
-    fn new(wait_for_initial_panels: bool) -> Self {
-        Self {
-            wait_for_initial_panels,
-            left_done: false,
-            right_done: false,
-            on_ready: None,
-        }
-    }
-
-    fn is_complete(&self) -> bool {
-        self.left_done && self.right_done
-    }
-}
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
@@ -96,17 +83,22 @@ pub struct MainWindow {
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
     session_store: Rc<RefCell<SessionStore>>,
+    task_spawner: TaskSpawner,
     operation_runtime: OperationRuntime,
     navigation_runtime: NavigationRuntime,
     context_menu_runtime: ContextMenuRuntime,
     startup_load_state: Rc<RefCell<StartupLoadState>>,
     initial_window_config: WindowConfig,
     window_state_initialized: Cell<bool>,
+    config_store: ConfigStore,
     app_config_cache: Rc<RefCell<AppConfig>>,
+    platform_port: SharedPlatformPort,
+    controllers: RefCell<Option<MainWindowControllers>>,
     theme_controller: Rc<ThemeController>,
 }
 
 impl MainWindow {
+    #[allow(dead_code)]
     pub fn new(app: &gtk::Application, runtime: MainWindowRuntime) -> Rc<Self> {
         Self::new_with_visibility(app, runtime, true)
     }
@@ -230,10 +222,13 @@ impl MainWindow {
             archive_service,
             remote_service,
             session_store,
+            task_spawner,
             operation_runtime,
             navigation_runtime,
             context_menu_runtime,
+            config_store,
             app_config_cache,
+            platform_port,
             watch_event_rx,
         } = runtime;
 
@@ -251,15 +246,21 @@ impl MainWindow {
             archive_service,
             remote_service,
             session_store,
+            task_spawner,
             operation_runtime,
             navigation_runtime,
             context_menu_runtime,
             startup_load_state,
             initial_window_config: window_config.clone(),
             window_state_initialized: Cell::new(present_immediately),
+            config_store,
             app_config_cache,
+            platform_port,
+            controllers: RefCell::new(None),
             theme_controller,
         });
+
+        this.initialize_controllers();
 
         this.apply_update(ViewUpdate::all());
         this.window_chrome().apply_theme();
@@ -455,139 +456,39 @@ impl MainWindow {
     }
 
     fn navigation_controller(self: &Rc<Self>) -> NavigationController {
-        let host: Rc<dyn NavigationHost> = self.clone();
-        NavigationController::new(
-            host,
-            self.window.clone(),
-            Rc::clone(&self.commander),
-            Rc::clone(&self.archive_service),
-            self.remote_service.clone(),
-            Rc::clone(&self.session_store),
-            self.operation_runtime.clone(),
-            self.navigation_runtime.clone(),
-            Rc::clone(&self.app_config_cache),
-        )
+        self.controllers()
+            .expect("controllers initialized")
+            .navigation
     }
 
     fn panel_wiring(self: &Rc<Self>) -> PanelWiring {
-        let host: Rc<dyn ViewHost> = self.clone();
-        let this = Rc::clone(self);
-        let context_menu_handler = Rc::new(move |panel, clicked_index, x, y| {
-            this.context_menu_controller()
-                .handle_panel_context_menu(panel, clicked_index, x, y);
-        });
-        let this = Rc::clone(self);
-        let remote_connect_handler = Rc::new(move |panel| {
-            this.handle_connect_remote_for_panel(panel);
-        });
-        PanelWiring::new(
-            host,
-            Rc::clone(&self.commander),
-            self.navigation_controller(),
-            context_menu_handler,
-            remote_connect_handler,
-        )
-    }
-
-    fn context_menu_controller(self: &Rc<Self>) -> ContextMenuController {
-        let host: Rc<dyn ViewHost> = self.clone();
-        ContextMenuController::new(
-            host,
-            self.window.clone(),
-            #[cfg(not(target_os = "windows"))]
-            self.commander_view.left.root.clone(),
-            #[cfg(not(target_os = "windows"))]
-            self.commander_view.right.root.clone(),
-            Rc::clone(&self.commander),
-            self.context_menu_runtime.clone(),
-            #[cfg(not(target_os = "windows"))]
-            self.unix_context_menu_actions(),
-        )
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn unix_context_menu_actions(self: &Rc<Self>) -> UnixContextMenuActions {
-        let open = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_open_active()) as Rc<dyn Fn()>
-        };
-        let rename = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_rename()) as Rc<dyn Fn()>
-        };
-        let copy = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_copy()) as Rc<dyn Fn()>
-        };
-        let move_entry = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_move()) as Rc<dyn Fn()>
-        };
-        let delete = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_delete()) as Rc<dyn Fn()>
-        };
-        let mkdir = {
-            let this = Rc::clone(self);
-            Rc::new(move || this.handle_make_directory()) as Rc<dyn Fn()>
-        };
-        let chmod = {
-            let this = Rc::clone(self);
-            Rc::new(move |paths| this.handle_unix_chmod(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
-        };
-        let chown = {
-            let this = Rc::clone(self);
-            Rc::new(move |paths| this.handle_unix_chown(paths)) as Rc<dyn Fn(Vec<PathBuf>)>
-        };
-
-        UnixContextMenuActions {
-            open,
-            rename,
-            copy,
-            move_entry,
-            delete,
-            mkdir,
-            chmod,
-            chown,
-        }
+        self.controllers()
+            .expect("controllers initialized")
+            .panel_wiring
     }
 
     fn operations_controller(self: &Rc<Self>) -> OperationsController {
-        let host: Rc<dyn OperationsHost> = self.clone();
-        OperationsController::new(
-            host,
-            self.window.clone(),
-            Rc::clone(&self.commander),
-            Rc::clone(&self.archive_service),
-            self.remote_service.clone(),
-            Rc::clone(&self.session_store),
-            self.operation_runtime.clone(),
-            Rc::clone(&self.app_config_cache),
-            self.navigation_controller(),
-        )
+        self.controllers()
+            .expect("controllers initialized")
+            .operations
     }
 
     fn terminal_controller(self: &Rc<Self>) -> TerminalController {
-        let host: Rc<dyn hosts::TerminalHost> = self.clone();
-        TerminalController::new(host, self.terminal_dock.clone(), self.content_paned.clone())
+        self.controllers()
+            .expect("controllers initialized")
+            .terminal
     }
 
     fn window_chrome(&self) -> WindowChromeController {
-        WindowChromeController::new(
-            self.window.clone(),
-            Rc::clone(&self.app_config_cache),
-            Rc::clone(&self.theme_controller),
-        )
+        self.controllers()
+            .expect("controllers initialized")
+            .window_chrome
     }
 
     fn window_state_controller(&self) -> WindowStateController {
-        WindowStateController::new(
-            self.window.clone(),
-            self.commander_view.root.clone(),
-            self.content_paned.clone(),
-            Rc::clone(&self.commander),
-            Rc::clone(&self.app_config_cache),
-        )
+        self.controllers()
+            .expect("controllers initialized")
+            .window_state
     }
 
     fn handle_terminal_action(
@@ -596,101 +497,17 @@ impl MainWindow {
     ) {
         self.terminal_controller().handle_terminal_action(action);
     }
-}
 
-impl ViewHost for MainWindow {
-    fn apply_update(&self, update: ViewUpdate) {
-        MainWindow::apply_update(self, update);
+    fn initialize_controllers(self: &Rc<Self>) {
+        self.controllers
+            .replace(Some(MainWindowControllers::build(self)));
     }
 
-    fn show_error(&self, title: &str, detail: &str) {
-        dialogs::show_error(&self.window, title, detail);
-    }
-
-    fn set_status(&self, status: String) {
-        self.set_status_message(status);
-    }
-}
-
-impl NavigationHost for MainWindow {
-    fn set_navigation_busy(&self, busy: bool, message: &str) {
-        MainWindow::set_navigation_busy(self, busy, message);
-    }
-
-    fn focus_active_panel(&self) {
-        MainWindow::focus_active_panel(self);
-    }
-
-    fn apply_panel_root(&self, panel: ActivePanel) {
-        self.commander_view
-            .apply_root(self.commander.borrow().state(), panel);
-    }
-
-    fn notify_initial_panel_loaded(&self, panel: ActivePanel) {
-        let callback = {
-            let mut state = self.startup_load_state.borrow_mut();
-            if !state.wait_for_initial_panels {
-                return;
-            }
-
-            match panel {
-                ActivePanel::Left => state.left_done = true,
-                ActivePanel::Right => state.right_done = true,
-            }
-
-            if !state.is_complete() {
-                return;
-            }
-
-            state.wait_for_initial_panels = false;
-            state.on_ready.take()
-        };
-
-        if let Some(callback) = callback {
-            glib::idle_add_local_once(move || {
-                callback();
-            });
-        }
-    }
-}
-
-impl OperationsHost for MainWindow {}
-
-impl hosts::TerminalHost for MainWindow {
-    fn focus_active_panel(&self) {
-        MainWindow::focus_active_panel(self);
+    fn controllers(&self) -> Option<MainWindowControllers> {
+        self.controllers.borrow().as_ref().cloned()
     }
 }
 
 fn default_local_directory() -> std::path::PathBuf {
     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-}
-
-fn build_command_bar() -> gtk::Box {
-    let command_bar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    command_bar.add_css_class("command-bar");
-    command_bar.set_homogeneous(true);
-
-    for label in command_bar_labels() {
-        let button = gtk::Button::with_label(&label);
-        button.add_css_class("command-button");
-        command_bar.append(&button);
-    }
-
-    command_bar
-}
-
-fn command_bar_labels() -> Vec<String> {
-    vec![
-        t!("command.settings").into_owned(),
-        t!("command.rename").into_owned(),
-        t!("command.view").into_owned(),
-        t!("command.edit").into_owned(),
-        t!("command.copy").into_owned(),
-        t!("command.move").into_owned(),
-        t!("command.mkdir").into_owned(),
-        t!("command.delete").into_owned(),
-        t!("command.terminal").into_owned(),
-        t!("command.quit").into_owned(),
-    ]
 }

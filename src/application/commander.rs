@@ -354,7 +354,10 @@ impl Commander {
     }
 
     pub fn queue_selection_after_file_operation(&mut self, plan: &OperationPlan) {
-        if !matches!(plan.kind(), FileOperationKind::Delete | FileOperationKind::Move) {
+        if !matches!(
+            plan.kind(),
+            FileOperationKind::Delete | FileOperationKind::Move
+        ) {
             return;
         }
 
@@ -403,8 +406,7 @@ mod tests {
             PanelSettings::default(),
             Vec::new(),
             "Ready".into(),
-        )
-        ;
+        );
 
         commander.state.active_panel = ActivePanel::Left;
         commander.state.left.location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
@@ -412,13 +414,8 @@ mod tests {
         commander.state.left.select_single(1);
         let mut session_store = SessionStore::default();
         let session_key = session_store.insert_remote(remote_session());
-        commander.state.right.location = PanelLocation::remote(
-            session_key,
-            "tester",
-            "example.com",
-            22,
-            "/home/test",
-        );
+        commander.state.right.location =
+            PanelLocation::remote(session_key, "tester", "example.com", 22, "/home/test");
 
         let request = commander
             .operation_request(FileOperationKind::Delete, &session_store)

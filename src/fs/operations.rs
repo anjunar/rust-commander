@@ -7,7 +7,6 @@ use std::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc,
     },
-    thread,
     time::{Duration, Instant},
 };
 
@@ -15,7 +14,7 @@ use anyhow::{Context, Result};
 
 use crate::application::{
     ConflictResolution, FileOperationKind, LocalOperationRequest, OperationConflict,
-    OperationEvent, OperationSnapshot, OperationSummary,
+    OperationError, OperationEvent, OperationSnapshot, OperationSummary, TaskSpawner,
 };
 
 #[derive(Clone)]
@@ -47,6 +46,7 @@ struct CopyProgress {
 }
 
 pub fn start_operation(
+    task_spawner: TaskSpawner,
     request: LocalOperationRequest,
 ) -> (OperationHandle, Receiver<OperationEvent>) {
     let (tx, rx) = mpsc::channel();
@@ -57,7 +57,7 @@ pub fn start_operation(
         resolution_tx,
     };
 
-    thread::spawn(move || {
+    task_spawner.spawn(move || {
         let result = match request.kind {
             FileOperationKind::Copy | FileOperationKind::Move => {
                 run_transfer(request.clone(), &tx, &cancelled, &resolution_rx)
@@ -66,7 +66,9 @@ pub fn start_operation(
         };
 
         if let Err(error) = result {
-            let _ = tx.send(OperationEvent::Failed(error.to_string()));
+            let _ = tx.send(OperationEvent::Failed(OperationError::execution(
+                error.to_string(),
+            )));
         }
     });
 

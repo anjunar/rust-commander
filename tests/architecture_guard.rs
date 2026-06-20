@@ -35,7 +35,10 @@ fn visit_dir(dir: &Path, files: &mut Vec<PathBuf>) {
 
     for entry in entries {
         let entry = entry.unwrap_or_else(|error| {
-            panic!("Could not read a directory entry in {}: {error}", dir.display())
+            panic!(
+                "Could not read a directory entry in {}: {error}",
+                dir.display()
+            )
         });
         let path = entry.path();
         if path.is_dir() {
@@ -55,7 +58,10 @@ fn assert_no_forbidden_imports(files: &[PathBuf], forbidden_imports: &[&str]) {
 
         for needle in forbidden_imports {
             if content.contains(needle) {
-                violations.push(format!("{} contains forbidden import {needle}", path.display()));
+                violations.push(format!(
+                    "{} contains forbidden import {needle}",
+                    path.display()
+                ));
             }
         }
     }

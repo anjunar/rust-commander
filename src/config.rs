@@ -165,11 +165,6 @@ pub enum ThemePreference {
     Dark,
 }
 
-pub fn load() -> Result<AppConfig> {
-    let path = config_file_path().context("Could not determine config file path")?;
-    load_from_path(&path)
-}
-
 pub fn load_or_default() -> AppConfig {
     let Some(path) = config_file_path() else {
         eprintln!("Could not determine config file path");

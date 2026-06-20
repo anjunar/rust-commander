@@ -18,7 +18,6 @@ use crate::{
 };
 
 pub struct FilePanelView {
-    pub panel: ActivePanel,
     pub root: gtk::Box,
     pub root_model: gtk::StringList,
     pub root_dropdown: gtk::DropDown,
@@ -90,7 +89,6 @@ impl FilePanelView {
         root.append(&scrolled);
 
         Self {
-            panel,
             root,
             root_model,
             root_dropdown,
@@ -238,13 +236,6 @@ impl FilePanelView {
             self.root_dropdown.set_selected(index as u32);
         }
         self.ignore_roots.set(false);
-    }
-
-    pub fn selected_indices(&self) -> Vec<usize> {
-        (0..self.selection.n_items())
-            .filter(|index| self.selection.is_selected(*index))
-            .map(|index| index as usize)
-            .collect()
     }
 
     pub fn grab_focus(&self) {

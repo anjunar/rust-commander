@@ -7,8 +7,9 @@ use crate::{
     ui::{commander_view::CommanderView, terminal_dock::TerminalDock, theme::ThemeController},
 };
 
-use super::{command_bar_labels, APP_WINDOW_TITLE};
+use super::{command_bar::command_bar_labels, APP_WINDOW_TITLE};
 
+#[derive(Clone)]
 pub struct WindowChromeController {
     window: gtk::ApplicationWindow,
     app_config_cache: Rc<RefCell<AppConfig>>,

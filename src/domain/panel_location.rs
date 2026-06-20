@@ -91,9 +91,7 @@ impl PanelLocation {
             }
             Self::Remote(location) => format!(
                 "{}@{}:{}",
-                location.username,
-                location.host,
-                location.current_path
+                location.username, location.host, location.current_path
             ),
         }
     }
@@ -108,10 +106,7 @@ impl PanelLocation {
             ),
             Self::Remote(location) => format!(
                 "remote:{}@{}:{}:{}",
-                location.username,
-                location.host,
-                location.port,
-                location.current_path
+                location.username, location.host, location.port, location.current_path
             ),
         }
     }
@@ -194,12 +189,7 @@ impl PanelLocation {
                         .map(|parent| parent.display_label())
                         .unwrap_or_else(|| self.display_label())
                 } else if let Some(remote_path) = &entry.remote_path {
-                    format!(
-                        "{}@{}:{}",
-                        location.username,
-                        location.host,
-                        remote_path
-                    )
+                    format!("{}@{}:{}", location.username, location.host, remote_path)
                 } else {
                     self.display_label()
                 }

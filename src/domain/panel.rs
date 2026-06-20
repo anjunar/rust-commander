@@ -80,11 +80,6 @@ impl Panel {
             .and_then(|selected| self.entries.get(selected))
     }
 
-    pub fn selected_path(&self) -> Option<PathBuf> {
-        self.selected_entry()
-            .and_then(|entry| self.location.entry_filesystem_path(entry))
-    }
-
     pub fn selected_item(&self) -> Option<SelectedEntry> {
         let entry = self.selected_entry()?;
         Some(SelectedEntry {
@@ -137,16 +132,6 @@ impl Panel {
 
     pub fn selection_indices(&self) -> BTreeSet<usize> {
         self.selection.selected_indices().collect()
-    }
-
-    pub fn set_sort_column(&mut self, column: SortColumn) {
-        let preserved_selection = self.selection_snapshot();
-        self.sort_state = self.sort_state.toggled_for(column);
-        sort_entries(&mut self.entries, self.sort_state, self.folders_first);
-        self.selection = apply_selection(
-            &self.entries,
-            &SelectionIntent::preserve(preserved_selection),
-        );
     }
 
     pub fn set_sort_state(&mut self, column: SortColumn, direction: SortDirection) {

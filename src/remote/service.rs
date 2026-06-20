@@ -5,10 +5,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver},
+        mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc,
     },
-    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -17,8 +16,9 @@ use ssh2::{CheckResult, FileStat, HashType, KnownHostFileKind, Session, Sftp};
 
 use crate::{
     application::{
-        FileOperationKind, OperationEvent, OperationSnapshot, OperationSummary,
-        RemoteDownloadRequest, RemoteUploadRequest,
+        ConflictResolution, FileOperationKind, OperationConflict, OperationError, OperationEvent,
+        OperationSnapshot, OperationSummary, RemoteDownloadRequest, RemoteUploadRequest,
+        TaskSpawner,
     },
     domain::{Entry, EntryKind},
 };
@@ -32,11 +32,16 @@ const SSH_SESSION_TIMEOUT_MS: u32 = 30_000;
 #[derive(Clone)]
 pub struct RemoteOperationHandle {
     cancelled: Arc<AtomicBool>,
+    resolution_tx: Sender<ConflictResolution>,
 }
 
 impl RemoteOperationHandle {
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
+    }
+
+    pub fn resolve_conflict(&self, resolution: ConflictResolution) {
+        let _ = self.resolution_tx.send(resolution);
     }
 }
 
@@ -52,8 +57,10 @@ struct TransferProgress {
     processed_entries: u64,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RemoteService;
+#[derive(Clone, Debug)]
+pub struct RemoteService {
+    task_spawner: TaskSpawner,
+}
 
 struct ConnectedRemote {
     _session: Session,
@@ -61,6 +68,10 @@ struct ConnectedRemote {
 }
 
 impl RemoteService {
+    pub fn new(task_spawner: TaskSpawner) -> Self {
+        Self { task_spawner }
+    }
+
     pub fn read_entries(
         &self,
         session: &RemoteSession,
@@ -129,16 +140,20 @@ impl RemoteService {
         source: RemoteDownloadRequest,
     ) -> (RemoteOperationHandle, Receiver<OperationEvent>) {
         let (tx, rx) = mpsc::channel();
+        let (resolution_tx, resolution_rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let handle = RemoteOperationHandle {
             cancelled: Arc::clone(&cancelled),
+            resolution_tx,
         };
         let service = self.clone();
 
-        thread::spawn(move || {
-            let result = service.run_download(source, &tx, &cancelled);
+        self.task_spawner.spawn(move || {
+            let result = service.run_download(source, &tx, &cancelled, &resolution_rx);
             if let Err(error) = result {
-                let _ = tx.send(OperationEvent::Failed(error.to_string()));
+                let _ = tx.send(OperationEvent::Failed(OperationError::execution(
+                    error.to_string(),
+                )));
             }
         });
 
@@ -150,16 +165,20 @@ impl RemoteService {
         request: RemoteUploadRequest,
     ) -> (RemoteOperationHandle, Receiver<OperationEvent>) {
         let (tx, rx) = mpsc::channel();
+        let (resolution_tx, resolution_rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
         let handle = RemoteOperationHandle {
             cancelled: Arc::clone(&cancelled),
+            resolution_tx,
         };
         let service = self.clone();
 
-        thread::spawn(move || {
-            let result = service.run_upload(request, &tx, &cancelled);
+        self.task_spawner.spawn(move || {
+            let result = service.run_upload(request, &tx, &cancelled, &resolution_rx);
             if let Err(error) = result {
-                let _ = tx.send(OperationEvent::Failed(error.to_string()));
+                let _ = tx.send(OperationEvent::Failed(OperationError::execution(
+                    error.to_string(),
+                )));
             }
         });
 
@@ -171,6 +190,7 @@ impl RemoteService {
         source: RemoteDownloadRequest,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
+        resolution_rx: &Receiver<ConflictResolution>,
     ) -> Result<()> {
         let target_directory = source.target_directory.clone();
         let connection = self.connect_sftp(&source.session)?;
@@ -197,6 +217,7 @@ impl RemoteService {
                 started_at,
                 tx,
                 cancelled,
+                resolution_rx,
             )?;
             if cancelled.load(Ordering::Relaxed) {
                 let _ = tx.send(OperationEvent::Cancelled(operation_summary(
@@ -227,6 +248,7 @@ impl RemoteService {
         request: RemoteUploadRequest,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
+        resolution_rx: &Receiver<ConflictResolution>,
     ) -> Result<()> {
         let connection = self.connect_sftp(&request.session)?;
         let plan = build_local_plan(&request.sources)?;
@@ -249,6 +271,7 @@ impl RemoteService {
                 started_at,
                 tx,
                 cancelled,
+                resolution_rx,
             )?;
             if cancelled.load(Ordering::Relaxed) {
                 let _ = tx.send(OperationEvent::Cancelled(operation_summary(
@@ -284,6 +307,7 @@ impl RemoteService {
         started_at: Instant,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
+        resolution_rx: &Receiver<ConflictResolution>,
     ) -> Result<()> {
         if cancelled.load(Ordering::Relaxed) {
             return Ok(());
@@ -299,7 +323,21 @@ impl RemoteService {
                 ))
             })?;
         if stat_is_directory(&stat) {
-            fs::create_dir_all(local_target)
+            let Some(local_target) = resolve_local_target_conflict(
+                remote_path,
+                local_target.to_path_buf(),
+                sftp,
+                plan,
+                progress,
+                started_at,
+                tx,
+                cancelled,
+                resolution_rx,
+            )?
+            else {
+                return Ok(());
+            };
+            fs::create_dir_all(&local_target)
                 .with_context(|| format!("Could not create {}", local_target.display()))?;
             progress.processed_entries += 1;
             send_progress(
@@ -324,17 +362,30 @@ impl RemoteService {
                     started_at,
                     tx,
                     cancelled,
+                    resolution_rx,
                 )?;
             }
             return Ok(());
         }
 
+        let Some(local_target) = resolve_local_target_conflict(
+            remote_path,
+            local_target.to_path_buf(),
+            sftp,
+            plan,
+            progress,
+            started_at,
+            tx,
+            cancelled,
+            resolution_rx,
+        )?
+        else {
+            return Ok(());
+        };
+
         if let Some(parent) = local_target.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Could not create {}", parent.display()))?;
-        }
-        if local_target.exists() {
-            bail!("Target already exists: {}", local_target.display());
         }
 
         let mut remote_file = sftp
@@ -346,7 +397,7 @@ impl RemoteService {
                     &error
                 ))
             })?;
-        let mut local_file = fs::File::create(local_target)
+        let mut local_file = fs::File::create(&local_target)
             .with_context(|| format!("Could not create {}", local_target.display()))?;
         let mut buffer = vec![0_u8; 1024 * 1024];
 
@@ -375,7 +426,7 @@ impl RemoteService {
         }
 
         if cancelled.load(Ordering::Relaxed) {
-            remove_partial_local_file(local_target)?;
+            remove_partial_local_file(&local_target)?;
             return Ok(());
         }
 
@@ -401,6 +452,7 @@ impl RemoteService {
         started_at: Instant,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
+        resolution_rx: &Receiver<ConflictResolution>,
     ) -> Result<()> {
         if cancelled.load(Ordering::Relaxed) {
             return Ok(());
@@ -408,8 +460,22 @@ impl RemoteService {
 
         let metadata = fs::metadata(source)
             .with_context(|| format!("Could not read metadata for {}", source.display()))?;
+        let Some(remote_target) = resolve_remote_target_conflict(
+            source,
+            remote_target.clone(),
+            sftp,
+            plan,
+            progress,
+            started_at,
+            tx,
+            cancelled,
+            resolution_rx,
+        )?
+        else {
+            return Ok(());
+        };
         if metadata.is_dir() {
-            self.create_remote_dir_all(sftp, remote_target)?;
+            self.create_remote_dir_all(sftp, &remote_target)?;
             progress.processed_entries += 1;
             send_progress(
                 tx,
@@ -435,16 +501,10 @@ impl RemoteService {
                     started_at,
                     tx,
                     cancelled,
+                    resolution_rx,
                 )?;
             }
             return Ok(());
-        }
-
-        if sftp
-            .stat(to_remote_fs_path(remote_target).as_path())
-            .is_ok()
-        {
-            bail!("Remote target already exists: {remote_target}");
         }
 
         if let Some(parent) = remote_target.parent() {
@@ -454,7 +514,7 @@ impl RemoteService {
         let mut local_file = fs::File::open(source)
             .with_context(|| format!("Could not open {}", source.display()))?;
         let mut remote_file = sftp
-            .create(to_remote_fs_path(remote_target).as_path())
+            .create(to_remote_fs_path(&remote_target).as_path())
             .map_err(|error| {
                 anyhow!(describe_sftp_path_error(
                     "create remote file",
@@ -489,7 +549,7 @@ impl RemoteService {
         }
 
         if cancelled.load(Ordering::Relaxed) {
-            remove_partial_remote_file(sftp, remote_target)?;
+            remove_partial_remote_file(sftp, &remote_target)?;
             return Ok(());
         }
 
@@ -675,6 +735,323 @@ impl RemoteService {
         Ok(ConnectedRemote {
             _session: session,
             sftp,
+        })
+    }
+}
+
+impl Default for RemoteService {
+    fn default() -> Self {
+        Self::new(TaskSpawner::default())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_local_target_conflict(
+    remote_source: &RemotePath,
+    mut local_target: PathBuf,
+    sftp: &Sftp,
+    plan: &TransferPlan,
+    progress: &mut TransferProgress,
+    started_at: Instant,
+    tx: &mpsc::Sender<OperationEvent>,
+    cancelled: &Arc<AtomicBool>,
+    resolution_rx: &Receiver<ConflictResolution>,
+) -> Result<Option<PathBuf>> {
+    while local_target.exists() {
+        let _ = tx.send(OperationEvent::Conflict(OperationConflict {
+            kind: FileOperationKind::Copy,
+            source: PathBuf::from(remote_source.as_str()),
+            target: local_target.clone(),
+        }));
+
+        match await_resolution(cancelled, resolution_rx) {
+            ConflictResolution::Overwrite => {
+                cleanup_local_path(&local_target)?;
+            }
+            ConflictResolution::Skip => {
+                let skipped = build_remote_plan_for_path(sftp, remote_source)?;
+                progress.processed_bytes += skipped.total_bytes;
+                progress.processed_entries += skipped.total_entries;
+                send_progress(
+                    tx,
+                    FileOperationKind::Copy,
+                    remote_source.to_string(),
+                    plan,
+                    progress,
+                    started_at,
+                );
+                return Ok(None);
+            }
+            ConflictResolution::Rename => {
+                local_target = next_available_local_path(&local_target);
+            }
+            ConflictResolution::Cancel => {
+                cancelled.store(true, Ordering::Relaxed);
+                return Ok(None);
+            }
+        }
+    }
+
+    Ok(Some(local_target))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_remote_target_conflict(
+    local_source: &Path,
+    mut remote_target: RemotePath,
+    sftp: &Sftp,
+    plan: &TransferPlan,
+    progress: &mut TransferProgress,
+    started_at: Instant,
+    tx: &mpsc::Sender<OperationEvent>,
+    cancelled: &Arc<AtomicBool>,
+    resolution_rx: &Receiver<ConflictResolution>,
+) -> Result<Option<RemotePath>> {
+    while sftp
+        .stat(to_remote_fs_path(&remote_target).as_path())
+        .is_ok()
+    {
+        let _ = tx.send(OperationEvent::Conflict(OperationConflict {
+            kind: FileOperationKind::Copy,
+            source: local_source.to_path_buf(),
+            target: PathBuf::from(remote_target.as_str()),
+        }));
+
+        match await_resolution(cancelled, resolution_rx) {
+            ConflictResolution::Overwrite => {
+                cleanup_remote_path(sftp, &remote_target)?;
+            }
+            ConflictResolution::Skip => {
+                let skipped = build_local_plan(&[local_source.to_path_buf()])?;
+                progress.processed_bytes += skipped.total_bytes;
+                progress.processed_entries += skipped.total_entries;
+                send_progress(
+                    tx,
+                    FileOperationKind::Copy,
+                    local_source.display().to_string(),
+                    plan,
+                    progress,
+                    started_at,
+                );
+                return Ok(None);
+            }
+            ConflictResolution::Rename => {
+                remote_target = next_available_remote_path(sftp, &remote_target);
+            }
+            ConflictResolution::Cancel => {
+                cancelled.store(true, Ordering::Relaxed);
+                return Ok(None);
+            }
+        }
+    }
+
+    Ok(Some(remote_target))
+}
+
+fn await_resolution(
+    cancelled: &Arc<AtomicBool>,
+    resolution_rx: &Receiver<ConflictResolution>,
+) -> ConflictResolution {
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            return ConflictResolution::Cancel;
+        }
+
+        match resolution_rx.recv_timeout(Duration::from_millis(150)) {
+            Ok(resolution) => return resolution,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return ConflictResolution::Cancel,
+        }
+    }
+}
+
+fn next_available_local_path(target: &Path) -> PathBuf {
+    let parent = target.parent().map(Path::to_path_buf).unwrap_or_default();
+    let stem = target
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .or_else(|| {
+            target
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "item".into());
+    let extension = target
+        .extension()
+        .map(|value| value.to_string_lossy().into_owned());
+
+    let mut index = 1usize;
+    loop {
+        let candidate_name = if index == 1 {
+            format!("{stem} (copy)")
+        } else {
+            format!("{stem} (copy {index})")
+        };
+        let candidate = match &extension {
+            Some(extension) if !extension.is_empty() => {
+                parent.join(format!("{candidate_name}.{extension}"))
+            }
+            _ => parent.join(candidate_name),
+        };
+
+        if !candidate.exists() {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+fn next_available_remote_path(sftp: &Sftp, target: &RemotePath) -> RemotePath {
+    let file_name = target
+        .file_name()
+        .unwrap_or_else(|| target.as_str().trim_end_matches('/'));
+    let (stem, extension) = split_name_and_extension(file_name);
+    let mut index = 1usize;
+
+    loop {
+        let candidate_name = if index == 1 {
+            format!("{stem} (copy){extension}")
+        } else {
+            format!("{stem} (copy {index}){extension}")
+        };
+        let candidate = target
+            .parent()
+            .map(|parent| parent.join(candidate_name.clone()))
+            .unwrap_or_else(|| RemotePath::new(format!("/{}", candidate_name)));
+        if sftp.stat(to_remote_fs_path(&candidate).as_path()).is_err() {
+            return candidate;
+        }
+        index += 1;
+    }
+}
+
+fn split_name_and_extension(name: &str) -> (String, String) {
+    match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => (stem.into(), format!(".{extension}")),
+        _ => (name.into(), String::new()),
+    }
+}
+
+fn cleanup_local_path(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata = fs::metadata(path)?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn cleanup_remote_path(sftp: &Sftp, path: &RemotePath) -> Result<()> {
+    let stat = match sftp.stat(to_remote_fs_path(path).as_path()) {
+        Ok(stat) => stat,
+        Err(error) if is_remote_not_found_error(&error) => return Ok(()),
+        Err(error) => bail!(
+            "Could not inspect conflicting remote target {} ({})",
+            path,
+            error.message()
+        ),
+    };
+
+    if stat_is_directory(&stat) {
+        cleanup_remote_directory(sftp, path)?;
+        sftp.rmdir(to_remote_fs_path(path).as_path())
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "remove remote directory",
+                    path.as_str(),
+                    &error
+                ))
+            })?;
+    } else {
+        remove_partial_remote_file(sftp, path)?;
+    }
+
+    Ok(())
+}
+
+fn cleanup_remote_directory(sftp: &Sftp, path: &RemotePath) -> Result<()> {
+    for child in sftp
+        .readdir(to_remote_fs_path(path).as_path())
+        .map_err(|error| {
+            anyhow!(describe_sftp_path_error(
+                "read remote directory",
+                path.as_str(),
+                &error
+            ))
+        })?
+    {
+        let (child_path, stat) = child;
+        let Some(name) = child_path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if matches!(name, "." | "..") {
+            continue;
+        }
+        let child_remote = path.join(name);
+        if stat_is_directory(&stat) {
+            cleanup_remote_directory(sftp, &child_remote)?;
+            sftp.rmdir(to_remote_fs_path(&child_remote).as_path())
+                .map_err(|error| {
+                    anyhow!(describe_sftp_path_error(
+                        "remove remote directory",
+                        child_remote.as_str(),
+                        &error
+                    ))
+                })?;
+        } else {
+            remove_partial_remote_file(sftp, &child_remote)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn build_remote_plan_for_path(sftp: &Sftp, path: &RemotePath) -> Result<TransferPlan> {
+    let stat = sftp
+        .stat(to_remote_fs_path(path).as_path())
+        .map_err(|error| {
+            anyhow!(describe_sftp_path_error(
+                "read remote path details",
+                path.as_str(),
+                &error
+            ))
+        })?;
+    if stat_is_directory(&stat) {
+        let mut plan = TransferPlan {
+            total_bytes: 0,
+            total_entries: 1,
+        };
+        for child in sftp
+            .readdir(to_remote_fs_path(path).as_path())
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote directory",
+                    path.as_str(),
+                    &error
+                ))
+            })?
+        {
+            let (child_path, _) = child;
+            let Some(name) = child_path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if matches!(name, "." | "..") {
+                continue;
+            }
+            let child_plan = build_remote_plan_for_path(sftp, &path.join(name))?;
+            plan.total_bytes += child_plan.total_bytes;
+            plan.total_entries += child_plan.total_entries;
+        }
+        Ok(plan)
+    } else {
+        Ok(TransferPlan {
+            total_bytes: stat.size.unwrap_or(0),
+            total_entries: 1,
         })
     }
 }

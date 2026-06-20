@@ -8,11 +8,7 @@ pub mod sorting;
 
 pub use entry::{Entry, EntryKind};
 pub use entry_key::EntryKey;
-pub use panel::{Panel, SelectedEntry};
-pub use panel_location::{ArchiveView, PanelLocation, RemoteView};
+pub use panel::Panel;
+pub use panel_location::{ArchiveView, PanelLocation};
 pub use roots::RootLocation;
-pub use selection::{
-    apply_selection, snapshot_selection, SelectionFallback, SelectionIntent, SelectionModel,
-    SelectionSnapshot,
-};
-pub use sorting::{SortColumn, SortDirection, SortState};
+pub use selection::SelectionIntent;

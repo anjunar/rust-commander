@@ -5,8 +5,7 @@ use gtk::glib::{self, subclass::prelude::*};
 
 use crate::{
     domain::{entry::Entry, panel_location::PanelLocation},
-    platform,
-    presentation,
+    platform, presentation,
 };
 
 #[derive(Clone, Debug, Default)]

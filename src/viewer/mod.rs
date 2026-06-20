@@ -4,4 +4,4 @@ pub mod line_index;
 pub mod text_view;
 pub mod viewer_state;
 
-pub use viewer_state::{RenderedContent, ViewerMode, ViewerState};
+pub use viewer_state::ViewerState;

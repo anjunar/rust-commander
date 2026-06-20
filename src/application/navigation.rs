@@ -1,14 +1,11 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::mpsc,
-    thread,
-};
+use std::{cell::RefCell, rc::Rc, sync::mpsc};
 
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, EntryLoader, SessionStore},
+    application::{
+        ActivePanel, Commander, EntryLoader, NavigationError, SessionStore, TaskSpawner,
+    },
     archive::ArchiveService,
     domain::{Entry, PanelLocation, SelectionIntent},
     presentation,
@@ -202,12 +199,13 @@ pub fn refresh_request(
 }
 
 pub fn spawn_directory_load(
+    task_spawner: TaskSpawner,
     request: NavigationRequest,
     archive_service: ArchiveService,
     remote_service: RemoteService,
     session_store: Rc<RefCell<SessionStore>>,
     show_hidden_files: bool,
-) -> mpsc::Receiver<Result<DirectoryLoadResult, String>> {
+) -> mpsc::Receiver<Result<DirectoryLoadResult, NavigationError>> {
     let (tx, rx) = mpsc::channel();
     let session_store = session_store.borrow().clone();
     let loader = EntryLoader::new(
@@ -217,7 +215,7 @@ pub fn spawn_directory_load(
         show_hidden_files,
     );
 
-    thread::spawn(move || {
+    task_spawner.spawn(move || {
         let result = loader
             .load(request.next_location.clone())
             .map(|loaded| DirectoryLoadResult {
@@ -228,8 +226,7 @@ pub fn spawn_directory_load(
                 entries: loaded.entries,
                 selection_intent: request.selection_intent,
                 status: request.status,
-            })
-            .map_err(|error| error.to_string());
+            });
         let _ = tx.send(result);
     });
 

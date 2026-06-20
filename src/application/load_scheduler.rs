@@ -82,8 +82,8 @@ fn panel_runtime_mut(scheduler: &mut LoadScheduler, panel: ActivePanel) -> &mut 
 mod tests {
     use crate::{
         application::{load_scheduler::LoadScheduler, ActivePanel},
-        domain::PanelLocation,
         application::{LoadAction, NavigationRequest},
+        domain::PanelLocation,
     };
 
     #[test]

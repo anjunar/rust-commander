@@ -24,14 +24,6 @@ pub fn file_operation_label(kind: &FileOperationKind) -> String {
     }
 }
 
-pub fn file_operation_verb(kind: &FileOperationKind) -> String {
-    match kind {
-        FileOperationKind::Copy => t!("operation.copy_verb").into_owned(),
-        FileOperationKind::Move => t!("operation.move_verb").into_owned(),
-        FileOperationKind::Delete => t!("operation.delete_verb").into_owned(),
-    }
-}
-
 pub fn sort_column_label(column: SortColumn) -> String {
     match column {
         SortColumn::Name => t!("column.name").into_owned(),

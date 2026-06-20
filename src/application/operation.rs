@@ -1,12 +1,11 @@
+use crate::application::OperationError;
+
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
 
-use crate::{
-    archive::ArchiveSession,
-    remote::RemoteSession,
-};
+use crate::{archive::ArchiveSession, remote::RemoteSession};
 
 #[derive(Clone, Debug)]
 pub enum FileOperationKind {
@@ -90,6 +89,7 @@ pub struct OperationSnapshot {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct OperationSummary {
     pub kind: FileOperationKind,
     pub sources: Vec<PathBuf>,
@@ -105,7 +105,7 @@ pub enum OperationEvent {
     Conflict(OperationConflict),
     Finished(OperationSummary),
     Cancelled(OperationSummary),
-    Failed(String),
+    Failed(OperationError),
 }
 
 #[derive(Clone, Debug)]

@@ -4,8 +4,8 @@ use anyhow::Result;
 use gtk::prelude::*;
 
 use crate::{
-    application::Commander,
-    config, i18n, platform, presentation,
+    application::{system_platform_port, Commander},
+    config, i18n, presentation,
     ui::main_window::{MainWindow, MainWindowRuntime},
 };
 
@@ -48,16 +48,17 @@ pub fn run() -> Result<()> {
             app_config.panels.right_start_path.clone(),
             &fallback_path,
         );
+        let platform_port = system_platform_port();
 
         let commander = Commander::new(
             left_initial_path,
             right_initial_path,
             app_config.panels.clone(),
-            platform::available_roots(),
+            platform_port.available_roots(),
             presentation::ready_status(),
         );
 
-        let runtime = MainWindowRuntime::new(commander, app_config);
+        let runtime = MainWindowRuntime::new(commander, app_config, platform_port);
         let window = MainWindow::new_hidden(app, runtime);
         window.on_initial_panels_ready(Rc::new({
             let window = Rc::clone(&window);

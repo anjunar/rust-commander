@@ -6,7 +6,6 @@ use std::{
         mpsc::{self, Receiver},
         Arc,
     },
-    thread,
 };
 
 use rust_i18n::t;
@@ -16,6 +15,7 @@ use super::{
     ArchiveProbe, ArchiveProgress, ArchiveSession,
 };
 use crate::{
+    application::TaskSpawner,
     archive::safe_join_extract_path,
     domain::{ArchiveView, Entry, EntryKind},
     fs::reader::format_bytes,
@@ -24,6 +24,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct ArchiveService {
     registry: Arc<ArchiveBackendRegistry>,
+    task_spawner: TaskSpawner,
 }
 
 #[derive(Clone)]
@@ -62,14 +63,18 @@ pub enum ArchiveTaskEvent {
 }
 
 impl ArchiveService {
-    pub fn new(registry: ArchiveBackendRegistry) -> Self {
+    pub fn new(registry: ArchiveBackendRegistry, task_spawner: TaskSpawner) -> Self {
         Self {
             registry: Arc::new(registry),
+            task_spawner,
         }
     }
 
-    pub fn with_default_backends() -> Self {
-        Self::new(ArchiveBackendRegistry::with_default_backends())
+    pub fn with_default_backends(task_spawner: TaskSpawner) -> Self {
+        Self::new(
+            ArchiveBackendRegistry::with_default_backends(),
+            task_spawner,
+        )
     }
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
@@ -103,7 +108,7 @@ impl ArchiveService {
         };
         let service = self.clone();
 
-        thread::spawn(move || {
+        self.task_spawner.spawn(move || {
             let result = match request {
                 ArchiveTaskRequest::ExtractSelection {
                     session,
@@ -282,7 +287,7 @@ impl ArchiveService {
 
 impl Default for ArchiveService {
     fn default() -> Self {
-        Self::with_default_backends()
+        Self::with_default_backends(TaskSpawner::default())
     }
 }
 

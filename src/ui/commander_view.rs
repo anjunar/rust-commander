@@ -39,13 +39,6 @@ impl CommanderView {
         }
     }
 
-    pub fn apply_state(&self, state: &AppState) {
-        self.apply_roots(state);
-        self.apply_entries(state, ActivePanel::Left);
-        self.apply_entries(state, ActivePanel::Right);
-        self.apply_active_panel(state.active_panel);
-    }
-
     pub fn apply_entries(&self, state: &AppState, panel: ActivePanel) {
         let panel_state = state.panel(panel);
         let panel_view = self.panel(panel);

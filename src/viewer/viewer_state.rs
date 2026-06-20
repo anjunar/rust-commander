@@ -71,10 +71,7 @@ impl ViewerState {
         self.source.path()
     }
 
-    pub fn file_len(&self) -> u64 {
-        self.source.len()
-    }
-
+    #[cfg(test)]
     pub fn mode(&self) -> ViewerMode {
         self.mode
     }
@@ -240,13 +237,6 @@ impl ViewerState {
         match self.mode {
             ViewerMode::Hex => total_hex_lines(self.source.len()),
             ViewerMode::Text => self.estimated_text_total_lines(),
-        }
-    }
-
-    pub fn has_complete_line_count(&self) -> bool {
-        match self.mode {
-            ViewerMode::Hex => true,
-            ViewerMode::Text => self.line_index.is_complete(),
         }
     }
 

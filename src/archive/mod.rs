@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod detector;
 mod error;
 mod iso_backend;
@@ -23,7 +25,7 @@ pub use iso_backend::IsoBackend;
 pub use libarchive::LibArchiveBackend;
 pub use path::safe_join_extract_path;
 pub use plugin::PluginArchiveBackend;
-pub use probe::{ArchiveFamily, ArchiveLayout, ArchiveProbe, ArchiveSupport};
+pub use probe::{ArchiveProbe, ArchiveSupport};
 pub use registry::ArchiveBackendRegistry;
 pub use service::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest};
 pub use unrar::UnrarBackend;

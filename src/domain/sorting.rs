@@ -32,25 +32,6 @@ impl Default for SortState {
     }
 }
 
-impl SortState {
-    pub fn toggled_for(self, column: SortColumn) -> Self {
-        if self.column == column {
-            Self {
-                column,
-                direction: match self.direction {
-                    SortDirection::Ascending => SortDirection::Descending,
-                    SortDirection::Descending => SortDirection::Ascending,
-                },
-            }
-        } else {
-            Self {
-                column,
-                direction: SortDirection::Ascending,
-            }
-        }
-    }
-}
-
 pub fn sort_entries(entries: &mut [Entry], sort_state: SortState, folders_first: bool) {
     entries.sort_by(|a, b| compare_entries(a, b, sort_state, folders_first));
 }

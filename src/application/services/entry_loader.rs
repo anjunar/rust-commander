@@ -1,7 +1,5 @@
-use anyhow::Result;
-
 use crate::{
-    application::SessionStore,
+    application::{NavigationError, SessionStore},
     archive::ArchiveService,
     domain::{Entry, PanelLocation},
     remote::RemoteService,
@@ -36,7 +34,10 @@ impl EntryLoader {
         }
     }
 
-    pub fn load(&self, requested_location: PanelLocation) -> Result<EntryLoadResult> {
+    pub fn load(
+        &self,
+        requested_location: PanelLocation,
+    ) -> Result<EntryLoadResult, NavigationError> {
         let entries = self.load_entries(&requested_location)?;
         Ok(EntryLoadResult {
             location: requested_location,
@@ -44,28 +45,40 @@ impl EntryLoader {
         })
     }
 
-    fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>> {
+    fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>, NavigationError> {
         match location {
             PanelLocation::Filesystem(path) => {
-                crate::fs::reader::read_entries(path, self.show_hidden_files)
+                crate::fs::reader::read_entries(path, self.show_hidden_files).map_err(|error| {
+                    NavigationError::ReadFilesystem {
+                        path: path.clone(),
+                        detail: error.to_string(),
+                    }
+                })
             }
             PanelLocation::Archive(view) => {
                 let session = self
                     .session_store
                     .archive(&view.session_key)
-                    .ok_or_else(|| anyhow::anyhow!("Archive session not found"))?;
-                Ok(self.archive_service.entries_for_archive_view(view, &session))
+                    .ok_or_else(|| NavigationError::MissingArchiveSession {
+                        session_key: view.session_key.clone(),
+                    })?;
+                Ok(self
+                    .archive_service
+                    .entries_for_archive_view(view, &session))
             }
             PanelLocation::Remote(location) => {
                 let session = self
                     .session_store
                     .remote(&location.session_key)
-                    .ok_or_else(|| anyhow::anyhow!("Remote session not found"))?;
-                self.remote_service.read_entries(
-                    &session,
-                    &location.current_path,
-                    self.show_hidden_files,
-                )
+                    .ok_or_else(|| NavigationError::MissingRemoteSession {
+                        session_key: location.session_key.clone(),
+                    })?;
+                self.remote_service
+                    .read_entries(&session, &location.current_path, self.show_hidden_files)
+                    .map_err(|error| NavigationError::ReadRemote {
+                        location: PanelLocation::Remote(location.clone()),
+                        detail: error.to_string(),
+                    })
             }
         }
     }

@@ -17,6 +17,7 @@ pub struct SelectionIntent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)]
 pub enum SelectionFallback {
     None,
     NeighborOrClamp,
@@ -66,14 +67,6 @@ impl SelectionIntent {
             fallback: SelectionFallback::ParentOrFirst,
         }
     }
-
-    pub fn first() -> Self {
-        Self {
-            snapshot: SelectionSnapshot::default(),
-            preferred_cursor: None,
-            fallback: SelectionFallback::First,
-        }
-    }
 }
 
 impl SelectionModel {
@@ -108,6 +101,7 @@ impl SelectionModel {
         }
     }
 
+    #[cfg(test)]
     pub fn anchor_index(&self) -> Option<usize> {
         self.anchor_index
     }
@@ -119,10 +113,6 @@ impl SelectionModel {
     pub fn primary_index(&self) -> Option<usize> {
         self.focused_index
             .or_else(|| self.selected_indices.iter().next().copied())
-    }
-
-    pub fn is_selected(&self, index: usize) -> bool {
-        self.selected_indices.contains(&index)
     }
 
     pub fn selected_indices(&self) -> impl Iterator<Item = usize> + '_ {

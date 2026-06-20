@@ -114,4 +114,4 @@ mod imp {
     }
 }
 
-pub use imp::{current_window_placement, restore_window_placement, WindowPlacementState};
+pub use imp::{current_window_placement, restore_window_placement};

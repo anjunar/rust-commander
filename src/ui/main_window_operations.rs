@@ -1,22 +1,25 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
-use gtk::glib;
 use rust_i18n::t;
 
 use crate::{
     application::{
         prepare_operation, start_operation_task, ActiveOperationHandle, Commander,
-        ConflictResolution, FileOperationKind, OperationEvent, OperationPlan,
-        PreparedOperation, SessionStore, StartedOperation,
+        FileOperationKind, OperationPlan, PreparedOperation, SessionStore, StartedOperation,
+        TaskSpawner,
     },
     archive::ArchiveService,
     config::AppConfig,
-    presentation,
     remote::RemoteService,
     ui::dialogs,
 };
 
 use super::{hosts::OperationsHost, navigation_controller::NavigationController};
+
+#[path = "main_window_operations_archive.rs"]
+mod archive_poll;
+#[path = "main_window_operations_transfer.rs"]
+mod transfer_poll;
 
 #[derive(Clone)]
 pub struct OperationRuntime {
@@ -39,6 +42,7 @@ pub struct OperationsController {
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
     session_store: Rc<RefCell<SessionStore>>,
+    task_spawner: TaskSpawner,
     runtime: OperationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
     navigation: NavigationController,
@@ -52,6 +56,7 @@ impl OperationsController {
         archive_service: Rc<RefCell<ArchiveService>>,
         remote_service: RemoteService,
         session_store: Rc<RefCell<SessionStore>>,
+        task_spawner: TaskSpawner,
         runtime: OperationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
         navigation: NavigationController,
@@ -63,6 +68,7 @@ impl OperationsController {
             archive_service,
             remote_service,
             session_store,
+            task_spawner,
             runtime,
             app_config_cache,
             navigation,
@@ -90,7 +96,7 @@ impl OperationsController {
                 dialogs::show_error(
                     &self.window,
                     &t!("error.operation_unavailable"),
-                    &error.to_string(),
+                    error.detail(),
                 );
                 return;
             }
@@ -109,6 +115,7 @@ impl OperationsController {
 
     fn start_file_operation(&self, request: OperationPlan) {
         let started = match start_operation_task(
+            self.task_spawner.clone(),
             &self.archive_service.borrow(),
             &self.remote_service,
             request,
@@ -118,7 +125,7 @@ impl OperationsController {
                 dialogs::show_error(
                     &self.window,
                     &t!("error.operation_unavailable"),
-                    &error.to_string(),
+                    error.detail(),
                 );
                 return;
             }
@@ -157,207 +164,7 @@ impl OperationsController {
         }
     }
 
-    fn poll_transfer_operation(
-        &self,
-        request: OperationPlan,
-        receiver: std::sync::mpsc::Receiver<OperationEvent>,
-    ) {
-        let active_operation = Rc::clone(&self.runtime.active_operation);
-        let progress_dialog = dialogs::ProgressDialog::new(
-            &self.window,
-            &t!(
-                "progress.operation_title",
-                kind = presentation::file_operation_label(&request.kind())
-            ),
-            move || {
-                if let Some(handle) = active_operation.borrow().as_ref() {
-                    handle.cancel();
-                }
-            },
-        );
-
-        let controller = self.clone();
-        glib::timeout_add_local(Duration::from_millis(80), move || {
-            let mut keep_running = true;
-
-            while let Ok(event) = receiver.try_recv() {
-                match event {
-                    OperationEvent::Progress(snapshot) => {
-                        progress_dialog.update_progress(&snapshot);
-                        let update = {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.set_status(
-                                t!(
-                                    "status.operation_current_item",
-                                    kind = presentation::file_operation_label(&snapshot.kind),
-                                    item = snapshot.current_item.as_str()
-                                )
-                                .into_owned(),
-                            )
-                        };
-                        controller.host.apply_update(update);
-                    }
-                    OperationEvent::Conflict(conflict) => {
-                        progress_dialog.set_waiting_for_conflict();
-                        if !controller
-                            .app_config_cache
-                            .borrow()
-                            .file_operations
-                            .confirm_overwrite
-                        {
-                            if let Some(handle) =
-                                controller.runtime.active_operation.borrow().as_ref()
-                            {
-                                handle.resolve_conflict(ConflictResolution::Overwrite);
-                            }
-                            continue;
-                        }
-                        let handle = controller.runtime.active_operation.borrow().clone();
-                        dialogs::show_conflict(&controller.window, conflict, move |resolution| {
-                            if let Some(handle) = handle.as_ref() {
-                                handle.resolve_conflict(resolution);
-                            }
-                        });
-                    }
-                    OperationEvent::Finished(summary) => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.queue_selection_after_file_operation(&request);
-                        }
-                        let status = t!(
-                            "status.operation_completed",
-                            kind = presentation::file_operation_label(&summary.kind),
-                            count = summary.total_entries,
-                            size = crate::fs::reader::format_bytes(summary.total_bytes),
-                            seconds = format!("{:.1}", summary.elapsed.as_secs_f64())
-                        )
-                        .into_owned();
-                        controller.host.set_status(status);
-                        controller.navigation.refresh_dirty_panels_if_idle();
-                        keep_running = false;
-                    }
-                    OperationEvent::Cancelled(summary) => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.queue_selection_after_file_operation(&request);
-                        }
-                        let status = t!(
-                            "status.operation_cancelled",
-                            kind = presentation::file_operation_label(&summary.kind),
-                            count = summary.total_entries,
-                            size = crate::fs::reader::format_bytes(summary.total_bytes)
-                        )
-                        .into_owned();
-                        controller.host.set_status(status);
-                        controller.navigation.refresh_dirty_panels_if_idle();
-                        keep_running = false;
-                    }
-                    OperationEvent::Failed(error) => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.file_operation_failed", error = error.as_str())
-                                    .into_owned(),
-                            )
-                        };
-                        controller.host.apply_update(update);
-                        controller
-                            .host
-                            .show_error(&t!("error.file_operation_failed"), &error);
-                        keep_running = false;
-                    }
-                }
-            }
-
-            if keep_running {
-                glib::ControlFlow::Continue
-            } else {
-                glib::ControlFlow::Break
-            }
-        });
-    }
-
-    fn poll_archive_extract_operation(
-        &self,
-        receiver: std::sync::mpsc::Receiver<crate::archive::ArchiveTaskEvent>,
-    ) {
-        let active_operation = Rc::clone(&self.runtime.active_operation);
-        let progress_dialog =
-            dialogs::ProgressDialog::new(&self.window, &t!("progress.archive_copy"), move || {
-                if let Some(handle) = active_operation.borrow().as_ref() {
-                    handle.cancel();
-                }
-            });
-
-        let controller = self.clone();
-        glib::timeout_add_local(Duration::from_millis(80), move || {
-            let mut keep_running = true;
-
-            while let Ok(event) = receiver.try_recv() {
-                match event {
-                    crate::archive::ArchiveTaskEvent::Progress(progress) => {
-                        progress_dialog.update_archive_progress(&progress);
-                        let update = {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.set_status(
-                                t!(
-                                    "status.copy_current_path",
-                                    path = progress.current_path.clone().unwrap_or_else(|| t!(
-                                        "status.archive_extraction_in_progress"
-                                    )
-                                    .into_owned())
-                                )
-                                .into_owned(),
-                            )
-                        };
-                        controller.host.apply_update(update);
-                    }
-                    crate::archive::ArchiveTaskEvent::Finished(message) => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        controller.host.set_status(message);
-                        controller.navigation.refresh_dirty_panels_if_idle();
-                        keep_running = false;
-                    }
-                    crate::archive::ArchiveTaskEvent::Cancelled => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        controller
-                            .host
-                            .set_status(t!("status.archive_copy_cancelled").into_owned());
-                        controller.navigation.refresh_dirty_panels_if_idle();
-                        keep_running = false;
-                    }
-                    crate::archive::ArchiveTaskEvent::Failed(error) => {
-                        progress_dialog.close();
-                        controller.runtime.active_operation.borrow_mut().take();
-                        let update = {
-                            let mut commander = controller.commander.borrow_mut();
-                            commander.set_status(
-                                t!("status.archive_copy_failed", error = error.to_string())
-                                    .into_owned(),
-                            )
-                        };
-                        controller.host.apply_update(update);
-                        controller
-                            .host
-                            .show_error(&t!("error.archive_copy_failed"), &error.to_string());
-                        keep_running = false;
-                    }
-                }
-            }
-
-            if keep_running {
-                glib::ControlFlow::Continue
-            } else {
-                glib::ControlFlow::Break
-            }
-        });
+    fn clear_active_operation(&self) {
+        self.runtime.active_operation.borrow_mut().take();
     }
 }

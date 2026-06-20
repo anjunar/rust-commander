@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 pub const SUPPORTED_LOCALES: [&str; 3] = ["de", "en", "fr"];
 
 pub fn apply_locale(preferred: Option<&str>) -> &'static str {
@@ -31,10 +29,6 @@ pub fn locale_display_name(locale: &str) -> &'static str {
         "fr" => "Francais",
         _ => "English",
     }
-}
-
-pub fn cow_to_string(value: Cow<'_, str>) -> String {
-    value.into_owned()
 }
 
 fn detect_system_locale() -> Option<String> {

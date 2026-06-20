@@ -1,8 +1,7 @@
 use std::{cell::RefCell, rc::Rc, sync::mpsc::Receiver};
 
-use anyhow::Result;
-
 use crate::{
+    application::OperationError,
     archive::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest},
     config::FileOperationsConfig,
     fs::operations::{start_operation, OperationHandle},
@@ -11,7 +10,7 @@ use crate::{
 
 use super::{
     ArchiveExtractRequest, Commander, ConflictResolution, FileOperationKind, OperationEvent,
-    OperationPlan, RemoteDownloadRequest, RemoteUploadRequest, SessionStore,
+    OperationPlan, RemoteDownloadRequest, RemoteUploadRequest, SessionStore, TaskSpawner,
 };
 
 #[derive(Clone)]
@@ -31,8 +30,10 @@ impl ActiveOperationHandle {
     }
 
     pub fn resolve_conflict(&self, resolution: ConflictResolution) {
-        if let Self::File(handle) = self {
-            handle.resolve_conflict(resolution);
+        match self {
+            Self::File(handle) => handle.resolve_conflict(resolution),
+            Self::Remote(handle) => handle.resolve_conflict(resolution),
+            Self::Archive(_) => {}
         }
     }
 }
@@ -64,10 +65,11 @@ pub fn prepare_operation(
     session_store: Rc<RefCell<SessionStore>>,
     file_operations: &FileOperationsConfig,
     kind: FileOperationKind,
-) -> Result<PreparedOperation> {
+) -> Result<PreparedOperation, OperationError> {
     let is_delete = matches!(kind, FileOperationKind::Delete);
     let request = commander
-        .operation_request(kind, &session_store.borrow())?
+        .operation_request(kind, &session_store.borrow())
+        .map_err(|error| OperationError::planning(error.to_string()))?
         .with_use_recycle_bin(is_delete && file_operations.use_recycle_bin);
 
     if is_delete && !file_operations.confirm_delete {
@@ -78,10 +80,11 @@ pub fn prepare_operation(
 }
 
 pub fn start_operation_task(
+    task_spawner: TaskSpawner,
     archive_service: &ArchiveService,
     remote_service: &RemoteService,
     request: OperationPlan,
-) -> Result<StartedOperation> {
+) -> Result<StartedOperation, OperationError> {
     match request.clone() {
         OperationPlan::ArchiveExtract(ArchiveExtractRequest {
             session,
@@ -131,7 +134,7 @@ pub fn start_operation_task(
         }
         OperationPlan::Local(request) => {
             let request_for_tracking = request.clone();
-            let (handle, receiver) = start_operation(request);
+            let (handle, receiver) = start_operation(task_spawner, request);
             Ok(StartedOperation::File {
                 handle,
                 receiver,
