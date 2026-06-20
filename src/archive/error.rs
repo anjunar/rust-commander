@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{fmt, path::PathBuf};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,13 +30,7 @@ pub enum ArchiveError {
     UnsafeArchivePath {
         archive_path: String,
     },
-    Cancelled,
     IoError {
-        detail: String,
-    },
-    ProcessError {
-        command: String,
-        exit_code: Option<i32>,
         detail: String,
     },
     LibraryError {
@@ -76,15 +68,7 @@ impl fmt::Display for ArchiveError {
             Self::UnsafeArchivePath { archive_path } => {
                 write!(f, "Unsafe archive path: {archive_path}")
             }
-            Self::Cancelled => write!(f, "Archive operation cancelled"),
             Self::IoError { detail } => write!(f, "{detail}"),
-            Self::ProcessError {
-                command,
-                exit_code,
-                detail,
-            } => {
-                write!(f, "Process failed ({command}, {:?}): {detail}", exit_code)
-            }
             Self::LibraryError { library, detail } => {
                 write!(f, "Library backend failed ({library}): {detail}")
             }

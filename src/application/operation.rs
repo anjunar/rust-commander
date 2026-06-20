@@ -89,11 +89,8 @@ pub struct OperationSnapshot {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct OperationSummary {
     pub kind: FileOperationKind,
-    pub sources: Vec<PathBuf>,
-    pub target: Option<PathBuf>,
     pub total_bytes: u64,
     pub total_entries: u64,
     pub elapsed: Duration,

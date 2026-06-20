@@ -11,6 +11,7 @@ mod dialogs_operations;
 mod dialogs_remote;
 #[path = "dialogs_settings.rs"]
 mod dialogs_settings;
+#[cfg(not(target_os = "windows"))]
 #[path = "dialogs_unix.rs"]
 mod dialogs_unix;
 

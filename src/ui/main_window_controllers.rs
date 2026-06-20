@@ -10,8 +10,8 @@ use super::context_menu::UnixContextMenuActions;
 use super::{
     context_menu::ContextMenuController,
     hosts::{NavigationHost, OperationsHost, TerminalHost, ViewHost},
-    navigation_controller::NavigationController,
-    operations_controller::OperationsController,
+    navigation_controller::{NavigationController, NavigationControllerDeps},
+    operations_controller::{OperationsController, OperationsControllerDeps},
     panel_wiring::PanelWiring,
     terminal_wiring::TerminalController,
     window_chrome::WindowChromeController,
@@ -31,19 +31,19 @@ pub struct MainWindowControllers {
 impl MainWindowControllers {
     pub fn build(window: &Rc<MainWindow>) -> Self {
         let navigation_host: Rc<dyn NavigationHost> = window.clone();
-        let navigation = NavigationController::new(
-            navigation_host,
-            window.window.clone(),
-            Rc::clone(&window.commander),
-            Rc::clone(&window.archive_service),
-            window.remote_service.clone(),
-            Rc::clone(&window.session_store),
-            window.task_spawner.clone(),
-            window.operation_runtime.clone(),
-            window.navigation_runtime.clone(),
-            Rc::clone(&window.app_config_cache),
-            window.platform_port.clone(),
-        );
+        let navigation = NavigationController::new(NavigationControllerDeps {
+            host: navigation_host,
+            window: window.window.clone(),
+            commander: Rc::clone(&window.commander),
+            archive_service: Rc::clone(&window.archive_service),
+            remote_service: window.remote_service.clone(),
+            session_store: Rc::clone(&window.session_store),
+            task_spawner: window.task_spawner.clone(),
+            operation_runtime: window.operation_runtime.clone(),
+            runtime: window.navigation_runtime.clone(),
+            app_config_cache: Rc::clone(&window.app_config_cache),
+            platform_port: window.platform_port.clone(),
+        });
 
         let context_menu_host: Rc<dyn ViewHost> = window.clone();
         let context_menu = ContextMenuController::new(
@@ -61,18 +61,18 @@ impl MainWindowControllers {
         );
 
         let operations_host: Rc<dyn OperationsHost> = window.clone();
-        let operations = OperationsController::new(
-            operations_host,
-            window.window.clone(),
-            Rc::clone(&window.commander),
-            Rc::clone(&window.archive_service),
-            window.remote_service.clone(),
-            Rc::clone(&window.session_store),
-            window.task_spawner.clone(),
-            window.operation_runtime.clone(),
-            Rc::clone(&window.app_config_cache),
-            navigation.clone(),
-        );
+        let operations = OperationsController::new(OperationsControllerDeps {
+            host: operations_host,
+            window: window.window.clone(),
+            commander: Rc::clone(&window.commander),
+            archive_service: Rc::clone(&window.archive_service),
+            remote_service: window.remote_service.clone(),
+            session_store: Rc::clone(&window.session_store),
+            task_spawner: window.task_spawner.clone(),
+            runtime: window.operation_runtime.clone(),
+            app_config_cache: Rc::clone(&window.app_config_cache),
+            navigation: navigation.clone(),
+        });
 
         let panel_wiring_host: Rc<dyn ViewHost> = window.clone();
         let context_menu_controller = context_menu.clone();

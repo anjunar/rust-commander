@@ -48,30 +48,32 @@ pub struct OperationsController {
     navigation: NavigationController,
 }
 
+pub struct OperationsControllerDeps {
+    pub host: Rc<dyn OperationsHost>,
+    pub window: gtk::ApplicationWindow,
+    pub commander: Rc<RefCell<Commander>>,
+    pub archive_service: Rc<RefCell<ArchiveService>>,
+    pub remote_service: RemoteService,
+    pub session_store: Rc<RefCell<SessionStore>>,
+    pub task_spawner: TaskSpawner,
+    pub runtime: OperationRuntime,
+    pub app_config_cache: Rc<RefCell<AppConfig>>,
+    pub navigation: NavigationController,
+}
+
 impl OperationsController {
-    pub fn new(
-        host: Rc<dyn OperationsHost>,
-        window: gtk::ApplicationWindow,
-        commander: Rc<RefCell<Commander>>,
-        archive_service: Rc<RefCell<ArchiveService>>,
-        remote_service: RemoteService,
-        session_store: Rc<RefCell<SessionStore>>,
-        task_spawner: TaskSpawner,
-        runtime: OperationRuntime,
-        app_config_cache: Rc<RefCell<AppConfig>>,
-        navigation: NavigationController,
-    ) -> Self {
+    pub fn new(deps: OperationsControllerDeps) -> Self {
         Self {
-            host,
-            window,
-            commander,
-            archive_service,
-            remote_service,
-            session_store,
-            task_spawner,
-            runtime,
-            app_config_cache,
-            navigation,
+            host: deps.host,
+            window: deps.window,
+            commander: deps.commander,
+            archive_service: deps.archive_service,
+            remote_service: deps.remote_service,
+            session_store: deps.session_store,
+            task_spawner: deps.task_spawner,
+            runtime: deps.runtime,
+            app_config_cache: deps.app_config_cache,
+            navigation: deps.navigation,
         }
     }
 

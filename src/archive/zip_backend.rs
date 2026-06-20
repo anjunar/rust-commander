@@ -8,8 +8,8 @@ use std::{
 use zip::ZipArchive;
 
 use super::{
-    safe_join_extract_path, ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind,
-    ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
+    safe_join_extract_path, ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError,
+    ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -58,11 +58,7 @@ impl ZipBackend {
             display_name,
             kind: Self::entry_kind(file),
             size: file.size(),
-            packed_size: Some(file.compressed_size()),
             modified_time: Self::modified_time(file),
-            crc: Some(format!("{:08X}", file.crc32())),
-            encrypted: false,
-            method: Some(format!("{:?}", file.compression())),
             attributes: file.unix_mode().map(|mode| format!("{mode:o}")),
         })
     }
@@ -147,21 +143,6 @@ impl ArchiveBackend for ZipBackend {
         300
     }
 
-    fn supported_extensions(&self) -> &'static [&'static str] {
-        &["zip"]
-    }
-
-    fn capabilities(&self) -> ArchiveCapabilities {
-        ArchiveCapabilities {
-            list: true,
-            extract_single: true,
-            extract_multiple: true,
-            extract_all: true,
-            test: true,
-            ..ArchiveCapabilities::default()
-        }
-    }
-
     fn can_open(&self, path: &Path) -> bool {
         matches!(
             ArchiveFormatDetector::detect(path),
@@ -187,14 +168,8 @@ impl ArchiveBackend for ZipBackend {
         Ok(ArchiveSession::new(
             self.id(),
             path.to_path_buf(),
-            ArchiveFormatDetector::detect(path),
             entries,
-            self.capabilities(),
         ))
-    }
-
-    fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-        Ok(session.cached_entries().to_vec())
     }
 
     fn extract_entry(
@@ -224,27 +199,5 @@ impl ArchiveBackend for ZipBackend {
                 .iter()
                 .any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
         })
-    }
-
-    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError> {
-        self.extract_selected(session, target_dir, |_| true)
-    }
-
-    fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
-        let mut archive = self.open_archive(session.archive_path())?;
-        for index in 0..archive.len() {
-            let mut file =
-                archive
-                    .by_index(index)
-                    .map_err(|error| ArchiveError::InvalidArchive {
-                        path: session.archive_path().to_path_buf(),
-                        detail: Some(error.to_string()),
-                    })?;
-            io::copy(&mut file, &mut io::sink()).map_err(|error| ArchiveError::InvalidArchive {
-                path: session.archive_path().to_path_buf(),
-                detail: Some(error.to_string()),
-            })?;
-        }
-        Ok(())
     }
 }

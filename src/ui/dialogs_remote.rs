@@ -9,6 +9,9 @@ use crate::remote::{
 use super::build_modal_window;
 use super::dialogs_base::ModalWindow;
 
+type AuthVisibilityFn = Rc<dyn Fn(bool)>;
+type PopulateFormFn = Rc<dyn Fn(Option<&RemoteProfile>)>;
+
 #[derive(Clone)]
 pub struct RemoteConnectionDialogResult {
     pub session: RemoteSession,
@@ -120,7 +123,7 @@ pub fn prompt_remote_connection<F>(
     delete_profile_button.add_css_class("destructive-action");
     content.append(&delete_profile_button);
 
-    let update_auth_visibility: Rc<dyn Fn(bool)> = Rc::new({
+    let update_auth_visibility: AuthVisibilityFn = Rc::new({
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
         let public_key_entry = public_key_entry.clone();
@@ -134,7 +137,7 @@ pub fn prompt_remote_connection<F>(
     });
     update_auth_visibility(true);
 
-    let populate_form: Rc<dyn Fn(Option<&RemoteProfile>)> = Rc::new({
+    let populate_form: PopulateFormFn = Rc::new({
         let profile_name_entry = profile_name_entry.clone();
         let host_entry = host_entry.clone();
         let port_input = port_input.clone();

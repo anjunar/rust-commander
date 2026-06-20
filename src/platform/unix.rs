@@ -125,7 +125,6 @@ pub fn open_console(path: &Path) -> Result<()> {
     )
 }
 
-#[allow(dead_code)]
 pub fn show_context_menu(_request: &ContextMenuRequest) -> Result<()> {
     bail!("Native context menus are not implemented for this platform yet")
 }

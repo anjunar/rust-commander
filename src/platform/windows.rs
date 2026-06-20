@@ -115,8 +115,8 @@ pub fn apply_runtime_window_icon(window_title: &str) -> Result<()> {
     }
 
     unsafe {
-        let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_BIG as usize, hicon as isize);
-        let _ = SendMessageW(hwnd, WM_SETICON as u32, ICON_SMALL as usize, hicon as isize);
+        let _ = SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, hicon as isize);
+        let _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, hicon as isize);
     }
 
     Ok(())
@@ -248,13 +248,15 @@ unsafe fn show_context_menu_impl(request: &ContextMenuRequest) -> Result<()> {
             return Ok(());
         }
 
-        let mut invoke = CMINVOKECOMMANDINFOEX::default();
-        invoke.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32;
-        invoke.fMask = SEE_MASK_UNICODE;
-        invoke.hwnd = owner;
-        invoke.lpVerb = PCSTR((command_id - 1) as usize as *const u8);
-        invoke.lpVerbW = PCWSTR((command_id - 1) as usize as *const u16);
-        invoke.nShow = windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let invoke = CMINVOKECOMMANDINFOEX {
+            cbSize: std::mem::size_of::<CMINVOKECOMMANDINFOEX>() as u32,
+            fMask: SEE_MASK_UNICODE,
+            hwnd: owner,
+            lpVerb: PCSTR((command_id - 1) as usize as *const u8),
+            lpVerbW: PCWSTR((command_id - 1) as usize as *const u16),
+            nShow: windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            ..Default::default()
+        };
 
         context_menu
             .InvokeCommand((&invoke as *const CMINVOKECOMMANDINFOEX).cast())
@@ -285,18 +287,5 @@ fn null_mut_hwnd() -> *mut core::ffi::c_void {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::ffi::OsStr;
-
-    use super::to_wide;
-
-    #[test]
-    fn to_wide_appends_trailing_nul() {
-        let wide = to_wide(OsStr::new("open"));
-        assert_eq!(wide.last().copied(), Some(0));
-        assert_eq!(
-            wide[..wide.len() - 1],
-            ['o' as u16, 'p' as u16, 'e' as u16, 'n' as u16]
-        );
-    }
-}
+#[path = "../../tests/unit/platform_windows_tests.rs"]
+mod tests;

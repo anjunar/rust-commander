@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -14,13 +12,12 @@ use rust_i18n::t;
 
 use super::{
     ArchiveBackendRegistry, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveOperation,
-    ArchiveProbe, ArchiveProgress, ArchiveSession,
+    ArchiveProgress, ArchiveSession,
 };
 use crate::{
     application::TaskSpawner,
     archive::safe_join_extract_path,
     domain::{ArchiveView, Entry, EntryKind},
-    fs::reader::format_bytes,
 };
 
 #[derive(Clone, Debug)]
@@ -46,13 +43,6 @@ pub enum ArchiveTaskRequest {
         session: ArchiveSession,
         entry_paths: Vec<String>,
         target_dir: PathBuf,
-    },
-    ExtractAll {
-        session: ArchiveSession,
-        target_dir: PathBuf,
-    },
-    TestArchive {
-        session: ArchiveSession,
     },
 }
 
@@ -81,10 +71,6 @@ impl ArchiveService {
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
         self.registry.is_archive_path(path)
-    }
-
-    pub fn probe_path(&self, path: &Path) -> Option<ArchiveProbe> {
-        self.registry.probe_path(path)
     }
 
     pub fn open_archive(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
@@ -118,28 +104,6 @@ impl ArchiveService {
                     target_dir,
                 } => {
                     service.extract_selection(&session, &entry_paths, &target_dir, &cancelled, &tx)
-                }
-                ArchiveTaskRequest::ExtractAll {
-                    session,
-                    target_dir,
-                } => service.extract_all(&session, &target_dir, &cancelled, &tx),
-                ArchiveTaskRequest::TestArchive { session } => {
-                    match service.backend_for_session(&session) {
-                        Ok(backend) => {
-                            let result = backend.test_archive(&session);
-                            if result.is_ok() {
-                                let _ = tx.send(ArchiveTaskEvent::Finished(format!(
-                                    "{}",
-                                    t!(
-                                        "archive.test_completed",
-                                        path = session.archive_path().display().to_string()
-                                    )
-                                )));
-                            }
-                            result
-                        }
-                        Err(error) => Err(error),
-                    }
                 }
             };
 
@@ -179,7 +143,6 @@ impl ArchiveService {
         let _ = tx.send(ArchiveTaskEvent::Progress(ArchiveProgress {
             operation: Some(ArchiveOperation::ExtractEntries {
                 entry_paths: entry_paths.to_vec(),
-                target_dir: target_dir.to_path_buf(),
             }),
             processed_entries: Some(0),
             total_entries: Some(total_entries),
@@ -193,45 +156,6 @@ impl ArchiveService {
                 "archive.extracted_items",
                 count = entry_paths.len(),
                 target = target_dir.display().to_string()
-            )
-            .into_owned(),
-        ));
-        Ok(())
-    }
-
-    fn extract_all(
-        &self,
-        session: &ArchiveSession,
-        target_dir: &Path,
-        cancelled: &AtomicBool,
-        tx: &mpsc::Sender<ArchiveTaskEvent>,
-    ) -> Result<(), ArchiveError> {
-        validate_all_paths(target_dir, session.cached_entries())?;
-        if cancelled.load(Ordering::Relaxed) {
-            return Ok(());
-        }
-
-        let backend = self.backend_for_session(session)?;
-        let total_bytes = session
-            .cached_entries()
-            .iter()
-            .map(|entry| entry.size)
-            .sum::<u64>();
-        let _ = tx.send(ArchiveTaskEvent::Progress(ArchiveProgress {
-            operation: Some(ArchiveOperation::ExtractAll {
-                target_dir: target_dir.to_path_buf(),
-            }),
-            total_entries: Some(session.cached_entries().len() as u64),
-            total_bytes: Some(total_bytes),
-            percent: Some(0.0),
-            ..ArchiveProgress::default()
-        }));
-        backend.extract_all(session, target_dir)?;
-        let _ = tx.send(ArchiveTaskEvent::Finished(
-            t!(
-                "archive.extracted_archive",
-                target = target_dir.display().to_string(),
-                size = format_bytes(total_bytes)
             )
             .into_owned(),
         ));
@@ -320,7 +244,9 @@ fn archive_entry_kind(kind: ArchiveEntryKind) -> EntryKind {
     match kind {
         ArchiveEntryKind::Directory => EntryKind::Directory,
         ArchiveEntryKind::File => EntryKind::File,
+        #[cfg(not(target_os = "windows"))]
         ArchiveEntryKind::Symlink => EntryKind::Symlink,
+        #[cfg(not(target_os = "windows"))]
         ArchiveEntryKind::Unknown => EntryKind::ArchiveItem,
     }
 }
@@ -331,13 +257,6 @@ fn join_archive_path(current_path: &str, child_name: &str) -> String {
     } else {
         format!("{current_path}/{child_name}")
     }
-}
-
-fn validate_all_paths(target_dir: &Path, entries: &[ArchiveEntry]) -> Result<(), ArchiveError> {
-    for entry in entries {
-        safe_join_extract_path(target_dir, &entry.archive_path)?;
-    }
-    Ok(())
 }
 
 fn validate_selection_paths(

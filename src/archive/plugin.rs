@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveError, ArchiveSession};
+use super::{ArchiveBackend, ArchiveError, ArchiveSession};
 
 #[derive(Clone, Debug, Default)]
 pub struct PluginArchiveBackend;
@@ -31,23 +31,11 @@ impl ArchiveBackend for PluginArchiveBackend {
         50
     }
 
-    fn supported_extensions(&self) -> &'static [&'static str] {
-        &[]
-    }
-
-    fn capabilities(&self) -> ArchiveCapabilities {
-        ArchiveCapabilities::default()
-    }
-
     fn can_open(&self, _path: &Path) -> bool {
         false
     }
 
     fn open(&self, _path: &Path) -> Result<ArchiveSession, ArchiveError> {
-        Err(Self::unsupported("Archive plugins are not implemented yet"))
-    }
-
-    fn list_entries(&self, _session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError> {
         Err(Self::unsupported("Archive plugins are not implemented yet"))
     }
 
@@ -66,18 +54,6 @@ impl ArchiveBackend for PluginArchiveBackend {
         _entry_paths: &[String],
         _target_dir: &Path,
     ) -> Result<(), ArchiveError> {
-        Err(Self::unsupported("Archive plugins are not implemented yet"))
-    }
-
-    fn extract_all(
-        &self,
-        _session: &ArchiveSession,
-        _target_dir: &Path,
-    ) -> Result<(), ArchiveError> {
-        Err(Self::unsupported("Archive plugins are not implemented yet"))
-    }
-
-    fn test_archive(&self, _session: &ArchiveSession) -> Result<(), ArchiveError> {
         Err(Self::unsupported("Archive plugins are not implemented yet"))
     }
 }

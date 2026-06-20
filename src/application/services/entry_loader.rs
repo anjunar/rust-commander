@@ -37,7 +37,7 @@ impl EntryLoader {
     pub fn load(
         &self,
         requested_location: PanelLocation,
-    ) -> Result<EntryLoadResult, NavigationError> {
+    ) -> Result<EntryLoadResult, Box<NavigationError>> {
         let entries = self.load_entries(&requested_location)?;
         Ok(EntryLoadResult {
             location: requested_location,
@@ -45,23 +45,23 @@ impl EntryLoader {
         })
     }
 
-    fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>, NavigationError> {
+    fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>, Box<NavigationError>> {
         match location {
             PanelLocation::Filesystem(path) => {
-                crate::fs::reader::read_entries(path, self.show_hidden_files).map_err(|error| {
+                crate::fs::reader::read_entries(path, self.show_hidden_files).map_err(|error| Box::new(
                     NavigationError::ReadFilesystem {
                         path: path.clone(),
                         detail: error.to_string(),
-                    }
-                })
+                    },
+                ))
             }
             PanelLocation::Archive(view) => {
                 let session = self
                     .session_store
                     .archive(&view.session_key)
-                    .ok_or_else(|| NavigationError::MissingArchiveSession {
+                    .ok_or_else(|| Box::new(NavigationError::MissingArchiveSession {
                         session_key: view.session_key.clone(),
-                    })?;
+                    }))?;
                 Ok(self
                     .archive_service
                     .entries_for_archive_view(view, &session))
@@ -70,15 +70,15 @@ impl EntryLoader {
                 let session = self
                     .session_store
                     .remote(&location.session_key)
-                    .ok_or_else(|| NavigationError::MissingRemoteSession {
+                    .ok_or_else(|| Box::new(NavigationError::MissingRemoteSession {
                         session_key: location.session_key.clone(),
-                    })?;
+                    }))?;
                 self.remote_service
                     .read_entries(&session, &location.current_path, self.show_hidden_files)
-                    .map_err(|error| NavigationError::ReadRemote {
+                    .map_err(|error| Box::new(NavigationError::ReadRemote {
                         location: PanelLocation::Remote(location.clone()),
                         detail: error.to_string(),
-                    })
+                    }))
             }
         }
     }

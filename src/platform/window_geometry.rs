@@ -103,16 +103,6 @@ mod imp {
         None
     }
 
-    #[allow(dead_code)]
-    pub fn restore_window_placement(
-        _title: &str,
-        _x: i32,
-        _y: i32,
-        _width: i32,
-        _height: i32,
-        _maximized: bool,
-    ) {
-    }
 }
 
 pub use imp::current_window_placement;

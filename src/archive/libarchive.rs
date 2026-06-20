@@ -4,8 +4,7 @@ use std::path::Path;
 #[cfg(not(target_os = "windows"))]
 use super::{safe_join_extract_path, ArchiveEntryKind};
 use super::{
-    ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveError, ArchiveFormat,
-    ArchiveFormatDetector, ArchiveSession,
+    ArchiveBackend, ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -100,11 +99,7 @@ mod native {
                     archive_path,
                     kind: entry_kind(header.filetype()),
                     size: header.size().max(0) as u64,
-                    packed_size: None,
                     modified_time: None,
-                    crc: None,
-                    encrypted: false,
-                    method: Some("libarchive".into()),
                     attributes: None,
                 });
             }
@@ -240,24 +235,6 @@ mod native {
             280
         }
 
-        fn supported_extensions(&self) -> &'static [&'static str] {
-            &[
-                "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "gz", "bz2", "xz",
-                "cab", "iso", "wim", "cpio",
-            ]
-        }
-
-        fn capabilities(&self) -> ArchiveCapabilities {
-            ArchiveCapabilities {
-                list: true,
-                extract_single: true,
-                extract_multiple: true,
-                extract_all: true,
-                test: true,
-                ..ArchiveCapabilities::default()
-            }
-        }
-
         fn can_open(&self, path: &Path) -> bool {
             ArchiveFormatDetector::detect(path).is_some_and(LibArchiveBackend::supports_format)
         }
@@ -274,17 +251,8 @@ mod native {
             Ok(ArchiveSession::new(
                 self.id(),
                 path.to_path_buf(),
-                detected,
                 entries,
-                self.capabilities(),
             ))
-        }
-
-        fn list_entries(
-            &self,
-            session: &ArchiveSession,
-        ) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-            Ok(session.cached_entries().to_vec())
         }
 
         fn extract_entry(
@@ -309,29 +277,6 @@ mod native {
                     .iter()
                     .any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
             })
-        }
-
-        fn extract_all(
-            &self,
-            session: &ArchiveSession,
-            target_dir: &Path,
-        ) -> Result<(), ArchiveError> {
-            self.extract_matching(session, target_dir, |_| true)
-        }
-
-        fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
-            let mut reader = self.open_reader(session.archive_path())?;
-            while let Some(_header) = reader.next_header() {
-                while let Some(_block) =
-                    reader
-                        .read_block()
-                        .map_err(|error| ArchiveError::InvalidArchive {
-                            path: session.archive_path().to_path_buf(),
-                            detail: Some(error.to_string()),
-                        })?
-                {}
-            }
-            Ok(())
         }
     }
 
@@ -363,24 +308,6 @@ impl ArchiveBackend for LibArchiveBackend {
         280
     }
 
-    fn supported_extensions(&self) -> &'static [&'static str] {
-        &[
-            "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "gz", "bz2", "xz", "cab",
-            "iso", "wim", "cpio",
-        ]
-    }
-
-    fn capabilities(&self) -> ArchiveCapabilities {
-        ArchiveCapabilities {
-            list: true,
-            extract_single: true,
-            extract_multiple: true,
-            extract_all: true,
-            test: true,
-            ..ArchiveCapabilities::default()
-        }
-    }
-
     fn can_open(&self, _path: &Path) -> bool {
         false
     }
@@ -393,10 +320,6 @@ impl ArchiveBackend for LibArchiveBackend {
                 path: path.to_path_buf(),
             },
         })
-    }
-
-    fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-        Err(Self::unsupported(session.archive_path()))
     }
 
     fn extract_entry(
@@ -414,18 +337,6 @@ impl ArchiveBackend for LibArchiveBackend {
         _entry_paths: &[String],
         _target_dir: &Path,
     ) -> Result<(), ArchiveError> {
-        Err(Self::unsupported(session.archive_path()))
-    }
-
-    fn extract_all(
-        &self,
-        session: &ArchiveSession,
-        _target_dir: &Path,
-    ) -> Result<(), ArchiveError> {
-        Err(Self::unsupported(session.archive_path()))
-    }
-
-    fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
         Err(Self::unsupported(session.archive_path()))
     }
 }

@@ -163,7 +163,7 @@ impl NavigationController {
         }
     }
 
-    fn path_affects_panel(&self, panel: ActivePanel, path: &PathBuf) -> bool {
+    fn path_affects_panel(&self, panel: ActivePanel, path: &std::path::Path) -> bool {
         let commander = self.commander.borrow();
         let Some(panel_path) = commander.state().panel(panel).location.filesystem_path() else {
             return false;

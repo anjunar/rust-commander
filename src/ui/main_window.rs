@@ -95,11 +95,6 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    #[allow(dead_code)]
-    pub fn new(app: &gtk::Application, runtime: MainWindowRuntime) -> Rc<Self> {
-        Self::new_with_visibility(app, runtime, true)
-    }
-
     pub fn new_hidden(app: &gtk::Application, runtime: MainWindowRuntime) -> Rc<Self> {
         Self::new_with_visibility(app, runtime, false)
     }

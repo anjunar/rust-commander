@@ -67,6 +67,15 @@ struct ConnectedRemote {
     sftp: Sftp,
 }
 
+struct TransferRuntime<'a> {
+    plan: &'a TransferPlan,
+    progress: &'a mut TransferProgress,
+    started_at: Instant,
+    tx: &'a mpsc::Sender<OperationEvent>,
+    cancelled: &'a Arc<AtomicBool>,
+    resolution_rx: &'a Receiver<ConflictResolution>,
+}
+
 impl RemoteService {
     pub fn new(task_spawner: TaskSpawner) -> Self {
         Self { task_spawner }
@@ -208,17 +217,15 @@ impl RemoteService {
                 .file_name()
                 .ok_or_else(|| anyhow!("Remote source has no file name: {remote_path}"))?;
             let local_target = target_directory.join(file_name);
-            self.download_path(
-                &connection.sftp,
-                remote_path,
-                &local_target,
-                &plan,
-                &mut progress,
+            let mut runtime = TransferRuntime {
+                plan: &plan,
+                progress: &mut progress,
                 started_at,
                 tx,
                 cancelled,
                 resolution_rx,
-            )?;
+            };
+            self.download_path(&connection.sftp, remote_path, &local_target, &mut runtime)?;
             if cancelled.load(Ordering::Relaxed) {
                 let _ = tx.send(OperationEvent::Cancelled(operation_summary(
                     FileOperationKind::Copy,
@@ -262,17 +269,15 @@ impl RemoteService {
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| anyhow!("Local source has no file name: {}", source.display()))?;
             let remote_target = remote_target_directory.join(file_name);
-            self.upload_path(
-                &connection.sftp,
-                source,
-                &remote_target,
-                &plan,
-                &mut progress,
+            let mut runtime = TransferRuntime {
+                plan: &plan,
+                progress: &mut progress,
                 started_at,
                 tx,
                 cancelled,
                 resolution_rx,
-            )?;
+            };
+            self.upload_path(&connection.sftp, source, &remote_target, &mut runtime)?;
             if cancelled.load(Ordering::Relaxed) {
                 let _ = tx.send(OperationEvent::Cancelled(operation_summary(
                     FileOperationKind::Copy,
@@ -302,14 +307,9 @@ impl RemoteService {
         sftp: &Sftp,
         remote_path: &RemotePath,
         local_target: &Path,
-        plan: &TransferPlan,
-        progress: &mut TransferProgress,
-        started_at: Instant,
-        tx: &mpsc::Sender<OperationEvent>,
-        cancelled: &Arc<AtomicBool>,
-        resolution_rx: &Receiver<ConflictResolution>,
+        runtime: &mut TransferRuntime<'_>,
     ) -> Result<()> {
-        if cancelled.load(Ordering::Relaxed) {
+        if runtime.cancelled.load(Ordering::Relaxed) {
             return Ok(());
         }
 
@@ -327,43 +327,28 @@ impl RemoteService {
                 remote_path,
                 local_target.to_path_buf(),
                 sftp,
-                plan,
-                progress,
-                started_at,
-                tx,
-                cancelled,
-                resolution_rx,
+                runtime,
             )?
             else {
                 return Ok(());
             };
             fs::create_dir_all(&local_target)
                 .with_context(|| format!("Could not create {}", local_target.display()))?;
-            progress.processed_entries += 1;
+            runtime.progress.processed_entries += 1;
             send_progress(
-                tx,
+                runtime.tx,
                 FileOperationKind::Copy,
                 remote_path.to_string(),
-                plan,
-                progress,
-                started_at,
+                runtime.plan,
+                runtime.progress,
+                runtime.started_at,
             );
 
             for child in self.read_child_paths(sftp, remote_path)? {
                 let file_name = child
                     .file_name()
                     .ok_or_else(|| anyhow!("Remote child path has no file name: {child}"))?;
-                self.download_path(
-                    sftp,
-                    &child,
-                    &local_target.join(file_name),
-                    plan,
-                    progress,
-                    started_at,
-                    tx,
-                    cancelled,
-                    resolution_rx,
-                )?;
+                self.download_path(sftp, &child, &local_target.join(file_name), runtime)?;
             }
             return Ok(());
         }
@@ -372,12 +357,7 @@ impl RemoteService {
             remote_path,
             local_target.to_path_buf(),
             sftp,
-            plan,
-            progress,
-            started_at,
-            tx,
-            cancelled,
-            resolution_rx,
+            runtime,
         )?
         else {
             return Ok(());
@@ -402,7 +382,7 @@ impl RemoteService {
         let mut buffer = vec![0_u8; 1024 * 1024];
 
         loop {
-            if cancelled.load(Ordering::Relaxed) {
+            if runtime.cancelled.load(Ordering::Relaxed) {
                 break;
             }
             let read = remote_file
@@ -414,30 +394,30 @@ impl RemoteService {
             local_file
                 .write_all(&buffer[..read])
                 .with_context(|| format!("Could not write {}", local_target.display()))?;
-            progress.processed_bytes += read as u64;
+            runtime.progress.processed_bytes += read as u64;
             send_progress(
-                tx,
+                runtime.tx,
                 FileOperationKind::Copy,
                 remote_path.to_string(),
-                plan,
-                progress,
-                started_at,
+                runtime.plan,
+                runtime.progress,
+                runtime.started_at,
             );
         }
 
-        if cancelled.load(Ordering::Relaxed) {
+        if runtime.cancelled.load(Ordering::Relaxed) {
             remove_partial_local_file(&local_target)?;
             return Ok(());
         }
 
-        progress.processed_entries += 1;
+        runtime.progress.processed_entries += 1;
         send_progress(
-            tx,
+            runtime.tx,
             FileOperationKind::Copy,
             remote_path.to_string(),
-            plan,
-            progress,
-            started_at,
+            runtime.plan,
+            runtime.progress,
+            runtime.started_at,
         );
         Ok(())
     }
@@ -447,14 +427,9 @@ impl RemoteService {
         sftp: &Sftp,
         source: &Path,
         remote_target: &RemotePath,
-        plan: &TransferPlan,
-        progress: &mut TransferProgress,
-        started_at: Instant,
-        tx: &mpsc::Sender<OperationEvent>,
-        cancelled: &Arc<AtomicBool>,
-        resolution_rx: &Receiver<ConflictResolution>,
+        runtime: &mut TransferRuntime<'_>,
     ) -> Result<()> {
-        if cancelled.load(Ordering::Relaxed) {
+        if runtime.cancelled.load(Ordering::Relaxed) {
             return Ok(());
         }
 
@@ -464,26 +439,21 @@ impl RemoteService {
             source,
             remote_target.clone(),
             sftp,
-            plan,
-            progress,
-            started_at,
-            tx,
-            cancelled,
-            resolution_rx,
+            runtime,
         )?
         else {
             return Ok(());
         };
         if metadata.is_dir() {
             self.create_remote_dir_all(sftp, &remote_target)?;
-            progress.processed_entries += 1;
+            runtime.progress.processed_entries += 1;
             send_progress(
-                tx,
+                runtime.tx,
                 FileOperationKind::Copy,
                 source.display().to_string(),
-                plan,
-                progress,
-                started_at,
+                runtime.plan,
+                runtime.progress,
+                runtime.started_at,
             );
 
             for entry in fs::read_dir(source)
@@ -492,17 +462,7 @@ impl RemoteService {
                 let entry = entry?;
                 let child_source = entry.path();
                 let child_name = entry.file_name().to_string_lossy().into_owned();
-                self.upload_path(
-                    sftp,
-                    &child_source,
-                    &remote_target.join(child_name),
-                    plan,
-                    progress,
-                    started_at,
-                    tx,
-                    cancelled,
-                    resolution_rx,
-                )?;
+                self.upload_path(sftp, &child_source, &remote_target.join(child_name), runtime)?;
             }
             return Ok(());
         }
@@ -525,7 +485,7 @@ impl RemoteService {
         let mut buffer = vec![0_u8; 1024 * 1024];
 
         loop {
-            if cancelled.load(Ordering::Relaxed) {
+            if runtime.cancelled.load(Ordering::Relaxed) {
                 break;
             }
             let read = local_file
@@ -537,30 +497,30 @@ impl RemoteService {
             remote_file
                 .write_all(&buffer[..read])
                 .with_context(|| format!("Could not write remote file {remote_target}"))?;
-            progress.processed_bytes += read as u64;
+            runtime.progress.processed_bytes += read as u64;
             send_progress(
-                tx,
+                runtime.tx,
                 FileOperationKind::Copy,
                 source.display().to_string(),
-                plan,
-                progress,
-                started_at,
+                runtime.plan,
+                runtime.progress,
+                runtime.started_at,
             );
         }
 
-        if cancelled.load(Ordering::Relaxed) {
+        if runtime.cancelled.load(Ordering::Relaxed) {
             remove_partial_remote_file(sftp, &remote_target)?;
             return Ok(());
         }
 
-        progress.processed_entries += 1;
+        runtime.progress.processed_entries += 1;
         send_progress(
-            tx,
+            runtime.tx,
             FileOperationKind::Copy,
             source.display().to_string(),
-            plan,
-            progress,
-            started_at,
+            runtime.plan,
+            runtime.progress,
+            runtime.started_at,
         );
         Ok(())
     }
@@ -745,40 +705,34 @@ impl Default for RemoteService {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn resolve_local_target_conflict(
     remote_source: &RemotePath,
     mut local_target: PathBuf,
     sftp: &Sftp,
-    plan: &TransferPlan,
-    progress: &mut TransferProgress,
-    started_at: Instant,
-    tx: &mpsc::Sender<OperationEvent>,
-    cancelled: &Arc<AtomicBool>,
-    resolution_rx: &Receiver<ConflictResolution>,
+    runtime: &mut TransferRuntime<'_>,
 ) -> Result<Option<PathBuf>> {
     while local_target.exists() {
-        let _ = tx.send(OperationEvent::Conflict(OperationConflict {
+        let _ = runtime.tx.send(OperationEvent::Conflict(OperationConflict {
             kind: FileOperationKind::Copy,
             source: PathBuf::from(remote_source.as_str()),
             target: local_target.clone(),
         }));
 
-        match await_resolution(cancelled, resolution_rx) {
+        match await_resolution(runtime.cancelled, runtime.resolution_rx) {
             ConflictResolution::Overwrite => {
                 cleanup_local_path(&local_target)?;
             }
             ConflictResolution::Skip => {
                 let skipped = build_remote_plan_for_path(sftp, remote_source)?;
-                progress.processed_bytes += skipped.total_bytes;
-                progress.processed_entries += skipped.total_entries;
+                runtime.progress.processed_bytes += skipped.total_bytes;
+                runtime.progress.processed_entries += skipped.total_entries;
                 send_progress(
-                    tx,
+                    runtime.tx,
                     FileOperationKind::Copy,
                     remote_source.to_string(),
-                    plan,
-                    progress,
-                    started_at,
+                    runtime.plan,
+                    runtime.progress,
+                    runtime.started_at,
                 );
                 return Ok(None);
             }
@@ -786,7 +740,7 @@ fn resolve_local_target_conflict(
                 local_target = next_available_local_path(&local_target);
             }
             ConflictResolution::Cancel => {
-                cancelled.store(true, Ordering::Relaxed);
+                runtime.cancelled.store(true, Ordering::Relaxed);
                 return Ok(None);
             }
         }
@@ -795,43 +749,37 @@ fn resolve_local_target_conflict(
     Ok(Some(local_target))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn resolve_remote_target_conflict(
     local_source: &Path,
     mut remote_target: RemotePath,
     sftp: &Sftp,
-    plan: &TransferPlan,
-    progress: &mut TransferProgress,
-    started_at: Instant,
-    tx: &mpsc::Sender<OperationEvent>,
-    cancelled: &Arc<AtomicBool>,
-    resolution_rx: &Receiver<ConflictResolution>,
+    runtime: &mut TransferRuntime<'_>,
 ) -> Result<Option<RemotePath>> {
     while sftp
         .stat(to_remote_fs_path(&remote_target).as_path())
         .is_ok()
     {
-        let _ = tx.send(OperationEvent::Conflict(OperationConflict {
+        let _ = runtime.tx.send(OperationEvent::Conflict(OperationConflict {
             kind: FileOperationKind::Copy,
             source: local_source.to_path_buf(),
             target: PathBuf::from(remote_target.as_str()),
         }));
 
-        match await_resolution(cancelled, resolution_rx) {
+        match await_resolution(runtime.cancelled, runtime.resolution_rx) {
             ConflictResolution::Overwrite => {
                 cleanup_remote_path(sftp, &remote_target)?;
             }
             ConflictResolution::Skip => {
                 let skipped = build_local_plan(&[local_source.to_path_buf()])?;
-                progress.processed_bytes += skipped.total_bytes;
-                progress.processed_entries += skipped.total_entries;
+                runtime.progress.processed_bytes += skipped.total_bytes;
+                runtime.progress.processed_entries += skipped.total_entries;
                 send_progress(
-                    tx,
+                    runtime.tx,
                     FileOperationKind::Copy,
                     local_source.display().to_string(),
-                    plan,
-                    progress,
-                    started_at,
+                    runtime.plan,
+                    runtime.progress,
+                    runtime.started_at,
                 );
                 return Ok(None);
             }
@@ -839,7 +787,7 @@ fn resolve_remote_target_conflict(
                 remote_target = next_available_remote_path(sftp, &remote_target);
             }
             ConflictResolution::Cancel => {
-                cancelled.store(true, Ordering::Relaxed);
+                runtime.cancelled.store(true, Ordering::Relaxed);
                 return Ok(None);
             }
         }
@@ -1115,16 +1063,14 @@ fn send_progress(
 
 fn operation_summary(
     kind: FileOperationKind,
-    sources: Vec<PathBuf>,
-    target: Option<PathBuf>,
+    _sources: Vec<PathBuf>,
+    _target: Option<PathBuf>,
     total_bytes: u64,
     total_entries: u64,
     started_at: Instant,
 ) -> OperationSummary {
     OperationSummary {
         kind,
-        sources,
-        target,
         total_bytes,
         total_entries,
         elapsed: started_at.elapsed(),
@@ -1389,29 +1335,5 @@ fn format_fingerprint(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::{describe_connect_error, format_fingerprint, known_hosts_candidates};
-
-    #[test]
-    fn returns_known_hosts_candidates_in_priority_order() {
-        let candidates = known_hosts_candidates(Path::new("/tmp/home"));
-        assert_eq!(candidates[0], Path::new("/tmp/home/.ssh/known_hosts"));
-        assert_eq!(candidates[1], Path::new("/tmp/home/.ssh/known_hosts2"));
-    }
-
-    #[test]
-    fn formats_connect_timeout_for_user_facing_error() {
-        let error = std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out");
-        assert_eq!(
-            describe_connect_error("example.com:22", &error),
-            "Could not reach remote host example.com:22: connection timed out"
-        );
-    }
-
-    #[test]
-    fn formats_sha256_fingerprint_as_hex() {
-        assert_eq!(format_fingerprint(&[0x01, 0xab, 0xff]), "01abff");
-    }
-}
+#[path = "../../tests/unit/remote_service_tests.rs"]
+mod tests;

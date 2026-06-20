@@ -1,3 +1,5 @@
+#![allow(clippy::unnecessary_to_owned)]
+
 #[macro_use]
 extern crate rust_i18n;
 

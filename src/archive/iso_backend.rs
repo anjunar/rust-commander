@@ -7,8 +7,8 @@ use std::{
 use iso9660_simple::{ISODirectoryEntry, Read as IsoRead, ISO9660};
 
 use super::{
-    safe_join_extract_path, ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind,
-    ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
+    safe_join_extract_path, ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError,
+    ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -73,11 +73,7 @@ impl IsoBackend {
                 display_name: name,
                 kind,
                 size: directory_entry.file_size() as u64,
-                packed_size: None,
                 modified_time: None,
-                crc: None,
-                encrypted: false,
-                method: Some("ISO9660".into()),
                 attributes: None,
             });
 
@@ -211,21 +207,6 @@ impl ArchiveBackend for IsoBackend {
         250
     }
 
-    fn supported_extensions(&self) -> &'static [&'static str] {
-        &["iso"]
-    }
-
-    fn capabilities(&self) -> ArchiveCapabilities {
-        ArchiveCapabilities {
-            list: true,
-            extract_single: true,
-            extract_multiple: true,
-            extract_all: true,
-            test: true,
-            ..ArchiveCapabilities::default()
-        }
-    }
-
     fn can_open(&self, path: &Path) -> bool {
         matches!(
             ArchiveFormatDetector::detect(path),
@@ -238,14 +219,8 @@ impl ArchiveBackend for IsoBackend {
         Ok(ArchiveSession::new(
             self.id(),
             path.to_path_buf(),
-            Some(ArchiveFormat::Iso),
             entries,
-            self.capabilities(),
         ))
-    }
-
-    fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-        Ok(session.cached_entries().to_vec())
     }
 
     fn extract_entry(
@@ -270,14 +245,6 @@ impl ArchiveBackend for IsoBackend {
                 .iter()
                 .any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
         })
-    }
-
-    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError> {
-        self.extract_entries_matching(session, target_dir, |_| true)
-    }
-
-    fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
-        self.open_iso(session.archive_path()).map(|_| ())
     }
 }
 

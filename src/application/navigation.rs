@@ -13,7 +13,7 @@ use crate::{
 };
 
 pub enum SelectedNavigation {
-    Load(NavigationRequest),
+    Load(Box<NavigationRequest>),
     OpenPath {
         path: std::path::PathBuf,
         status: String,
@@ -67,7 +67,7 @@ pub fn selected_navigation_request(
 
     if selected.is_parent_link {
         if let Some(next_location) = commander.state().panel(panel).location.parent() {
-            return SelectedNavigation::Load(NavigationRequest {
+            return SelectedNavigation::Load(Box::new(NavigationRequest {
                 panel,
                 generation: 0,
                 action: LoadAction::Navigate,
@@ -76,7 +76,7 @@ pub fn selected_navigation_request(
                 next_location,
                 selection_intent: None,
                 busy_message: t!("status.loading_parent_directory").into_owned(),
-            });
+            }));
         }
 
         return SelectedNavigation::Unsupported {
@@ -122,7 +122,7 @@ pub fn selected_navigation_request(
             }
         };
 
-        return SelectedNavigation::Load(NavigationRequest {
+        return SelectedNavigation::Load(Box::new(NavigationRequest {
             panel,
             generation: 0,
             action: LoadAction::Navigate,
@@ -130,7 +130,7 @@ pub fn selected_navigation_request(
             next_location,
             selection_intent: None,
             busy_message: t!("status.loading_directory").into_owned(),
-        });
+        }));
     }
 
     if let Some(path) = selected.filesystem_path.clone() {
@@ -205,7 +205,7 @@ pub fn spawn_directory_load(
     remote_service: RemoteService,
     session_store: Rc<RefCell<SessionStore>>,
     show_hidden_files: bool,
-) -> mpsc::Receiver<Result<DirectoryLoadResult, NavigationError>> {
+) -> mpsc::Receiver<Result<DirectoryLoadResult, Box<NavigationError>>> {
     let (tx, rx) = mpsc::channel();
     let session_store = session_store.borrow().clone();
     let loader = EntryLoader::new(

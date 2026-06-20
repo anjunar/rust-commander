@@ -1,6 +1,4 @@
 
-#![allow(dead_code)]
-
 mod detector;
 mod error;
 mod iso_backend;
@@ -32,35 +30,13 @@ pub use service::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTa
 pub use unrar::UnrarBackend;
 pub use zip_backend::ZipBackend;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ArchiveCapabilities {
-    pub list: bool,
-    pub extract_single: bool,
-    pub extract_multiple: bool,
-    pub extract_all: bool,
-    pub test: bool,
-    pub password: bool,
-    pub progress: bool,
-    pub cancel: bool,
-    pub create_archive: bool,
-    pub update_archive: bool,
-    pub delete_entry: bool,
-    pub rename_entry: bool,
-    pub solid_archive: bool,
-    pub multi_volume: bool,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchiveEntry {
     pub archive_path: String,
     pub display_name: String,
     pub kind: ArchiveEntryKind,
     pub size: u64,
-    pub packed_size: Option<u64>,
     pub modified_time: Option<SystemTime>,
-    pub crc: Option<String>,
-    pub encrypted: bool,
-    pub method: Option<String>,
     pub attributes: Option<String>,
 }
 
@@ -68,34 +44,23 @@ pub struct ArchiveEntry {
 pub enum ArchiveEntryKind {
     File,
     Directory,
+    #[cfg(not(target_os = "windows"))]
     Symlink,
+    #[cfg(not(target_os = "windows"))]
     Unknown,
 }
 
 #[derive(Clone, Debug)]
 pub enum ArchiveOperation {
-    OpenArchive,
-    List,
-    ExtractEntry {
-        entry_path: String,
-        target_dir: PathBuf,
-    },
     ExtractEntries {
         entry_paths: Vec<String>,
-        target_dir: PathBuf,
     },
-    ExtractAll {
-        target_dir: PathBuf,
-    },
-    Test,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct ArchiveProgress {
     pub operation: Option<ArchiveOperation>,
     pub current_path: Option<String>,
-    pub processed_bytes: Option<u64>,
-    pub total_bytes: Option<u64>,
     pub processed_entries: Option<u64>,
     pub total_entries: Option<u64>,
     pub percent: Option<f64>,
@@ -111,26 +76,20 @@ pub struct ArchiveSession {
 struct ArchiveSessionInner {
     backend_id: &'static str,
     archive_path: PathBuf,
-    detected_format: Option<ArchiveFormat>,
     cached_entries: Vec<ArchiveEntry>,
-    capabilities: ArchiveCapabilities,
 }
 
 impl ArchiveSession {
     pub fn new(
         backend_id: &'static str,
         archive_path: PathBuf,
-        detected_format: Option<ArchiveFormat>,
         cached_entries: Vec<ArchiveEntry>,
-        capabilities: ArchiveCapabilities,
     ) -> Self {
         Self {
             inner: Arc::new(ArchiveSessionInner {
                 backend_id,
                 archive_path,
-                detected_format,
                 cached_entries,
-                capabilities,
             }),
         }
     }
@@ -139,16 +98,8 @@ impl ArchiveSession {
         &self.inner.archive_path
     }
 
-    pub fn detected_format(&self) -> Option<ArchiveFormat> {
-        self.inner.detected_format
-    }
-
     pub fn cached_entries(&self) -> &[ArchiveEntry] {
         &self.inner.cached_entries
-    }
-
-    pub fn capabilities(&self) -> &ArchiveCapabilities {
-        &self.inner.capabilities
     }
 
     pub(crate) fn backend_id(&self) -> &'static str {
@@ -160,11 +111,8 @@ pub trait ArchiveBackend: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
     fn priority(&self) -> u32;
-    fn supported_extensions(&self) -> &'static [&'static str];
-    fn capabilities(&self) -> ArchiveCapabilities;
     fn can_open(&self, path: &Path) -> bool;
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError>;
-    fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError>;
     fn extract_entry(
         &self,
         session: &ArchiveSession,
@@ -182,8 +130,6 @@ pub trait ArchiveBackend: Send + Sync {
         }
         Ok(())
     }
-    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError>;
-    fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError>;
 }
 
 impl fmt::Debug for dyn ArchiveBackend {

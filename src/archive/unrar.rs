@@ -6,8 +6,8 @@ use unrar::{
 };
 
 use super::{
-    safe_join_extract_path, ArchiveBackend, ArchiveCapabilities, ArchiveEntry, ArchiveEntryKind,
-    ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
+    safe_join_extract_path, ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError,
+    ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -57,11 +57,7 @@ impl UnrarBackend {
             display_name,
             kind,
             size: header.unpacked_size,
-            packed_size: None,
             modified_time: None,
-            crc: Some(format!("{:08X}", header.file_crc)),
-            encrypted: header.is_encrypted(),
-            method: Some(format!("{}", header.method)),
             attributes: Some(format!("{:X}", header.file_attr)),
         })
     }
@@ -136,24 +132,6 @@ impl ArchiveBackend for UnrarBackend {
         180
     }
 
-    fn supported_extensions(&self) -> &'static [&'static str] {
-        &["rar"]
-    }
-
-    fn capabilities(&self) -> ArchiveCapabilities {
-        ArchiveCapabilities {
-            list: true,
-            extract_single: true,
-            extract_multiple: true,
-            extract_all: true,
-            test: true,
-            password: true,
-            solid_archive: true,
-            multi_volume: true,
-            ..ArchiveCapabilities::default()
-        }
-    }
-
     fn can_open(&self, path: &Path) -> bool {
         matches!(
             ArchiveFormatDetector::detect(path),
@@ -187,14 +165,8 @@ impl ArchiveBackend for UnrarBackend {
         Ok(ArchiveSession::new(
             self.id(),
             path.to_path_buf(),
-            ArchiveFormatDetector::detect(path),
             entries,
-            self.capabilities(),
         ))
-    }
-
-    fn list_entries(&self, session: &ArchiveSession) -> Result<Vec<ArchiveEntry>, ArchiveError> {
-        Ok(session.cached_entries().to_vec())
     }
 
     fn extract_entry(
@@ -222,25 +194,6 @@ impl ArchiveBackend for UnrarBackend {
         self.extract_matching(session, target_dir, |candidate| {
             Self::selected_match(candidate, &normalized)
         })
-    }
-
-    fn extract_all(&self, session: &ArchiveSession, target_dir: &Path) -> Result<(), ArchiveError> {
-        self.extract_matching(session, target_dir, |_| true)
-    }
-
-    fn test_archive(&self, session: &ArchiveSession) -> Result<(), ArchiveError> {
-        let mut archive = self.processing_archive(session.archive_path())?;
-
-        while let Some(header) = archive
-            .read_header()
-            .map_err(|error| map_unrar_error(session.archive_path(), error))?
-        {
-            archive = header
-                .test()
-                .map_err(|error| map_unrar_error(session.archive_path(), error))?;
-        }
-
-        Ok(())
     }
 }
 
@@ -282,30 +235,5 @@ fn map_unrar_error(path: &Path, error: UnrarError) -> ArchiveError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::UnrarBackend;
-    use crate::archive::ArchiveBackend;
-    use std::path::Path;
-
-    #[test]
-    fn rar_backend_detects_rar_paths() {
-        let backend = UnrarBackend::new();
-        assert!(backend.can_open(Path::new("archive.rar")));
-        assert!(!backend.can_open(Path::new("archive.zip")));
-    }
-
-    #[test]
-    fn rar_backend_is_read_only() {
-        let capabilities = UnrarBackend::new().capabilities();
-        assert!(capabilities.list);
-        assert!(capabilities.extract_single);
-        assert!(capabilities.extract_multiple);
-        assert!(capabilities.extract_all);
-        assert!(capabilities.test);
-        assert!(capabilities.password);
-        assert!(!capabilities.create_archive);
-        assert!(!capabilities.update_archive);
-        assert!(!capabilities.delete_entry);
-        assert!(!capabilities.rename_entry);
-    }
-}
+#[path = "../../tests/unit/archive_unrar_tests.rs"]
+mod tests;

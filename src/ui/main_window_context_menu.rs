@@ -132,7 +132,6 @@ impl ContextMenuController {
                 .show_context_menu(directory, selected_paths)
             {
                 self.show_command_failed(error);
-                return;
             }
         }
 

@@ -61,32 +61,34 @@ pub struct NavigationController {
     platform_port: SharedPlatformPort,
 }
 
+pub struct NavigationControllerDeps {
+    pub host: Rc<dyn NavigationHost>,
+    pub window: gtk::ApplicationWindow,
+    pub commander: Rc<RefCell<Commander>>,
+    pub archive_service: Rc<RefCell<ArchiveService>>,
+    pub remote_service: RemoteService,
+    pub session_store: Rc<RefCell<SessionStore>>,
+    pub task_spawner: TaskSpawner,
+    pub operation_runtime: OperationRuntime,
+    pub runtime: NavigationRuntime,
+    pub app_config_cache: Rc<RefCell<AppConfig>>,
+    pub platform_port: SharedPlatformPort,
+}
+
 impl NavigationController {
-    pub fn new(
-        host: Rc<dyn NavigationHost>,
-        window: gtk::ApplicationWindow,
-        commander: Rc<RefCell<Commander>>,
-        archive_service: Rc<RefCell<ArchiveService>>,
-        remote_service: RemoteService,
-        session_store: Rc<RefCell<SessionStore>>,
-        task_spawner: TaskSpawner,
-        operation_runtime: OperationRuntime,
-        runtime: NavigationRuntime,
-        app_config_cache: Rc<RefCell<AppConfig>>,
-        platform_port: SharedPlatformPort,
-    ) -> Self {
+    pub fn new(deps: NavigationControllerDeps) -> Self {
         Self {
-            host,
-            window,
-            commander,
-            archive_service,
-            remote_service,
-            session_store,
-            task_spawner,
-            operation_runtime,
-            runtime,
-            app_config_cache,
-            platform_port,
+            host: deps.host,
+            window: deps.window,
+            commander: deps.commander,
+            archive_service: deps.archive_service,
+            remote_service: deps.remote_service,
+            session_store: deps.session_store,
+            task_spawner: deps.task_spawner,
+            operation_runtime: deps.operation_runtime,
+            runtime: deps.runtime,
+            app_config_cache: deps.app_config_cache,
+            platform_port: deps.platform_port,
         }
     }
 
@@ -107,7 +109,7 @@ impl NavigationController {
         };
 
         match request {
-            SelectedNavigation::Load(request) => self.start_directory_load(request),
+            SelectedNavigation::Load(request) => self.start_directory_load(*request),
             SelectedNavigation::OpenPath { path, status } => {
                 if let Err(error) = self.platform_port.open_path(&path) {
                     self.show_command_failed(error);

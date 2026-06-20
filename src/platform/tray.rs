@@ -29,7 +29,7 @@ mod windows_tray {
                 0,
                 0,
                 LR_LOADFROMFILE,
-            ) as *mut core::ffi::c_void;
+            );
             if hicon.is_null() {
                 return Err("LoadImageW failed".into());
             }
@@ -65,21 +65,14 @@ mod windows_tray {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        for (slot, value) in target.iter_mut().zip(tip_w.into_iter()) {
+        for (slot, value) in target.iter_mut().zip(tip_w) {
             *slot = value;
         }
     }
 
     #[cfg(test)]
     mod tests {
-        use super::copy_tip;
-
-        #[test]
-        fn copy_tip_writes_nul_terminated_utf16() {
-            let mut buffer = [0u16; 8];
-            copy_tip(&mut buffer, "RC");
-            assert_eq!(&buffer[..3], &[b'R' as u16, b'C' as u16, 0]);
-        }
+        include!("../../tests/unit/platform_tray_windows_tests.rs");
     }
 }
 
@@ -90,11 +83,9 @@ mod windows_tray {}
 pub use windows_tray::{create_tray_icon, remove_tray_icon};
 
 #[cfg(not(target_os = "windows"))]
-#[allow(dead_code)]
 pub fn create_tray_icon() -> Result<(), String> {
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
-#[allow(dead_code)]
 pub fn remove_tray_icon() {}

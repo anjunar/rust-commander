@@ -281,24 +281,9 @@ impl ProgressDialog {
                 .operation
                 .as_ref()
                 .map(|operation| match operation {
-                    crate::archive::ArchiveOperation::ExtractEntry { entry_path, .. } => {
-                        entry_path.clone()
-                    }
-                    crate::archive::ArchiveOperation::ExtractEntries { entry_paths, .. } => {
+                    crate::archive::ArchiveOperation::ExtractEntries { entry_paths } => {
                         t!("progress.selected_archive_items", count = entry_paths.len())
                             .into_owned()
-                    }
-                    crate::archive::ArchiveOperation::ExtractAll { .. } => {
-                        t!("progress.extracting_complete_archive").into_owned()
-                    }
-                    crate::archive::ArchiveOperation::OpenArchive => {
-                        t!("progress.opening_archive").into_owned()
-                    }
-                    crate::archive::ArchiveOperation::List => {
-                        t!("progress.listing_archive").into_owned()
-                    }
-                    crate::archive::ArchiveOperation::Test => {
-                        t!("progress.testing_archive").into_owned()
                     }
                 })
                 .unwrap_or_else(|| t!("progress.preparing_archive_operation").into_owned())

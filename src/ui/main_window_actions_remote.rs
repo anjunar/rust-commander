@@ -138,6 +138,6 @@ fn upsert_remote_profile(profiles: &mut Vec<RemoteProfile>, profile: RemoteProfi
         *existing = profile;
     } else {
         profiles.push(profile);
-        profiles.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+        profiles.sort_by_key(|left| left.name.to_lowercase());
     }
 }
