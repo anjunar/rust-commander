@@ -184,11 +184,9 @@ impl ArchiveFormatDetector {
         None
     }
 
-    pub fn is_supported_archive(path: &Path) -> bool {
-        Self::detect(path).is_some()
-    }
 }
 
+#[cfg(test)]
 #[cfg(test)]
 mod tests {
     use std::{

@@ -101,12 +101,6 @@ pub struct ArchiveProgress {
     pub percent: Option<f64>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ArchivePasswordRequest {
-    pub archive_path: PathBuf,
-    pub backend_name: String,
-    pub message: Option<String>,
-}
 
 #[derive(Clone, Debug)]
 pub struct ArchiveSession {
