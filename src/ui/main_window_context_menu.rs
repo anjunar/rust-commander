@@ -48,7 +48,7 @@ pub struct ContextMenuController {
     #[cfg(not(target_os = "windows"))]
     right_panel_root: gtk::Box,
     commander: Rc<RefCell<Commander>>,
-    platform_port: SharedPlatformPort,
+_platform_port: SharedPlatformPort,
     #[cfg(not(target_os = "windows"))]
     runtime: ContextMenuRuntime,
     #[cfg(not(target_os = "windows"))]
@@ -74,7 +74,7 @@ impl ContextMenuController {
             #[cfg(not(target_os = "windows"))]
             right_panel_root,
             commander,
-            platform_port,
+            _platform_port: platform_port,
             #[cfg(not(target_os = "windows"))]
             runtime: _runtime,
             #[cfg(not(target_os = "windows"))]
@@ -122,11 +122,13 @@ impl ContextMenuController {
         };
 
         self.host.apply_update(update);
+        #[cfg(not(target_os = "windows"))]
+        let _ = &directory;
 
         #[cfg(target_os = "windows")]
         {
             if let Err(error) = self
-                .platform_port
+                ._platform_port
                 .show_context_menu(directory, selected_paths)
             {
                 self.show_command_failed(error);

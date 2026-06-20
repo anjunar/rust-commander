@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::domain::RootLocation;
 
+#[allow(dead_code)]
 pub trait PlatformPort {
     fn available_roots(&self) -> Vec<RootLocation>;
     fn open_path(&self, path: &Path) -> Result<()>;

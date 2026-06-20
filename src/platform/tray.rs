@@ -90,9 +90,11 @@ mod windows_tray {}
 pub use windows_tray::{create_tray_icon, remove_tray_icon};
 
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn create_tray_icon() -> Result<(), String> {
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn remove_tray_icon() {}

@@ -5,6 +5,9 @@ use std::{path::PathBuf, rc::Rc};
 use rust_i18n::t;
 
 #[cfg(not(target_os = "windows"))]
+use gtk::prelude::*;
+
+#[cfg(not(target_os = "windows"))]
 use crate::application::ActivePanel;
 
 #[cfg(not(target_os = "windows"))]

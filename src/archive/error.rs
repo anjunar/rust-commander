@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{fmt, path::PathBuf};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

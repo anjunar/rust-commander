@@ -3,9 +3,6 @@ use std::{
     rc::Rc,
 };
 
-#[cfg(not(target_os = "windows"))]
-use std::path::PathBuf;
-
 use gtk::{glib, prelude::*};
 
 use crate::{

@@ -1,4 +1,3 @@
-#![cfg_attr(target_os = "windows", allow(dead_code))]
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
