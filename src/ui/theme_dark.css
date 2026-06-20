@@ -94,6 +94,9 @@ headerbar .titlebutton:active,
 
 dropdown,
 dropdown button,
+spinbutton,
+spinbutton text,
+spinbutton button,
 entry,
 dialog entry,
 button,
@@ -104,16 +107,46 @@ menubutton button {
 }
 
 dropdown button:hover,
+spinbutton:hover,
+spinbutton button:hover,
 button:hover,
 menubutton button:hover {
     background: #1f1f1f;
 }
 
 dropdown button:focus,
+spinbutton:focus,
+spinbutton text:focus,
+spinbutton button:focus,
 button:focus,
 entry:focus {
     box-shadow: 0 0 0 1px rgba(42, 127, 209, 0.24);
     border-color: #2a7fd1;
+}
+
+switch {
+    background: #101010;
+    border: 1px solid #2b2b2b;
+}
+
+switch:checked {
+    background: #264d8f;
+    border-color: #2f5da9;
+}
+
+switch slider {
+    background: #8695a5;
+    border: 1px solid #3a4652;
+}
+
+switch:hover slider,
+switch:focus slider {
+    background: #9aabbd;
+}
+
+switch:checked slider {
+    background: #dbe7f3;
+    border-color: #b9cadb;
 }
 
 .path-label {
@@ -147,18 +180,18 @@ columnview row {
 }
 
 columnview row:nth-child(even) {
-    background: rgba(255, 255, 255, 0.01);
+    background: rgba(38, 50, 61, 0.18);
 }
 
 columnview row:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(59, 78, 97, 0.18);
 }
 
 columnview row:selected,
 listview row:selected,
 treeexpander row:selected {
-    background: #214283;
-    color: #ffffff;
+    background: #264d8f;
+    color: #dbe7f3;
 }
 
 .file-panel:not(.active-panel) columnview row:selected,
@@ -258,10 +291,10 @@ messagedialog box,
 .window-control-button:focus,
 .window-control-button:focus-visible,
 .window-control-button:active {
-    background: rgba(255, 255, 255, 0.08);
-    background-color: rgba(255, 255, 255, 0.08);
+    background: rgba(86, 104, 122, 0.32);
+    background-color: rgba(86, 104, 122, 0.32);
     background-image: none;
-    color: #ffffff;
+    color: #dbe7f3;
     border-color: transparent;
     box-shadow: none;
 }
@@ -273,7 +306,7 @@ messagedialog box,
     background: #c23b3b;
     background-color: #c23b3b;
     background-image: none;
-    color: #ffffff;
+    color: #f4eaea;
     border-color: transparent;
     box-shadow: none;
 }

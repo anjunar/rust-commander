@@ -11,6 +11,8 @@
 .root-selector button,
 dropdown,
 dropdown button,
+spinbutton,
+spinbutton button,
 entry,
 dialog entry,
 button,
@@ -86,6 +88,11 @@ scrollbar slider {
     border-radius: 999px;
     min-width: 10px;
     min-height: 10px;
+}
+
+switch,
+switch slider {
+    border-radius: 999px;
 }
 
 .status-line {
