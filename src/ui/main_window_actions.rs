@@ -15,6 +15,15 @@ use crate::{
 };
 
 impl MainWindow {
+    pub fn handle_connect_remote_for_panel(self: &Rc<Self>, panel: crate::application::ActivePanel) {
+        let update = {
+            let mut commander = self.commander.borrow_mut();
+            commander.set_active_panel(panel)
+        };
+        self.apply_update(update);
+        self.handle_connect_remote();
+    }
+
     pub fn handle_switch_panel(self: &Rc<Self>) {
         let update = {
             let mut commander = self.commander.borrow_mut();

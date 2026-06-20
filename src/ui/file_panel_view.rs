@@ -22,6 +22,7 @@ pub struct FilePanelView {
     pub root: gtk::Box,
     pub root_model: gtk::StringList,
     pub root_dropdown: gtk::DropDown,
+    pub remote_connect_button: gtk::Button,
     pub path_label: gtk::Label,
     pub store: gio::ListStore,
     pub selection: gtk::MultiSelection,
@@ -54,6 +55,10 @@ impl FilePanelView {
         root_dropdown.set_enable_search(true);
         root_dropdown.add_css_class("root-selector");
         path_row.append(&root_dropdown);
+
+        let remote_connect_button = gtk::Button::with_label("Connect");
+        remote_connect_button.add_css_class("flat");
+        path_row.append(&remote_connect_button);
 
         let path_label = gtk::Label::new(None);
         path_label.set_xalign(0.0);
@@ -89,6 +94,7 @@ impl FilePanelView {
             root,
             root_model,
             root_dropdown,
+            remote_connect_button,
             path_label,
             store,
             selection,
@@ -247,6 +253,7 @@ impl FilePanelView {
 
     pub fn set_interaction_enabled(&self, enabled: bool) {
         self.root_dropdown.set_sensitive(enabled);
+        self.remote_connect_button.set_sensitive(enabled);
         self.column_view.set_sensitive(enabled);
     }
 
@@ -336,6 +343,15 @@ impl FilePanelView {
             if selected != gtk::INVALID_LIST_POSITION {
                 f(selected as usize);
             }
+        });
+    }
+
+    pub fn connect_remote_connect<F>(&self, f: F)
+    where
+        F: Fn() + 'static,
+    {
+        self.remote_connect_button.connect_clicked(move |_| {
+            f();
         });
     }
 

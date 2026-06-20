@@ -16,6 +16,7 @@ pub struct PanelWiring {
     commander: Rc<RefCell<Commander>>,
     navigation: NavigationController,
     context_menu_handler: Rc<dyn Fn(ActivePanel, Option<usize>, f64, f64)>,
+    remote_connect_handler: Rc<dyn Fn(ActivePanel)>,
 }
 
 impl PanelWiring {
@@ -24,12 +25,14 @@ impl PanelWiring {
         commander: Rc<RefCell<Commander>>,
         navigation: NavigationController,
         context_menu_handler: Rc<dyn Fn(ActivePanel, Option<usize>, f64, f64)>,
+        remote_connect_handler: Rc<dyn Fn(ActivePanel)>,
     ) -> Self {
         Self {
             host,
             commander,
             navigation,
             context_menu_handler,
+            remote_connect_handler,
         }
     }
 
@@ -91,6 +94,16 @@ impl PanelWiring {
                     let navigation = navigation.clone();
                     glib::idle_add_local_once(move || {
                         navigation.start_root_navigation(panel, index);
+                    });
+                });
+            }
+
+            {
+                let remote_connect_handler = Rc::clone(&self.remote_connect_handler);
+                panel_view.connect_remote_connect(move || {
+                    let remote_connect_handler = Rc::clone(&remote_connect_handler);
+                    glib::idle_add_local_once(move || {
+                        remote_connect_handler(panel);
                     });
                 });
             }

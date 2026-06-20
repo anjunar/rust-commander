@@ -336,9 +336,8 @@ impl MainWindow {
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 11] = [
+        let callbacks: [fn(&Rc<Self>); 10] = [
             Self::handle_help,
-            Self::handle_connect_remote,
             Self::handle_rename,
             Self::handle_view,
             Self::handle_edit,
@@ -470,11 +469,16 @@ impl MainWindow {
             this.context_menu_controller()
                 .handle_panel_context_menu(panel, clicked_index, x, y);
         });
+        let this = Rc::clone(self);
+        let remote_connect_handler = Rc::new(move |panel| {
+            this.handle_connect_remote_for_panel(panel);
+        });
         PanelWiring::new(
             host,
             Rc::clone(&self.commander),
             self.navigation_controller(),
             context_menu_handler,
+            remote_connect_handler,
         )
     }
 
@@ -671,7 +675,6 @@ fn build_command_bar() -> gtk::Box {
 fn command_bar_labels() -> Vec<String> {
     vec![
         t!("command.settings").into_owned(),
-        "Connect".into(),
         t!("command.rename").into_owned(),
         t!("command.view").into_owned(),
         t!("command.edit").into_owned(),
