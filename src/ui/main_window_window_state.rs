@@ -103,11 +103,14 @@ impl WindowStateController {
             let position = window_config
                 .position
                 .unwrap_or(WindowPosition { x: 0, y: 0 });
+            let width = window_config.width.max(1);
+            let height = window_config.height.max(1);
+            let maximized = window_config.maximized;
+            let window = self.window.clone();
+
             glib::idle_add_local_once({
                 let position = position.clone();
-                let width = window_config.width;
-                let height = window_config.height;
-                let maximized = window_config.maximized;
+                let window = window.clone();
                 move || {
                     restore_window_placement(
                         APP_WINDOW_TITLE,
@@ -115,23 +118,31 @@ impl WindowStateController {
                         position.y,
                         width,
                         height,
-                        maximized,
+                        false,
                     );
+                    if maximized {
+                        window.maximize();
+                    }
                 }
             });
-            let width = window_config.width;
-            let height = window_config.height;
-            let maximized = window_config.maximized;
-            glib::timeout_add_local_once(Duration::from_millis(150), move || {
-                restore_window_placement(
-                    APP_WINDOW_TITLE,
-                    position.x,
-                    position.y,
-                    width,
-                    height,
-                    maximized,
-                );
-            });
+
+            if maximized {
+                let window = self.window.clone();
+                glib::timeout_add_local_once(Duration::from_millis(150), move || {
+                    window.maximize();
+                });
+            } else {
+                glib::timeout_add_local_once(Duration::from_millis(150), move || {
+                    restore_window_placement(
+                        APP_WINDOW_TITLE,
+                        position.x,
+                        position.y,
+                        width,
+                        height,
+                        false,
+                    );
+                });
+            }
         }
     }
 
