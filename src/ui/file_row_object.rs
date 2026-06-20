@@ -57,7 +57,7 @@ impl FileRowObject {
 
     pub fn matches_entry(&self, location: &PanelLocation, entry: &Entry) -> bool {
         let data = self.imp().data.borrow();
-        let path = entry.full_path(location).display().to_string();
+        let path = entry.display_path(location);
 
         data.name == entry.name
             && data.path == path
@@ -74,7 +74,7 @@ impl FileRowObject {
         let icon = platform::icon_for_entry(location, entry);
         FileRowData {
             name: entry.name.clone(),
-            path: entry.full_path(location).display().to_string(),
+            path: entry.display_path(location),
             size: entry.size_label.clone(),
             type_label: entry.type_label.clone(),
             modified: entry.modified_label.clone(),

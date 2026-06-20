@@ -11,7 +11,7 @@ pub use entry::Entry;
 pub use entry_key::EntryKey;
 pub use operation::{
     ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict, OperationEvent,
-    OperationSnapshot, OperationSummary,
+    OperationSnapshot, OperationSummary, RemoteSourceRequest, RemoteTargetRequest,
 };
 pub use panel::{Panel, SelectedEntry};
 pub use panel_location::{ArchiveView, PanelLocation};

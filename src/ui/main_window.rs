@@ -1,4 +1,7 @@
-use std::{cell::{Cell, RefCell}, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
@@ -13,27 +16,25 @@ use crate::{
     fs::watcher::start_file_watcher,
     platform::assets::asset_path,
     presentation,
+    remote::RemoteService,
     ui::{
-        commander_view::CommanderView,
-        dialogs,
-        shortcuts,
-        terminal_dock::TerminalDock,
+        commander_view::CommanderView, dialogs, shortcuts, terminal_dock::TerminalDock,
         theme::ThemeController,
     },
 };
 
 #[path = "main_window_actions.rs"]
 mod actions;
+#[path = "main_window_context_menu.rs"]
+mod context_menu;
 #[path = "main_window_hosts.rs"]
 mod hosts;
 #[path = "main_window_navigation.rs"]
 mod navigation_controller;
-#[path = "main_window_panel_wiring.rs"]
-mod panel_wiring;
-#[path = "main_window_context_menu.rs"]
-mod context_menu;
 #[path = "main_window_operations.rs"]
 mod operations_controller;
+#[path = "main_window_panel_wiring.rs"]
+mod panel_wiring;
 #[path = "main_window_terminal.rs"]
 mod terminal_wiring;
 #[path = "main_window_window_chrome.rs"]
@@ -43,11 +44,11 @@ mod window_state_controller;
 
 const APP_WINDOW_TITLE: &str = "RCommander";
 
-use hosts::{NavigationHost, OperationsHost, ViewHost};
 use context_menu::ContextMenuController;
+use context_menu::ContextMenuRuntime;
 #[cfg(not(target_os = "windows"))]
 use context_menu::UnixContextMenuActions;
-use context_menu::ContextMenuRuntime;
+use hosts::{NavigationHost, OperationsHost, ViewHost};
 use navigation_controller::{NavigationController, NavigationRuntime};
 use operations_controller::{OperationRuntime, OperationsController};
 use panel_wiring::PanelWiring;
@@ -91,6 +92,7 @@ pub struct MainWindow {
     status_label: gtk::Label,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
+    remote_service: RemoteService,
     operation_runtime: OperationRuntime,
     navigation_runtime: NavigationRuntime,
     context_menu_runtime: ContextMenuRuntime,
@@ -158,7 +160,12 @@ impl MainWindow {
         shell.set_margin_end(8);
 
         let commander_view = CommanderView::new();
-        let initial_dir = commander.state().active_panel().location.host_directory();
+        let initial_dir = commander
+            .state()
+            .active_panel()
+            .location
+            .host_directory()
+            .unwrap_or_else(default_local_directory);
         let terminal_dock = TerminalDock::new(initial_dir);
 
         let content_paned = gtk::Paned::new(gtk::Orientation::Vertical);
@@ -218,6 +225,7 @@ impl MainWindow {
 
         let commander = Rc::new(RefCell::new(commander));
         let archive_service = Rc::new(RefCell::new(ArchiveService::with_default_backends()));
+        let remote_service = RemoteService::default();
         let (watch_command_tx, watch_event_rx) = start_file_watcher();
         let navigation_runtime = NavigationRuntime::new(watch_command_tx);
         let operation_runtime = OperationRuntime::new();
@@ -236,6 +244,7 @@ impl MainWindow {
             status_label,
             commander,
             archive_service,
+            remote_service,
             operation_runtime,
             navigation_runtime,
             context_menu_runtime,
@@ -256,7 +265,8 @@ impl MainWindow {
         this.terminal_controller().connect_terminal_dock();
         this.navigation_controller()
             .install_watcher_poll(watch_event_rx);
-        this.window_state_controller().install_window_state_persistence();
+        this.window_state_controller()
+            .install_window_state_persistence();
         this.window_chrome().install_system_theme_tracking();
         shortcuts::install(&this, app);
 
@@ -270,7 +280,8 @@ impl MainWindow {
             this.window_state_controller()
                 .restore_window_geometry(window_config);
             this.window_state_controller().initialize_split_positions();
-            this.window_state_controller().install_window_geometry_tracking();
+            this.window_state_controller()
+                .install_window_geometry_tracking();
             this.present_window();
         }
         this.navigation_controller().queue_initial_panel_loads();
@@ -283,7 +294,8 @@ impl MainWindow {
             self.window_state_controller()
                 .restore_window_geometry(self.initial_window_config.clone());
             self.window_state_controller().initialize_split_positions();
-            self.window_state_controller().install_window_geometry_tracking();
+            self.window_state_controller()
+                .install_window_geometry_tracking();
         }
         self.window.present();
         #[cfg(target_os = "windows")]
@@ -324,8 +336,9 @@ impl MainWindow {
     }
 
     fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 10] = [
+        let callbacks: [fn(&Rc<Self>); 11] = [
             Self::handle_help,
+            Self::handle_connect_remote,
             Self::handle_rename,
             Self::handle_view,
             Self::handle_edit,
@@ -373,8 +386,13 @@ impl MainWindow {
                 .set_label(&presentation::status_line(state));
         }
 
-        self.terminal_dock
-            .set_panel_dir(state.active_panel().location.host_directory());
+        self.terminal_dock.set_panel_dir(
+            state
+                .active_panel()
+                .location
+                .host_directory()
+                .unwrap_or_else(default_local_directory),
+        );
         self.terminal_dock.refresh_toolbar();
     }
 
@@ -385,6 +403,7 @@ impl MainWindow {
             .active_panel()
             .location
             .host_directory()
+            .unwrap_or_else(default_local_directory)
     }
 
     fn focus_active_panel(&self) {
@@ -410,7 +429,8 @@ impl MainWindow {
         self.navigation_runtime.navigation_busy.set(busy);
         self.busy_spinner.set_visible(busy);
         self.busy_spinner.set_spinning(busy);
-        self.navigation_overlay.set_opacity(if busy { 1.0 } else { 0.0 });
+        self.navigation_overlay
+            .set_opacity(if busy { 1.0 } else { 0.0 });
         self.navigation_overlay.set_sensitive(busy);
         if busy {
             self.navigation_overlay_spinner.start();
@@ -436,6 +456,7 @@ impl MainWindow {
             self.window.clone(),
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
+            self.remote_service.clone(),
             self.operation_runtime.clone(),
             self.navigation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
@@ -527,6 +548,7 @@ impl MainWindow {
             self.window.clone(),
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
+            self.remote_service.clone(),
             self.operation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
             self.navigation_controller(),
@@ -535,11 +557,7 @@ impl MainWindow {
 
     fn terminal_controller(self: &Rc<Self>) -> TerminalController {
         let host: Rc<dyn hosts::TerminalHost> = self.clone();
-        TerminalController::new(
-            host,
-            self.terminal_dock.clone(),
-            self.content_paned.clone(),
-        )
+        TerminalController::new(host, self.terminal_dock.clone(), self.content_paned.clone())
     }
 
     fn window_chrome(&self) -> WindowChromeController {
@@ -632,6 +650,10 @@ impl hosts::TerminalHost for MainWindow {
     }
 }
 
+fn default_local_directory() -> std::path::PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
 fn build_command_bar() -> gtk::Box {
     let command_bar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     command_bar.add_css_class("command-bar");
@@ -649,6 +671,7 @@ fn build_command_bar() -> gtk::Box {
 fn command_bar_labels() -> Vec<String> {
     vec![
         t!("command.settings").into_owned(),
+        "Connect".into(),
         t!("command.rename").into_owned(),
         t!("command.view").into_owned(),
         t!("command.edit").into_owned(),

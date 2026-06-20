@@ -12,6 +12,7 @@ use crate::{
         ConflictResolution,
     },
     presentation,
+    remote::RemoteService,
     ui::{
         dialogs,
         operations::{self, ActiveOperationHandle, PreparedOperation, StartedOperation},
@@ -39,6 +40,7 @@ pub struct OperationsController {
     window: gtk::ApplicationWindow,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
+    remote_service: RemoteService,
     runtime: OperationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
     navigation: NavigationController,
@@ -50,6 +52,7 @@ impl OperationsController {
         window: gtk::ApplicationWindow,
         commander: Rc<RefCell<Commander>>,
         archive_service: Rc<RefCell<ArchiveService>>,
+        remote_service: RemoteService,
         runtime: OperationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
         navigation: NavigationController,
@@ -59,6 +62,7 @@ impl OperationsController {
             window,
             commander,
             archive_service,
+            remote_service,
             runtime,
             app_config_cache,
             navigation,
@@ -103,18 +107,21 @@ impl OperationsController {
     }
 
     fn start_file_operation(&self, request: FileOperationRequest) {
-        let started =
-            match operations::start_operation_task(&self.archive_service.borrow(), request) {
-                Ok(started) => started,
-                Err(error) => {
-                    dialogs::show_error(
-                        &self.window,
-                        &t!("error.operation_unavailable"),
-                        &error.to_string(),
-                    );
-                    return;
-                }
-            };
+        let started = match operations::start_operation_task(
+            &self.archive_service.borrow(),
+            &self.remote_service,
+            request,
+        ) {
+            Ok(started) => started,
+            Err(error) => {
+                dialogs::show_error(
+                    &self.window,
+                    &t!("error.operation_unavailable"),
+                    &error.to_string(),
+                );
+                return;
+            }
+        };
 
         match started {
             StartedOperation::File {
@@ -126,7 +133,7 @@ impl OperationsController {
                     .active_operation
                     .borrow_mut()
                     .replace(ActiveOperationHandle::File(handle.clone()));
-                self.poll_file_operation(request, receiver);
+                self.poll_transfer_operation(request, receiver);
             }
             StartedOperation::Archive { handle, receiver } => {
                 self.runtime
@@ -135,10 +142,21 @@ impl OperationsController {
                     .replace(ActiveOperationHandle::Archive(handle.clone()));
                 self.poll_archive_extract_operation(receiver);
             }
+            StartedOperation::Remote {
+                handle,
+                receiver,
+                request,
+            } => {
+                self.runtime
+                    .active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::Remote(handle.clone()));
+                self.poll_transfer_operation(request, receiver);
+            }
         }
     }
 
-    fn poll_file_operation(
+    fn poll_transfer_operation(
         &self,
         request: FileOperationRequest,
         receiver: std::sync::mpsc::Receiver<OperationEvent>,
@@ -326,10 +344,9 @@ impl OperationsController {
                             )
                         };
                         controller.host.apply_update(update);
-                        controller.host.show_error(
-                            &t!("error.archive_copy_failed"),
-                            &error.to_string(),
-                        );
+                        controller
+                            .host
+                            .show_error(&t!("error.archive_copy_failed"), &error.to_string());
                         keep_running = false;
                     }
                 }

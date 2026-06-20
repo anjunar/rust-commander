@@ -25,6 +25,7 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
         entries.push(Entry {
             name: file_name.clone(),
             archive_path: None,
+            remote_path: None,
             is_dir: metadata.is_dir(),
             size_bytes: metadata.len(),
             size_label: format_size(&metadata, metadata.is_dir()),
@@ -55,7 +56,10 @@ pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>>
                 .with_context(|| format!("Could not read metadata for {}", path.display()));
         }
     };
-    let Some(file_name) = path.file_name().map(|value| value.to_string_lossy().into_owned()) else {
+    let Some(file_name) = path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+    else {
         return Ok(None);
     };
     if !show_hidden_files && is_hidden(&metadata, &file_name) {
@@ -66,6 +70,7 @@ pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>>
     Ok(Some(Entry {
         name: file_name.clone(),
         archive_path: None,
+        remote_path: None,
         is_dir: metadata.is_dir(),
         size_bytes: metadata.len(),
         size_label: format_size(&metadata, metadata.is_dir()),
@@ -118,11 +123,13 @@ pub fn format_bytes(bytes: u64) -> String {
 
 fn format_modified(modified_at: Option<SystemTime>) -> String {
     modified_at
-        .map(|timestamp| {
-            let datetime: chrono::DateTime<chrono::Local> = timestamp.into();
-            datetime.format("%Y-%m-%d %H:%M").to_string()
-        })
+        .map(format_system_time)
         .unwrap_or_else(|| "-".into())
+}
+
+pub fn format_system_time(timestamp: SystemTime) -> String {
+    let datetime: chrono::DateTime<chrono::Local> = timestamp.into();
+    datetime.format("%Y-%m-%d %H:%M").to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -205,11 +212,21 @@ fn format_unix_attributes(metadata: &fs::Metadata) -> String {
 
 #[cfg(not(target_os = "windows"))]
 fn permission_char(mode: u32, bit: u32, value: char) -> char {
-    if mode & bit != 0 { value } else { '-' }
+    if mode & bit != 0 {
+        value
+    } else {
+        '-'
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn execute_char(mode: u32, execute_bit: u32, special_bit: u32, set_char: char, unset_char: char) -> char {
+fn execute_char(
+    mode: u32,
+    execute_bit: u32,
+    special_bit: u32,
+    set_char: char,
+    unset_char: char,
+) -> char {
     match (mode & execute_bit != 0, mode & special_bit != 0) {
         (true, true) => set_char,
         (false, true) => unset_char,

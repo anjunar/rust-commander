@@ -7,6 +7,7 @@ pub enum EntryKey {
     ParentLink,
     FilesystemName(OsString),
     ArchiveEntry(String),
+    RemoteEntry(String),
 }
 
 impl EntryKey {
@@ -15,6 +16,8 @@ impl EntryKey {
             Self::ParentLink
         } else if let Some(path) = &entry.archive_path {
             Self::ArchiveEntry(path.clone())
+        } else if let Some(path) = &entry.remote_path {
+            Self::RemoteEntry(path.to_string())
         } else {
             Self::FilesystemName(entry.name.clone().into())
         }

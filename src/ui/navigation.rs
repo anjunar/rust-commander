@@ -7,6 +7,7 @@ use crate::{
     archive::ArchiveService,
     domain::{Entry, PanelLocation, SelectionIntent},
     presentation,
+    remote::RemoteService,
 };
 
 pub enum SelectedNavigation {
@@ -83,7 +84,14 @@ pub fn selected_navigation_request(
 
     if selected.is_dir {
         let next_location = match commander.state().panel(panel).location.clone() {
-            PanelLocation::Filesystem(_) => PanelLocation::filesystem(selected.path.clone()),
+            PanelLocation::Filesystem(_) => {
+                let Some(path) = selected.filesystem_path.clone() else {
+                    return SelectedNavigation::Unsupported {
+                        message: "Filesystem entry is missing its path".into(),
+                    };
+                };
+                PanelLocation::filesystem(path)
+            }
             PanelLocation::Archive(view) => {
                 let Some(archive_path) = selected.archive_path else {
                     return SelectedNavigation::Unsupported {
@@ -92,32 +100,45 @@ pub fn selected_navigation_request(
                 };
                 PanelLocation::archive(view.session, archive_path)
             }
+            PanelLocation::Remote(location) => {
+                let Some(remote_path) = selected.remote_path else {
+                    return SelectedNavigation::Unsupported {
+                        message: "Remote entry is missing its path".into(),
+                    };
+                };
+                PanelLocation::remote(location.session, remote_path)
+            }
         };
 
         return SelectedNavigation::Load(NavigationRequest {
             panel,
             generation: 0,
             action: LoadAction::Navigate,
-            status: t!("status.opened", path = selected.path.display().to_string()).into_owned(),
+            status: t!("status.opened", path = selected.display_path.as_str()).into_owned(),
             next_location,
             selection_intent: None,
             busy_message: t!("status.loading_directory").into_owned(),
         });
     }
 
-    if selected.archive_path.is_none() && archive_service.is_archive_path(&selected.path) {
-        return SelectedNavigation::AskArchiveAction {
-            path: selected.path,
-        };
+    if let Some(path) = selected.filesystem_path.clone() {
+        if selected.archive_path.is_none() && archive_service.is_archive_path(&path) {
+            return SelectedNavigation::AskArchiveAction { path };
+        }
     }
 
     match commander.state().panel(panel).location {
-        PanelLocation::Archive(_) => SelectedNavigation::Unsupported {
+        PanelLocation::Archive(_) | PanelLocation::Remote(_) => SelectedNavigation::Unsupported {
             message: t!("error.archive_view_not_wired").into_owned(),
         },
-        PanelLocation::Filesystem(_) => SelectedNavigation::OpenPath {
-            status: format!("Opened with default app: {}", selected.path.display()),
-            path: selected.path,
+        PanelLocation::Filesystem(_) => match selected.filesystem_path {
+            Some(path) => SelectedNavigation::OpenPath {
+                status: format!("Opened with default app: {}", selected.display_path),
+                path,
+            },
+            None => SelectedNavigation::Unsupported {
+                message: "Filesystem entry is missing its path".into(),
+            },
         },
     }
 }
@@ -168,10 +189,11 @@ pub fn refresh_request(
 pub fn spawn_directory_load(
     request: NavigationRequest,
     archive_service: ArchiveService,
+    remote_service: RemoteService,
     show_hidden_files: bool,
 ) -> mpsc::Receiver<Result<DirectoryLoadResult, String>> {
     let (tx, rx) = mpsc::channel();
-    let loader = EntryLoader::new(archive_service, show_hidden_files);
+    let loader = EntryLoader::new(archive_service, remote_service, show_hidden_files);
 
     thread::spawn(move || {
         let result = loader

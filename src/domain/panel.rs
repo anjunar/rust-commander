@@ -14,14 +14,17 @@ use crate::domain::{
     },
     sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
+use crate::remote::RemotePath;
 
 #[derive(Clone, Debug)]
 pub struct SelectedEntry {
-    pub path: PathBuf,
+    pub filesystem_path: Option<PathBuf>,
     pub archive_path: Option<String>,
+    pub remote_path: Option<RemotePath>,
     pub is_dir: bool,
     pub is_parent_link: bool,
     pub display_name: String,
+    pub display_path: String,
 }
 
 #[derive(Clone, Debug)]
@@ -80,17 +83,19 @@ impl Panel {
 
     pub fn selected_path(&self) -> Option<PathBuf> {
         self.selected_entry()
-            .map(|entry| entry.full_path(&self.location))
+            .and_then(|entry| self.location.entry_filesystem_path(entry))
     }
 
     pub fn selected_item(&self) -> Option<SelectedEntry> {
         let entry = self.selected_entry()?;
         Some(SelectedEntry {
-            path: entry.full_path(&self.location),
+            filesystem_path: self.location.entry_filesystem_path(entry),
             archive_path: entry.archive_path.clone(),
+            remote_path: entry.remote_path.clone(),
             is_dir: entry.is_dir,
             is_parent_link: entry.is_parent_link,
             display_name: entry.name.clone(),
+            display_path: entry.display_path(&self.location),
         })
     }
 
@@ -100,11 +105,13 @@ impl Panel {
             .filter_map(|index| self.entries.get(index))
             .filter(|entry| !entry.is_parent_link)
             .map(|entry| SelectedEntry {
-                path: entry.full_path(&self.location),
+                filesystem_path: self.location.entry_filesystem_path(entry),
                 archive_path: entry.archive_path.clone(),
+                remote_path: entry.remote_path.clone(),
                 is_dir: entry.is_dir,
                 is_parent_link: false,
                 display_name: entry.name.clone(),
+                display_path: entry.display_path(&self.location),
             })
             .collect()
     }
@@ -228,7 +235,11 @@ impl Panel {
         Ok(())
     }
 
-    pub fn apply_filesystem_entry_change(&mut self, path: &Path, next_entry: Option<Entry>) -> bool {
+    pub fn apply_filesystem_entry_change(
+        &mut self,
+        path: &Path,
+        next_entry: Option<Entry>,
+    ) -> bool {
         let Some(panel_path) = self.location.filesystem_path() else {
             return false;
         };
@@ -236,7 +247,10 @@ impl Panel {
             return false;
         }
 
-        let Some(name) = path.file_name().map(|value| value.to_string_lossy().into_owned()) else {
+        let Some(name) = path
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+        else {
             return false;
         };
         let changed_key = EntryKey::FilesystemName(name.clone().into());
@@ -465,6 +479,7 @@ mod tests {
         Entry {
             name: name.into(),
             archive_path: None,
+            remote_path: None,
             is_dir: true,
             size_bytes: 0,
             size_label: "-".into(),
@@ -480,6 +495,7 @@ mod tests {
         Entry {
             name: name.into(),
             archive_path: None,
+            remote_path: None,
             is_dir: false,
             size_bytes,
             size_label: format!("{size_bytes} B"),
@@ -504,6 +520,7 @@ mod tests {
             Some(Entry {
                 name: "alpha.txt".into(),
                 archive_path: None,
+                remote_path: None,
                 is_dir: false,
                 size_bytes: 99,
                 size_label: "99 B".into(),
@@ -533,7 +550,11 @@ mod tests {
 
         assert!(changed);
         assert_eq!(
-            panel.entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(),
+            panel
+                .entries
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["beta.txt"]
         );
     }

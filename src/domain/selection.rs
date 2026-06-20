@@ -330,6 +330,7 @@ mod tests {
         Entry {
             name: name.into(),
             archive_path: None,
+            remote_path: None,
             is_dir: false,
             size_bytes: 1,
             size_label: "1 B".into(),
@@ -350,6 +351,7 @@ mod tests {
         Entry {
             name: name.into(),
             archive_path: Some(path.into()),
+            remote_path: None,
             is_dir: path.ends_with('/'),
             size_bytes: 1,
             size_label: "1 B".into(),

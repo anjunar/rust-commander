@@ -97,6 +97,9 @@ impl ArchiveService {
             PanelLocation::Archive(view) => {
                 Ok(self.entries_for_archive_path(&view.session, &view.current_path))
             }
+            PanelLocation::Remote(_) => Err(ArchiveError::IoError {
+                detail: "Remote locations are handled by RemoteService".into(),
+            }),
         }
     }
 
@@ -274,6 +277,7 @@ impl ArchiveService {
                 .or_insert_with(|| Entry {
                     name: directory_name.clone(),
                     archive_path: Some(join_archive_path(current_path, &directory_name)),
+                    remote_path: None,
                     is_dir: true,
                     size_bytes: 0,
                     size_label: "-".into(),
@@ -308,6 +312,7 @@ fn archive_entry_to_panel_entry(entry: &ArchiveEntry) -> Entry {
     Entry {
         name: entry.display_name.clone(),
         archive_path: Some(entry.archive_path.clone()),
+        remote_path: None,
         is_dir,
         size_bytes: entry.size,
         size_label: if is_dir {

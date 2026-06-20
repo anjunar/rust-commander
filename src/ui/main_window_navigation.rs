@@ -15,6 +15,7 @@ use crate::{
     archive::ArchiveService,
     config::AppConfig,
     fs::watcher::{WatchCommand, WatchEvent},
+    remote::RemoteService,
     ui::{
         dialogs,
         navigation::{self, LoadAction, NavigationRequest, SelectedNavigation},
@@ -48,6 +49,7 @@ pub struct NavigationController {
     window: gtk::ApplicationWindow,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
+    remote_service: RemoteService,
     operation_runtime: OperationRuntime,
     runtime: NavigationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
@@ -59,6 +61,7 @@ impl NavigationController {
         window: gtk::ApplicationWindow,
         commander: Rc<RefCell<Commander>>,
         archive_service: Rc<RefCell<ArchiveService>>,
+        remote_service: RemoteService,
         operation_runtime: OperationRuntime,
         runtime: NavigationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
@@ -68,6 +71,7 @@ impl NavigationController {
             window,
             commander,
             archive_service,
+            remote_service,
             operation_runtime,
             runtime,
             app_config_cache,
@@ -101,45 +105,52 @@ impl NavigationController {
             }
             SelectedNavigation::AskArchiveAction { path } => {
                 let controller = self.clone();
-                dialogs::prompt_archive_open_action(&self.window, path.clone(), move |open_as_archive| {
-                    if open_as_archive {
-                        let next_location = {
-                            let archive_service = controller.archive_service.borrow();
-                            match archive_service.archive_location_for_path(&path) {
-                                Ok(location) => location,
-                                Err(error) => {
-                                    controller.show_command_failed(error);
-                                    return;
+                dialogs::prompt_archive_open_action(
+                    &self.window,
+                    path.clone(),
+                    move |open_as_archive| {
+                        if open_as_archive {
+                            let next_location = {
+                                let archive_service = controller.archive_service.borrow();
+                                match archive_service.archive_location_for_path(&path) {
+                                    Ok(location) => location,
+                                    Err(error) => {
+                                        controller.show_command_failed(error);
+                                        return;
+                                    }
                                 }
-                            }
-                        };
+                            };
 
-                        controller.start_directory_load(NavigationRequest {
-                            panel,
-                            generation: 0,
-                            action: LoadAction::Navigate,
-                            status: t!("status.opened_archive", path = path.display().to_string())
+                            controller.start_directory_load(NavigationRequest {
+                                panel,
+                                generation: 0,
+                                action: LoadAction::Navigate,
+                                status: t!(
+                                    "status.opened_archive",
+                                    path = path.display().to_string()
+                                )
                                 .into_owned(),
-                            next_location,
-                            selection_intent: None,
-                            busy_message: t!("status.opening_archive").into_owned(),
-                        });
-                        return;
-                    }
+                                next_location,
+                                selection_intent: None,
+                                busy_message: t!("status.opening_archive").into_owned(),
+                            });
+                            return;
+                        }
 
-                    if let Err(error) = crate::platform::open_path(&path) {
-                        controller.show_command_failed(error);
-                        return;
-                    }
+                        if let Err(error) = crate::platform::open_path(&path) {
+                            controller.show_command_failed(error);
+                            return;
+                        }
 
-                    controller.host.set_status(
-                        t!(
-                            "status.opened_with_default_app",
-                            path = path.display().to_string()
-                        )
-                        .into_owned(),
-                    );
-                });
+                        controller.host.set_status(
+                            t!(
+                                "status.opened_with_default_app",
+                                path = path.display().to_string()
+                            )
+                            .into_owned(),
+                        );
+                    },
+                );
             }
             SelectedNavigation::Unsupported { message } => self.show_command_failed(message),
         }
@@ -158,6 +169,19 @@ impl NavigationController {
         self.start_directory_load(request);
     }
 
+    pub fn start_remote_session(&self, panel: ActivePanel, session: crate::remote::RemoteSession) {
+        let start_directory = session.start_directory();
+        self.start_directory_load(NavigationRequest {
+            panel,
+            generation: 0,
+            action: LoadAction::Navigate,
+            status: t!("status.opened", path = start_directory.to_string()).into_owned(),
+            next_location: crate::domain::PanelLocation::remote(session, start_directory),
+            selection_intent: None,
+            busy_message: "Connecting to remote host...".into(),
+        });
+    }
+
     pub fn start_directory_load(&self, request: NavigationRequest) {
         if self.runtime.navigation_busy.get()
             || self.operation_runtime.active_operation.borrow().is_some()
@@ -170,9 +194,15 @@ impl NavigationController {
             .set_navigation_busy(true, request.busy_message.as_str());
 
         let archive_service = self.archive_service.borrow().clone();
+        let remote_service = self.remote_service.clone();
         let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
         let request_for_tracking = request.clone();
-        let rx = navigation::spawn_directory_load(request, archive_service, show_hidden_files);
+        let rx = navigation::spawn_directory_load(
+            request,
+            archive_service,
+            remote_service,
+            show_hidden_files,
+        );
 
         let controller = self.clone();
         glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
@@ -284,7 +314,10 @@ impl NavigationController {
 
     pub fn sync_watched_paths(&self) {
         let paths = self.commander.borrow().state().visible_paths();
-        let _ = self.runtime.watch_command_tx.send(WatchCommand::SetPaths(paths));
+        let _ = self
+            .runtime
+            .watch_command_tx
+            .send(WatchCommand::SetPaths(paths));
     }
 
     pub fn install_watcher_poll(&self, watch_event_rx: Receiver<WatchEvent>) {
@@ -301,7 +334,11 @@ impl NavigationController {
                 pending.extend(drained_paths);
             }
 
-            if controller.operation_runtime.active_operation.borrow().is_some()
+            if controller
+                .operation_runtime
+                .active_operation
+                .borrow()
+                .is_some()
                 || controller.runtime.navigation_busy.get()
             {
                 return glib::ControlFlow::Continue;
@@ -342,7 +379,10 @@ impl NavigationController {
     }
 
     fn prepare_navigation_request(&self, request: NavigationRequest) -> NavigationRequest {
-        self.runtime.load_scheduler.borrow_mut().prepare_request(request)
+        self.runtime
+            .load_scheduler
+            .borrow_mut()
+            .prepare_request(request)
     }
 
     fn apply_watcher_changes(&self, changed_paths: &[PathBuf]) {

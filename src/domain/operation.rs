@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::archive::ArchiveSession;
+use crate::remote::{RemotePath, RemoteSession};
 
 #[derive(Clone, Debug)]
 pub enum FileOperationKind {
@@ -18,12 +19,26 @@ pub struct FileOperationRequest {
     pub sources: Vec<PathBuf>,
     pub target_directory: Option<PathBuf>,
     pub archive_source: Option<ArchiveSourceRequest>,
+    pub remote_source: Option<RemoteSourceRequest>,
+    pub remote_target: Option<RemoteTargetRequest>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ArchiveSourceRequest {
     pub session: ArchiveSession,
     pub entry_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteSourceRequest {
+    pub session: RemoteSession,
+    pub entry_paths: Vec<RemotePath>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteTargetRequest {
+    pub session: RemoteSession,
+    pub target_directory: RemotePath,
 }
 
 #[derive(Clone, Debug)]

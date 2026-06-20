@@ -51,10 +51,8 @@ impl WindowStateController {
                     app_config.window.width = window.width().max(1);
                     app_config.window.height = window.height().max(1);
                 }
-                app_config.panes.left_directory =
-                    Some(commander.panel_directory(ActivePanel::Left));
-                app_config.panes.right_directory =
-                    Some(commander.panel_directory(ActivePanel::Right));
+                app_config.panes.left_directory = commander.panel_directory(ActivePanel::Left);
+                app_config.panes.right_directory = commander.panel_directory(ActivePanel::Right);
             }
 
             if let Err(error) = config::save(&app_config_cache.borrow().clone()) {

@@ -7,7 +7,10 @@ use crate::{
     application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
     config::{ArchiveConfig, PanelSettings},
     domain::{
-        operation::{ArchiveSourceRequest, FileOperationKind, FileOperationRequest},
+        operation::{
+            ArchiveSourceRequest, FileOperationKind, FileOperationRequest, RemoteSourceRequest,
+            RemoteTargetRequest,
+        },
         selection::SelectionIntent,
         sorting::{SortColumn, SortDirection},
         Entry, Panel, PanelLocation,
@@ -49,7 +52,7 @@ impl Commander {
         &self.state
     }
 
-    pub fn panel_directory(&self, panel: ActivePanel) -> PathBuf {
+    pub fn panel_directory(&self, panel: ActivePanel) -> Option<PathBuf> {
         self.state.panel(panel).location.host_directory()
     }
 
@@ -217,7 +220,7 @@ impl Commander {
         if source_panel.location.filesystem_path().is_none()
             && !matches!(kind, FileOperationKind::Copy)
         {
-            bail!("Archive sources currently support copy only");
+            bail!("Only copy is currently supported for non-filesystem sources");
         }
 
         let selected_items = source_panel
@@ -232,7 +235,7 @@ impl Commander {
         let target_directory = match kind {
             FileOperationKind::Delete => None,
             FileOperationKind::Copy | FileOperationKind::Move => {
-                Some(target_panel.location.host_directory())
+                target_panel.location.host_directory()
             }
         };
 
@@ -249,14 +252,54 @@ impl Commander {
                         .collect(),
                 })
             }
-            PanelLocation::Filesystem(_) => None,
+            PanelLocation::Filesystem(_) | PanelLocation::Remote(_) => None,
+        };
+
+        let remote_source = match &source_panel.location {
+            PanelLocation::Remote(location) => {
+                if target_panel.location.filesystem_path().is_none() {
+                    bail!("Remote downloads currently require a real filesystem target");
+                }
+                Some(RemoteSourceRequest {
+                    session: location.session.clone(),
+                    entry_paths: selected_items
+                        .iter()
+                        .filter_map(|item| item.remote_path.clone())
+                        .collect(),
+                })
+            }
+            PanelLocation::Filesystem(_) | PanelLocation::Archive(_) => None,
+        };
+
+        let remote_target = match (&source_panel.location, &target_panel.location, &kind) {
+            (
+                PanelLocation::Filesystem(_),
+                PanelLocation::Remote(location),
+                FileOperationKind::Copy,
+            ) => Some(RemoteTargetRequest {
+                session: location.session.clone(),
+                target_directory: location.current_path.clone(),
+            }),
+            (
+                PanelLocation::Filesystem(_),
+                PanelLocation::Remote(_),
+                FileOperationKind::Move,
+            ) => {
+                bail!("Remote targets currently support upload by copy only");
+            }
+            _ => None,
         };
 
         Ok(FileOperationRequest {
             kind,
-            sources: selected_items.into_iter().map(|item| item.path).collect(),
+            sources: selected_items
+                .iter()
+                .filter_map(|item| item.filesystem_path.clone())
+                .collect(),
             target_directory,
             archive_source,
+            remote_source,
+            remote_target,
         })
     }
 
@@ -333,5 +376,75 @@ impl Commander {
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::PathBuf, time::SystemTime};
+
+    use crate::{
+        config::{ArchiveConfig, PanelSettings},
+        domain::{Entry, FileOperationKind, PanelLocation},
+        remote::{RemoteAuthConfig, RemotePath, RemoteProfile, RemoteRuntimeSecret, RemoteSession},
+    };
+
+    use super::{ActivePanel, Commander};
+
+    #[test]
+    fn delete_request_allows_remote_in_inactive_panel() {
+        let mut commander = Commander::new(
+            PathBuf::from("/tmp/left"),
+            PathBuf::from("/tmp/right"),
+            ArchiveConfig::default(),
+            PanelSettings::default(),
+        )
+        .unwrap();
+
+        commander.state.active_panel = ActivePanel::Left;
+        commander.state.left.location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
+        commander.state.left.entries = vec![file_entry("keep.txt"), file_entry("delete.txt")];
+        commander.state.left.select_single(1);
+        commander.state.right.location = PanelLocation::remote(
+            remote_session(),
+            RemotePath::new("/home/test"),
+        );
+
+        let request = commander.operation_request(FileOperationKind::Delete).unwrap();
+
+        assert_eq!(request.sources, vec![PathBuf::from("/tmp/left/delete.txt")]);
+        assert!(request.target_directory.is_none());
+        assert!(request.remote_target.is_none());
+    }
+
+    fn file_entry(name: &str) -> Entry {
+        Entry {
+            name: name.into(),
+            archive_path: None,
+            remote_path: None,
+            is_dir: false,
+            size_bytes: 1,
+            size_label: "1 B".into(),
+            type_label: "File".into(),
+            modified_at: Some(SystemTime::now()),
+            modified_label: String::new(),
+            attributes_label: String::new(),
+            is_parent_link: false,
+        }
+    }
+
+    fn remote_session() -> RemoteSession {
+        RemoteSession::new(
+            RemoteProfile {
+                name: "test".into(),
+                host: "example.com".into(),
+                port: 22,
+                auth: RemoteAuthConfig::Password {
+                    username: "tester".into(),
+                },
+                start_directory: RemotePath::new("/home/test"),
+            },
+            RemoteRuntimeSecret::Password("secret".into()),
+        )
     }
 }

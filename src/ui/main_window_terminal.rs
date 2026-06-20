@@ -50,7 +50,8 @@ impl TerminalController {
         match action {
             TerminalAction::None => {
                 self.terminal_dock.sync_visibility();
-                if self.terminal_dock.state().borrow().visible && self.content_paned.position() < 320
+                if self.terminal_dock.state().borrow().visible
+                    && self.content_paned.position() < 320
                 {
                     let available_height = self.content_paned.height();
                     if available_height > 0 {

@@ -110,6 +110,7 @@ mod tests {
         Entry {
             name: name.into(),
             archive_path: None,
+            remote_path: None,
             is_dir,
             size_bytes: 0,
             size_label: "-".into(),

@@ -6,6 +6,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::remote::RemoteConfig;
+
 const APP_DIR_NAME: &str = "rust-commander";
 const CONFIG_FILE_NAME: &str = "config.toml";
 
@@ -27,6 +29,8 @@ pub struct AppConfig {
     pub file_operations: FileOperationsConfig,
     #[serde(default)]
     pub viewer: ViewerConfig,
+    #[serde(default)]
+    pub remote: RemoteConfig,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -251,6 +255,7 @@ mod tests {
         FileOperationsConfig, GeneralConfig, LocaleConfig, PaneConfig, PanelSettings,
         ThemePreference, ViewerConfig, WindowConfig, WindowPosition,
     };
+    use crate::remote::RemoteConfig;
 
     #[test]
     fn config_roundtrip_preserves_window_state() {
@@ -293,6 +298,7 @@ mod tests {
                 line_wrap: true,
                 show_line_numbers: false,
             },
+            remote: RemoteConfig::default(),
         };
 
         save_to_path(&config, &temp_path).unwrap();

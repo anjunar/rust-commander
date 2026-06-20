@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    path::PathBuf,
-    rc::Rc,
-};
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use rust_i18n::t;
 
@@ -62,10 +58,8 @@ impl ContextMenuController {
     pub fn new(
         host: Rc<dyn ViewHost>,
         window: gtk::ApplicationWindow,
-        #[cfg(not(target_os = "windows"))]
-        left_panel_root: gtk::Box,
-        #[cfg(not(target_os = "windows"))]
-        right_panel_root: gtk::Box,
+        #[cfg(not(target_os = "windows"))] left_panel_root: gtk::Box,
+        #[cfg(not(target_os = "windows"))] right_panel_root: gtk::Box,
         commander: Rc<RefCell<Commander>>,
         _runtime: ContextMenuRuntime,
         #[cfg(not(target_os = "windows"))] actions: UnixContextMenuActions,
@@ -118,7 +112,7 @@ impl ContextMenuController {
                 .selected_items()
                 .into_iter()
                 .filter(|item| item.archive_path.is_none())
-                .map(|item| item.path)
+                .filter_map(|item| item.filesystem_path)
                 .collect::<Vec<_>>();
 
             (

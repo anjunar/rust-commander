@@ -10,6 +10,7 @@ use crate::{
     archive::ArchiveService,
     config,
     domain::operation::FileOperationKind,
+    remote::RemoteProfile,
     ui::{dialogs, editor_dialog, file_viewer_dialog, main_window::MainWindow},
 };
 
@@ -75,9 +76,18 @@ impl MainWindow {
             return;
         }
 
+        let Some(path) = selected.filesystem_path.clone() else {
+            dialogs::show_error(
+                &self.window,
+                &t!("error.view_unavailable"),
+                "Viewing remote files is not available yet.",
+            );
+            return;
+        };
+
         if let Err(error) = file_viewer_dialog::open(
             &self.window,
-            selected.path.clone(),
+            path,
             self.app_config_cache.borrow().viewer.clone(),
         ) {
             dialogs::show_error(
@@ -116,6 +126,12 @@ impl MainWindow {
 
         let this = Rc::clone(self);
         dialogs::prompt_rename(&self.window, selected.display_name, move |new_name| {
+            let renamed_path = selected
+                .filesystem_path
+                .clone()
+                .map(|path| path.with_file_name(new_name.trim()))
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| new_name.trim().to_string());
             let result = {
                 let mut commander = this.commander.borrow_mut();
                 commander.rename_active(&new_name)
@@ -127,17 +143,7 @@ impl MainWindow {
                     return;
                 }
             }
-            this.set_status_message(
-                t!(
-                    "status.renamed",
-                    path = selected
-                        .path
-                        .with_file_name(new_name.trim())
-                        .display()
-                        .to_string()
-                )
-                .into_owned(),
-            );
+            this.set_status_message(t!("status.renamed", path = renamed_path).into_owned());
         });
     }
 
@@ -149,6 +155,15 @@ impl MainWindow {
             .active_panel()
             .location
             .host_directory();
+
+        let Some(path) = path else {
+            dialogs::show_error(
+                &self.window,
+                &t!("error.could_not_open_console"),
+                "A local terminal can only be opened from filesystem or archive views.",
+            );
+            return;
+        };
 
         if let Err(error) = crate::platform::open_console(&path) {
             dialogs::show_error(
@@ -226,6 +241,67 @@ impl MainWindow {
             .handle_operation(FileOperationKind::Copy);
     }
 
+    pub fn handle_connect_remote(self: &Rc<Self>) {
+        let active_panel = self.commander.borrow().state().active_panel;
+        let remote_config = self.app_config_cache.borrow().remote.clone();
+        let this = Rc::clone(self);
+        dialogs::prompt_remote_connection(&self.window, remote_config, move |action| {
+            match action {
+                dialogs::RemoteDialogAction::Connect(result) => {
+                    if let Some(profile_name) = result.last_used_profile {
+                        if let Err(error) =
+                            this.update_remote_config(|remote| remote.last_used_profile = Some(profile_name))
+                        {
+                            dialogs::show_error(
+                                &this.window,
+                                &t!("error.could_not_save_settings"),
+                                &error.to_string(),
+                            );
+                            return;
+                        }
+                    }
+
+                    this.navigation_controller()
+                        .start_remote_session(active_panel, result.session);
+                }
+                dialogs::RemoteDialogAction::SaveProfile {
+                    profile,
+                    previous_name,
+                } => {
+                    if let Err(error) = this.update_remote_config(|remote| {
+                        if let Some(previous_name) = previous_name.as_ref() {
+                            if previous_name != &profile.name {
+                                remote.profiles.retain(|item| item.name != *previous_name);
+                            }
+                        }
+                        upsert_remote_profile(&mut remote.profiles, profile.clone());
+                        remote.last_used_profile = Some(profile.name.clone());
+                    }) {
+                        dialogs::show_error(
+                            &this.window,
+                            &t!("error.could_not_save_settings"),
+                            &error.to_string(),
+                        );
+                    }
+                }
+                dialogs::RemoteDialogAction::DeleteProfile { name } => {
+                    if let Err(error) = this.update_remote_config(|remote| {
+                        remote.profiles.retain(|profile| profile.name != name);
+                        if remote.last_used_profile.as_deref() == Some(name.as_str()) {
+                            remote.last_used_profile = None;
+                        }
+                    }) {
+                        dialogs::show_error(
+                            &this.window,
+                            &t!("error.could_not_save_settings"),
+                            &error.to_string(),
+                        );
+                    }
+                }
+            }
+        });
+    }
+
     pub fn handle_toggle_terminal(self: &Rc<Self>) {
         if !self.terminal_dock.is_supported() {
             self.handle_open_console();
@@ -297,14 +373,21 @@ impl MainWindow {
             return;
         }
 
+        let Some(path) = selected.filesystem_path.clone() else {
+            dialogs::show_error(
+                &self.window,
+                &t!("error.edit_unavailable"),
+                "Editing remote files is not available yet.",
+            );
+            return;
+        };
+
         let this = Rc::clone(self);
-        if let Err(error) =
-            editor_dialog::edit_file(&self.window, selected.path.clone(), move |path| {
-                this.set_status_message(
-                    t!("status.saved", path = path.display().to_string()).into_owned(),
-                );
-            })
-        {
+        if let Err(error) = editor_dialog::edit_file(&self.window, path, move |path| {
+            this.set_status_message(
+                t!("status.saved", path = path.display().to_string()).into_owned(),
+            );
+        }) {
             dialogs::show_error(
                 &self.window,
                 &t!("error.could_not_open_editor"),
@@ -377,7 +460,6 @@ impl MainWindow {
     pub fn handle_make_directory(self: &Rc<Self>) {
         let this = Rc::clone(self);
         dialogs::prompt_new_directory(&self.window, move |name| {
-            let changed_path = this.active_panel_path().join(name.trim());
             let result = {
                 let mut commander = this.commander.borrow_mut();
                 commander.create_directory_in_active(&name)
@@ -389,6 +471,7 @@ impl MainWindow {
                     return;
                 }
             }
+            let changed_path = this.active_panel_path().join(name.trim());
             this.set_status_message(
                 t!(
                     "status.created_directory",
@@ -401,5 +484,30 @@ impl MainWindow {
 
     pub fn handle_quit(self: &Rc<Self>) {
         self.window.close();
+    }
+}
+
+fn upsert_remote_profile(
+    profiles: &mut Vec<RemoteProfile>,
+    profile: RemoteProfile,
+) {
+    if let Some(existing) = profiles.iter_mut().find(|item| item.name == profile.name) {
+        *existing = profile;
+    } else {
+        profiles.push(profile);
+        profiles.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    }
+}
+
+impl MainWindow {
+    fn update_remote_config(
+        &self,
+        update_remote: impl FnOnce(&mut crate::remote::RemoteConfig),
+    ) -> anyhow::Result<()> {
+        let mut next_config = self.app_config_cache.borrow().clone();
+        update_remote(&mut next_config.remote);
+        config::save(&next_config)?;
+        self.app_config_cache.replace(next_config);
+        Ok(())
     }
 }

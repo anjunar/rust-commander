@@ -10,11 +10,13 @@ use crate::{
         ConflictResolution, FileOperationKind, FileOperationRequest, OperationEvent,
     },
     fs::operations::{start_operation, OperationHandle},
+    remote::{RemoteOperationHandle, RemoteService},
 };
 
 #[derive(Clone)]
 pub enum ActiveOperationHandle {
     File(OperationHandle),
+    Remote(RemoteOperationHandle),
     Archive(ArchiveTaskHandle),
 }
 
@@ -22,6 +24,7 @@ impl ActiveOperationHandle {
     pub fn cancel(&self) {
         match self {
             Self::File(handle) => handle.cancel(),
+            Self::Remote(handle) => handle.cancel(),
             Self::Archive(handle) => handle.cancel(),
         }
     }
@@ -52,6 +55,11 @@ pub enum StartedOperation {
         receiver: Receiver<OperationEvent>,
         request: FileOperationRequest,
     },
+    Remote {
+        handle: RemoteOperationHandle,
+        receiver: Receiver<OperationEvent>,
+        request: FileOperationRequest,
+    },
     Archive {
         handle: ArchiveTaskHandle,
         receiver: Receiver<ArchiveTaskEvent>,
@@ -75,6 +83,7 @@ pub fn prepare_operation(
 
 pub fn start_operation_task(
     archive_service: &ArchiveService,
+    remote_service: &RemoteService,
     request: FileOperationRequest,
 ) -> Result<StartedOperation> {
     if let Some(archive_source) = request.archive_source.clone() {
@@ -89,6 +98,24 @@ pub fn start_operation_task(
         });
 
         Ok(StartedOperation::Archive { handle, receiver })
+    } else if let Some(remote_source) = request.remote_source.clone() {
+        let Some(target_dir) = request.target_directory.clone() else {
+            bail!("No filesystem target directory available for remote download");
+        };
+        let (handle, receiver) = remote_service.start_download(remote_source, target_dir);
+        Ok(StartedOperation::Remote {
+            handle,
+            receiver,
+            request,
+        })
+    } else if let Some(remote_target) = request.remote_target.clone() {
+        let (handle, receiver) =
+            remote_service.start_upload(request.sources.clone(), remote_target);
+        Ok(StartedOperation::Remote {
+            handle,
+            receiver,
+            request,
+        })
     } else {
         let (handle, receiver) = start_operation(request.clone());
         Ok(StartedOperation::File {

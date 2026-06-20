@@ -3,12 +3,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use gtk::prelude::*;
 
-use crate::{
-    application::Commander,
-    config,
-    i18n,
-    ui::main_window::MainWindow,
-};
+use crate::{application::Commander, config, i18n, ui::main_window::MainWindow};
 
 pub const APP_ID: &str = "dev.rcommander.Gtk";
 
