@@ -3,7 +3,11 @@ use std::rc::Rc;
 use anyhow::Result;
 use gtk::prelude::*;
 
-use crate::{application::Commander, config, i18n, ui::main_window::MainWindow};
+use crate::{
+    application::Commander,
+    config, i18n, platform, presentation,
+    ui::main_window::{MainWindow, MainWindowRuntime},
+};
 
 pub const APP_ID: &str = "dev.rcommander.Gtk";
 
@@ -45,20 +49,16 @@ pub fn run() -> Result<()> {
             &fallback_path,
         );
 
-        let commander = match Commander::new(
+        let commander = Commander::new(
             left_initial_path,
             right_initial_path,
-            app_config.archive.clone(),
             app_config.panels.clone(),
-        ) {
-            Ok(commander) => commander,
-            Err(error) => {
-                eprintln!("Could not initialize RCommander: {error}");
-                return;
-            }
-        };
+            platform::available_roots(),
+            presentation::ready_status(),
+        );
 
-        let window = MainWindow::new_hidden(app, commander, app_config);
+        let runtime = MainWindowRuntime::new(commander, app_config);
+        let window = MainWindow::new_hidden(app, runtime);
         window.on_initial_panels_ready(Rc::new({
             let window = Rc::clone(&window);
             move || {

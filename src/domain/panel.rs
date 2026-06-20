@@ -14,13 +14,12 @@ use crate::domain::{
     },
     sorting::{sort_entries, SortColumn, SortDirection, SortState},
 };
-use crate::remote::RemotePath;
 
 #[derive(Clone, Debug)]
 pub struct SelectedEntry {
     pub filesystem_path: Option<PathBuf>,
     pub archive_path: Option<String>,
-    pub remote_path: Option<RemotePath>,
+    pub remote_path: Option<String>,
     pub is_dir: bool,
     pub is_parent_link: bool,
     pub display_name: String,
@@ -311,7 +310,7 @@ mod tests {
 
     use super::Panel;
     use crate::domain::{
-        entry::Entry,
+        entry::{Entry, EntryKind},
         selection::SelectionModel,
         sorting::{SortColumn, SortDirection},
         PanelLocation,
@@ -397,7 +396,7 @@ mod tests {
 
         panel.navigate_to(
             PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
-            vec![Entry::parent_link("Up"), entry("beta")],
+            vec![Entry::parent_link(), entry("beta")],
         );
 
         assert_eq!(panel.selected_entry().unwrap().name, "..");
@@ -429,7 +428,7 @@ mod tests {
         panel.select_single(0);
         panel.navigate_to(
             PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
-            vec![Entry::parent_link("Up"), entry("nested")],
+            vec![Entry::parent_link(), entry("nested")],
         );
         panel.navigate_to(
             PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
@@ -443,13 +442,13 @@ mod tests {
     fn queued_delete_selection_clamps_to_parent_link_when_last_item_disappears() {
         let mut panel = Panel::new(
             PanelLocation::filesystem(std::path::PathBuf::from("/tmp/child")),
-            vec![Entry::parent_link("Up"), entry("last.txt")],
+            vec![Entry::parent_link(), entry("last.txt")],
             true,
         );
 
         panel.select_single(1);
         panel.queue_delete_selection();
-        panel.replace_entries(vec![Entry::parent_link("Up")]);
+        panel.replace_entries(vec![Entry::parent_link()]);
 
         assert_eq!(panel.selected_entry().unwrap().name, "..");
         assert_eq!(panel.selection.focus_index(), Some(0));
@@ -480,13 +479,11 @@ mod tests {
             name: name.into(),
             archive_path: None,
             remote_path: None,
+            kind: EntryKind::Directory,
             is_dir: true,
             size_bytes: 0,
-            size_label: "-".into(),
-            type_label: "Directory".into(),
             modified_at: Some(SystemTime::now()),
-            modified_label: String::new(),
-            attributes_label: String::new(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }
@@ -496,13 +493,11 @@ mod tests {
             name: name.into(),
             archive_path: None,
             remote_path: None,
+            kind: EntryKind::File,
             is_dir: false,
             size_bytes,
-            size_label: format!("{size_bytes} B"),
-            type_label: "File".into(),
             modified_at: Some(SystemTime::now()),
-            modified_label: String::new(),
-            attributes_label: String::new(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }
@@ -521,13 +516,11 @@ mod tests {
                 name: "alpha.txt".into(),
                 archive_path: None,
                 remote_path: None,
+                kind: EntryKind::File,
                 is_dir: false,
                 size_bytes: 99,
-                size_label: "99 B".into(),
-                type_label: "File".into(),
                 modified_at: Some(SystemTime::now()),
-                modified_label: String::new(),
-                attributes_label: String::new(),
+                attributes: String::new(),
                 is_parent_link: false,
             }),
         );

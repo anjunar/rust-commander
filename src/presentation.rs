@@ -1,10 +1,8 @@
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, AppState},
-    archive::ArchiveEntryKind,
-    domain::sorting::SortColumn,
-    domain::FileOperationKind,
+    application::{ActivePanel, AppState, FileOperationKind},
+    domain::{sorting::SortColumn, Entry, EntryKind},
 };
 
 pub fn ready_status() -> String {
@@ -44,25 +42,48 @@ pub fn sort_column_label(column: SortColumn) -> String {
     }
 }
 
-pub fn filesystem_entry_type_label(is_dir: bool) -> String {
-    if is_dir {
-        t!("entry.folder").into_owned()
+pub fn entry_size_label(entry: &Entry) -> String {
+    if entry.is_parent_link || entry.is_dir {
+        "-".into()
     } else {
-        t!("entry.file").into_owned()
+        crate::fs::reader::format_bytes(entry.size_bytes)
     }
 }
 
-pub fn archive_entry_type_label(kind: ArchiveEntryKind) -> String {
-    match kind {
-        ArchiveEntryKind::Directory => t!("entry.folder").into_owned(),
-        ArchiveEntryKind::File => t!("entry.file").into_owned(),
-        ArchiveEntryKind::Symlink => t!("entry.symlink").into_owned(),
-        ArchiveEntryKind::Unknown => t!("entry.archive_item").into_owned(),
+pub fn entry_type_label(entry: &Entry) -> String {
+    if entry.is_parent_link {
+        return t!("entry.parent").into_owned();
+    }
+
+    match entry.kind {
+        EntryKind::Directory => t!("entry.folder").into_owned(),
+        EntryKind::File => t!("entry.file").into_owned(),
+        EntryKind::Symlink => t!("entry.symlink").into_owned(),
+        EntryKind::ArchiveItem => t!("entry.archive_item").into_owned(),
     }
 }
 
-pub fn parent_entry_type_label() -> String {
-    t!("entry.parent").into_owned()
+pub fn entry_modified_label(entry: &Entry) -> String {
+    entry
+        .modified_at
+        .map(crate::fs::reader::format_system_time)
+        .unwrap_or_else(|| {
+            if entry.is_parent_link {
+                String::new()
+            } else {
+                "-".into()
+            }
+        })
+}
+
+pub fn entry_attributes_label(entry: &Entry) -> String {
+    if entry.is_parent_link {
+        "UP".into()
+    } else if entry.attributes.is_empty() {
+        "-".into()
+    } else {
+        entry.attributes.clone()
+    }
 }
 
 pub fn status_line(state: &AppState) -> String {

@@ -11,15 +11,16 @@ use gtk::glib;
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, LoadScheduler},
+    application::{
+        refresh_request, root_navigation_request, selected_navigation_request,
+        spawn_directory_load, ActivePanel, Commander, LoadAction, LoadScheduler,
+        NavigationRequest, SelectedNavigation, SessionStore,
+    },
     archive::ArchiveService,
     config::AppConfig,
     fs::watcher::{WatchCommand, WatchEvent},
     remote::RemoteService,
-    ui::{
-        dialogs,
-        navigation::{self, LoadAction, NavigationRequest, SelectedNavigation},
-    },
+    ui::dialogs,
 };
 
 use super::{hosts::NavigationHost, operations_controller::OperationRuntime};
@@ -50,6 +51,7 @@ pub struct NavigationController {
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
+    session_store: Rc<RefCell<SessionStore>>,
     operation_runtime: OperationRuntime,
     runtime: NavigationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
@@ -62,6 +64,7 @@ impl NavigationController {
         commander: Rc<RefCell<Commander>>,
         archive_service: Rc<RefCell<ArchiveService>>,
         remote_service: RemoteService,
+        session_store: Rc<RefCell<SessionStore>>,
         operation_runtime: OperationRuntime,
         runtime: NavigationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
@@ -72,6 +75,7 @@ impl NavigationController {
             commander,
             archive_service,
             remote_service,
+            session_store,
             operation_runtime,
             runtime,
             app_config_cache,
@@ -91,7 +95,7 @@ impl NavigationController {
         let request = {
             let commander = self.commander.borrow();
             let archive_service = self.archive_service.borrow();
-            navigation::selected_navigation_request(&commander, &archive_service, panel)
+            selected_navigation_request(&commander, &archive_service, panel)
         };
 
         match request {
@@ -111,14 +115,19 @@ impl NavigationController {
                     move |open_as_archive| {
                         if open_as_archive {
                             let next_location = {
-                                let archive_service = controller.archive_service.borrow();
-                                match archive_service.archive_location_for_path(&path) {
-                                    Ok(location) => location,
-                                    Err(error) => {
-                                        controller.show_command_failed(error);
-                                        return;
+                                let session = {
+                                    let archive_service = controller.archive_service.borrow();
+                                    match archive_service.open_archive(&path) {
+                                        Ok(session) => session,
+                                        Err(error) => {
+                                            controller.show_command_failed(error);
+                                            return;
+                                        }
                                     }
-                                }
+                                };
+                                let session_key =
+                                    controller.session_store.borrow_mut().insert_archive(session);
+                                crate::domain::PanelLocation::archive(session_key, path.clone(), "")
                             };
 
                             controller.start_directory_load(NavigationRequest {
@@ -159,7 +168,7 @@ impl NavigationController {
     pub fn start_root_navigation(&self, panel: ActivePanel, index: usize) {
         let request = {
             let commander = self.commander.borrow();
-            navigation::root_navigation_request(&commander, panel, index)
+            root_navigation_request(&commander, panel, index)
         };
 
         let Some(request) = request else {
@@ -170,13 +179,21 @@ impl NavigationController {
     }
 
     pub fn start_remote_session(&self, panel: ActivePanel, session: crate::remote::RemoteSession) {
-        let start_directory = session.start_directory();
+        let profile = session.profile().clone();
+        let start_directory = session.start_directory().to_string();
+        let session_key = self.session_store.borrow_mut().insert_remote(session);
         self.start_directory_load(NavigationRequest {
             panel,
             generation: 0,
             action: LoadAction::Navigate,
-            status: t!("status.opened", path = start_directory.to_string()).into_owned(),
-            next_location: crate::domain::PanelLocation::remote(session, start_directory),
+            status: t!("status.opened", path = start_directory.as_str()).into_owned(),
+            next_location: crate::domain::PanelLocation::remote(
+                session_key,
+                profile.auth.username(),
+                profile.host,
+                profile.port,
+                start_directory,
+            ),
             selection_intent: None,
             busy_message: "Connecting to remote host...".into(),
         });
@@ -195,12 +212,14 @@ impl NavigationController {
 
         let archive_service = self.archive_service.borrow().clone();
         let remote_service = self.remote_service.clone();
+        let session_store = Rc::clone(&self.session_store);
         let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
         let request_for_tracking = request.clone();
-        let rx = navigation::spawn_directory_load(
+        let rx = spawn_directory_load(
             request,
             archive_service,
             remote_service,
+            session_store,
             show_hidden_files,
         );
 
@@ -299,7 +318,7 @@ impl NavigationController {
         };
         let request = {
             let commander = self.commander.borrow();
-            navigation::refresh_request(&commander, panel, status)
+            refresh_request(&commander, panel, status)
         };
         self.start_directory_load(request);
     }

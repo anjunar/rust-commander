@@ -4,10 +4,10 @@ use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
 use crate::{
-    config::AppConfig,
-    domain::operation::{
-        ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict,
+    application::{
+        ConflictResolution, FileOperationKind, OperationConflict, OperationPlan,
     },
+    config::AppConfig,
     fs::{operations::progress_percent, reader::format_bytes},
     i18n, presentation,
     remote::{RemoteAuthConfig, RemoteConfig, RemoteProfile, RemoteRuntimeSecret, RemoteSession},
@@ -225,15 +225,15 @@ pub fn prompt_archive_open_action<F>(
 
 pub fn confirm_operation<F>(
     parent: &gtk::ApplicationWindow,
-    request: FileOperationRequest,
+    request: OperationPlan,
     on_confirm: F,
 ) where
-    F: FnOnce(FileOperationRequest) + 'static,
+    F: FnOnce(OperationPlan) + 'static,
 {
     let source_label = source_label(&request);
     let target_label = target_label(&request);
 
-    let (title, detail, confirm_label) = match request.kind {
+    let (title, detail, confirm_label) = match request.kind() {
         FileOperationKind::Copy => (
             t!("dialog.copy_confirmation_title").into_owned(),
             t!(
@@ -1441,7 +1441,7 @@ impl ProgressDialog {
         }
     }
 
-    pub fn update_progress(&self, snapshot: &crate::domain::operation::OperationSnapshot) {
+    pub fn update_progress(&self, snapshot: &crate::application::OperationSnapshot) {
         let fraction = progress_percent(snapshot);
         self.title.set_label(&t!(
             "progress.in_progress",
@@ -1525,61 +1525,48 @@ impl ProgressDialog {
     }
 }
 
-fn source_label(request: &FileOperationRequest) -> String {
-    if let Some(archive_source) = &request.archive_source {
-        return if archive_source.entry_paths.len() == 1 {
-            archive_source.entry_paths[0].clone()
-        } else {
-            t!(
-                "progress.selected_archive_items",
-                count = archive_source.entry_paths.len()
-            )
-            .into_owned()
-        };
-    }
-
-    if let Some(remote_source) = &request.remote_source {
-        return if remote_source.entry_paths.len() == 1 {
-            remote_source.entry_paths[0].to_string()
-        } else {
-            t!(
-                "progress.selected_archive_items",
-                count = remote_source.entry_paths.len()
-            )
-            .into_owned()
-        };
-    }
-
-    if request.sources.len() == 1 {
-        request
-            .sources
-            .first()
-            .and_then(|path| {
-                path.file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-            })
-            .unwrap_or_else(|| request.sources[0].display().to_string())
-    } else {
-        t!("common.items_count", count = request.sources.len()).into_owned()
+fn source_label(request: &OperationPlan) -> String {
+    match request {
+        OperationPlan::ArchiveExtract(request) => {
+            if request.entry_paths.len() == 1 {
+                request.entry_paths[0].clone()
+            } else {
+                t!("progress.selected_archive_items", count = request.entry_paths.len())
+                    .into_owned()
+            }
+        }
+        OperationPlan::RemoteDownload(request) => {
+            if request.entry_paths.len() == 1 {
+                request.entry_paths[0].clone()
+            } else {
+                t!("progress.selected_archive_items", count = request.entry_paths.len())
+                    .into_owned()
+            }
+        }
+        OperationPlan::Local(request) => selected_paths_summary(&request.sources),
+        OperationPlan::RemoteUpload(request) => selected_paths_summary(&request.sources),
     }
 }
 
-fn target_label(request: &FileOperationRequest) -> String {
-    if let Some(remote_target) = &request.remote_target {
-        let profile = remote_target.session.profile();
-        return format!(
-            "{}@{}:{}",
-            profile.auth.username(),
-            profile.host,
-            remote_target.target_directory
-        );
+fn target_label(request: &OperationPlan) -> String {
+    match request {
+        OperationPlan::ArchiveExtract(request) => request.target_directory.display().to_string(),
+        OperationPlan::RemoteDownload(request) => request.target_directory.display().to_string(),
+        OperationPlan::Local(request) => request
+            .target_directory
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "-".into()),
+        OperationPlan::RemoteUpload(request) => {
+            let profile = request.session.profile();
+            format!(
+                "{}@{}:{}",
+                profile.auth.username(),
+                profile.host,
+                request.target_directory
+            )
+        }
     }
-
-    request
-        .target_directory
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "-".into())
 }
 
 fn selected_paths_summary(paths: &[PathBuf]) -> String {

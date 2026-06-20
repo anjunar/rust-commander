@@ -3,13 +3,14 @@ use std::rc::Rc;
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
+use anyhow::Context;
 use gtk::prelude::*;
 use rust_i18n::t;
 
 use crate::{
+    application::FileOperationKind,
     archive::ArchiveService,
     config,
-    domain::operation::FileOperationKind,
     remote::RemoteProfile,
     ui::{dialogs, editor_dialog, file_viewer_dialog, main_window::MainWindow},
 };
@@ -144,9 +145,29 @@ impl MainWindow {
                 .map(|path| path.with_file_name(new_name.trim()))
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| new_name.trim().to_string());
+            let rename_result = {
+                let commander = this.commander.borrow();
+                commander.rename_active_request(&new_name)
+            };
+            let (source, target) = match rename_result {
+                Ok(paths) => paths,
+                Err(error) => {
+                    this.show_command_failed(error);
+                    return;
+                }
+            };
+
+            if let Err(error) = crate::fs::reader::rename_path(&source, &target) {
+                this.show_command_failed(error);
+                return;
+            }
+
             let result = {
                 let mut commander = this.commander.borrow_mut();
-                commander.rename_active(&new_name)
+                commander.apply_active_rename(
+                    &new_name,
+                    t!("status.renamed", path = renamed_path.as_str()).into_owned(),
+                )
             };
             match result {
                 Ok(update) => this.apply_update(update),
@@ -155,7 +176,6 @@ impl MainWindow {
                     return;
                 }
             }
-            this.set_status_message(t!("status.renamed", path = renamed_path).into_owned());
         });
     }
 
@@ -474,25 +494,36 @@ impl MainWindow {
     pub fn handle_make_directory(self: &Rc<Self>) {
         let this = Rc::clone(self);
         dialogs::prompt_new_directory(&self.window, move |name| {
-            let result = {
-                let mut commander = this.commander.borrow_mut();
-                commander.create_directory_in_active(&name)
+            let target = {
+                let commander = this.commander.borrow();
+                commander.create_directory_request(&name)
             };
-            match result {
-                Ok(update) => this.apply_update(update),
+            let target = match target {
+                Ok(target) => target,
                 Err(error) => {
                     this.show_command_failed(error);
                     return;
                 }
+            };
+
+            if let Err(error) = std::fs::create_dir(&target)
+                .with_context(|| format!("Could not create directory {}", target.display()))
+            {
+                this.show_command_failed(error);
+                return;
             }
-            let changed_path = this.active_panel_path().join(name.trim());
-            this.set_status_message(
-                t!(
-                    "status.created_directory",
-                    path = changed_path.display().to_string()
+
+            let update = {
+                let mut commander = this.commander.borrow_mut();
+                commander.set_status(
+                    t!(
+                        "status.created_directory",
+                        path = target.display().to_string()
+                    )
+                    .into_owned(),
                 )
-                .into_owned(),
-            );
+            };
+            this.apply_update(update);
         });
     }
 

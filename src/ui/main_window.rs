@@ -10,10 +10,9 @@ use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, ViewUpdate},
+    application::{ActivePanel, Commander, SessionStore, ViewUpdate},
     archive::ArchiveService,
     config::{AppConfig, WindowConfig},
-    fs::watcher::start_file_watcher,
     platform::assets::asset_path,
     presentation,
     remote::RemoteService,
@@ -35,6 +34,8 @@ mod navigation_controller;
 mod operations_controller;
 #[path = "main_window_panel_wiring.rs"]
 mod panel_wiring;
+#[path = "main_window_runtime.rs"]
+mod runtime;
 #[path = "main_window_terminal.rs"]
 mod terminal_wiring;
 #[path = "main_window_window_chrome.rs"]
@@ -52,6 +53,7 @@ use hosts::{NavigationHost, OperationsHost, ViewHost};
 use navigation_controller::{NavigationController, NavigationRuntime};
 use operations_controller::{OperationRuntime, OperationsController};
 use panel_wiring::PanelWiring;
+pub(crate) use runtime::MainWindowRuntime;
 use terminal_wiring::TerminalController;
 #[cfg(target_os = "windows")]
 use window_chrome::install_custom_window_controls;
@@ -93,6 +95,7 @@ pub struct MainWindow {
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
+    session_store: Rc<RefCell<SessionStore>>,
     operation_runtime: OperationRuntime,
     navigation_runtime: NavigationRuntime,
     context_menu_runtime: ContextMenuRuntime,
@@ -104,24 +107,20 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn new(app: &gtk::Application, commander: Commander, app_config: AppConfig) -> Rc<Self> {
-        Self::new_with_visibility(app, commander, app_config, true)
+    pub fn new(app: &gtk::Application, runtime: MainWindowRuntime) -> Rc<Self> {
+        Self::new_with_visibility(app, runtime, true)
     }
 
-    pub fn new_hidden(
-        app: &gtk::Application,
-        commander: Commander,
-        app_config: AppConfig,
-    ) -> Rc<Self> {
-        Self::new_with_visibility(app, commander, app_config, false)
+    pub fn new_hidden(app: &gtk::Application, runtime: MainWindowRuntime) -> Rc<Self> {
+        Self::new_with_visibility(app, runtime, false)
     }
 
     fn new_with_visibility(
         app: &gtk::Application,
-        commander: Commander,
-        app_config: AppConfig,
+        runtime: MainWindowRuntime,
         present_immediately: bool,
     ) -> Rc<Self> {
+        let app_config = runtime.app_config_cache.borrow().clone();
         let theme_controller = Rc::new(ThemeController::new());
         theme_controller.apply(app_config.general.theme);
         let window_config = app_config.window.clone();
@@ -160,7 +159,9 @@ impl MainWindow {
         shell.set_margin_end(8);
 
         let commander_view = CommanderView::new();
-        let initial_dir = commander
+        let initial_dir = runtime
+            .commander
+            .borrow()
             .state()
             .active_panel()
             .location
@@ -223,14 +224,18 @@ impl MainWindow {
 
         window.set_child(Some(&shell));
 
-        let commander = Rc::new(RefCell::new(commander));
-        let archive_service = Rc::new(RefCell::new(ArchiveService::with_default_backends()));
-        let remote_service = RemoteService::default();
-        let (watch_command_tx, watch_event_rx) = start_file_watcher();
-        let navigation_runtime = NavigationRuntime::new(watch_command_tx);
-        let operation_runtime = OperationRuntime::new();
-        let context_menu_runtime = ContextMenuRuntime::new();
         let startup_load_state = Rc::new(RefCell::new(StartupLoadState::new(!present_immediately)));
+        let MainWindowRuntime {
+            commander,
+            archive_service,
+            remote_service,
+            session_store,
+            operation_runtime,
+            navigation_runtime,
+            context_menu_runtime,
+            app_config_cache,
+            watch_event_rx,
+        } = runtime;
 
         let this = Rc::new(Self {
             window,
@@ -245,13 +250,14 @@ impl MainWindow {
             commander,
             archive_service,
             remote_service,
+            session_store,
             operation_runtime,
             navigation_runtime,
             context_menu_runtime,
             startup_load_state,
             initial_window_config: window_config.clone(),
             window_state_initialized: Cell::new(present_immediately),
-            app_config_cache: Rc::new(RefCell::new(app_config.clone())),
+            app_config_cache,
             theme_controller,
         });
 
@@ -456,6 +462,7 @@ impl MainWindow {
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
             self.remote_service.clone(),
+            Rc::clone(&self.session_store),
             self.operation_runtime.clone(),
             self.navigation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
@@ -553,6 +560,7 @@ impl MainWindow {
             Rc::clone(&self.commander),
             Rc::clone(&self.archive_service),
             self.remote_service.clone(),
+            Rc::clone(&self.session_store),
             self.operation_runtime.clone(),
             Rc::clone(&self.app_config_cache),
             self.navigation_controller(),

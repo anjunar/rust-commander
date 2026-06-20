@@ -3,8 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::archive::ArchiveSession;
-use crate::remote::{RemotePath, RemoteSession};
+use crate::{
+    archive::ArchiveSession,
+    remote::RemoteSession,
+};
 
 #[derive(Clone, Debug)]
 pub enum FileOperationKind {
@@ -14,32 +16,66 @@ pub enum FileOperationKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct FileOperationRequest {
+pub struct LocalOperationRequest {
     pub kind: FileOperationKind,
     pub sources: Vec<PathBuf>,
     pub target_directory: Option<PathBuf>,
     pub use_recycle_bin: bool,
-    pub archive_source: Option<ArchiveSourceRequest>,
-    pub remote_source: Option<RemoteSourceRequest>,
-    pub remote_target: Option<RemoteTargetRequest>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ArchiveSourceRequest {
+pub struct ArchiveExtractRequest {
     pub session: ArchiveSession,
     pub entry_paths: Vec<String>,
+    pub target_directory: PathBuf,
 }
 
 #[derive(Clone, Debug)]
-pub struct RemoteSourceRequest {
+pub struct RemoteDownloadRequest {
     pub session: RemoteSession,
-    pub entry_paths: Vec<RemotePath>,
+    pub entry_paths: Vec<String>,
+    pub target_directory: PathBuf,
 }
 
 #[derive(Clone, Debug)]
-pub struct RemoteTargetRequest {
+pub struct RemoteUploadRequest {
+    pub sources: Vec<PathBuf>,
     pub session: RemoteSession,
-    pub target_directory: RemotePath,
+    pub target_directory: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum OperationPlan {
+    Local(LocalOperationRequest),
+    ArchiveExtract(ArchiveExtractRequest),
+    RemoteDownload(RemoteDownloadRequest),
+    RemoteUpload(RemoteUploadRequest),
+}
+
+impl OperationPlan {
+    pub fn kind(&self) -> FileOperationKind {
+        match self {
+            Self::Local(request) => request.kind.clone(),
+            Self::ArchiveExtract(_) | Self::RemoteDownload(_) | Self::RemoteUpload(_) => {
+                FileOperationKind::Copy
+            }
+        }
+    }
+
+    pub fn with_use_recycle_bin(mut self, use_recycle_bin: bool) -> Self {
+        if let Self::Local(request) = &mut self {
+            request.use_recycle_bin = use_recycle_bin;
+        }
+        self
+    }
+
+    pub fn local_sources(&self) -> &[PathBuf] {
+        match self {
+            Self::Local(request) => &request.sources,
+            Self::RemoteUpload(request) => &request.sources,
+            Self::ArchiveExtract(_) | Self::RemoteDownload(_) => &[],
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

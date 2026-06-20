@@ -6,6 +6,7 @@ use gtk::glib::{self, subclass::prelude::*};
 use crate::{
     domain::{entry::Entry, panel_location::PanelLocation},
     platform,
+    presentation,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -61,10 +62,10 @@ impl FileRowObject {
 
         data.name == entry.name
             && data.path == path
-            && data.size == entry.size_label
-            && data.type_label == entry.type_label
-            && data.modified == entry.modified_label
-            && data.attributes == entry.attributes_label
+            && data.size == presentation::entry_size_label(entry)
+            && data.type_label == presentation::entry_type_label(entry)
+            && data.modified == presentation::entry_modified_label(entry)
+            && data.attributes == presentation::entry_attributes_label(entry)
             && data.size_bytes == entry.size_bytes
             && data.is_dir == entry.is_dir
             && data.is_parent_link == entry.is_parent_link
@@ -75,10 +76,10 @@ impl FileRowObject {
         FileRowData {
             name: entry.name.clone(),
             path: entry.display_path(location),
-            size: entry.size_label.clone(),
-            type_label: entry.type_label.clone(),
-            modified: entry.modified_label.clone(),
-            attributes: entry.attributes_label.clone(),
+            size: presentation::entry_size_label(entry),
+            type_label: presentation::entry_type_label(entry),
+            modified: presentation::entry_modified_label(entry),
+            attributes: presentation::entry_attributes_label(entry),
             icon_name: icon.icon_name.to_string(),
             icon_paintable: icon.paintable,
             size_bytes: entry.size_bytes,

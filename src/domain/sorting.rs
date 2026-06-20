@@ -78,16 +78,17 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState, folders_first: b
             .size_bytes
             .cmp(&b.size_bytes)
             .then_with(|| compare_text(&a.name, &b.name)),
-        SortColumn::Type => {
-            compare_text(&a.type_label, &b.type_label).then_with(|| compare_text(&a.name, &b.name))
-        }
+        SortColumn::Type => a
+            .kind
+            .cmp(&b.kind)
+            .then_with(|| compare_text(&a.name, &b.name)),
         SortColumn::Modified => a
             .modified_at
             .cmp(&b.modified_at)
             .then_with(|| compare_text(&a.name, &b.name)),
         SortColumn::Attributes => a
-            .attributes_label
-            .cmp(&b.attributes_label)
+            .attributes
+            .cmp(&b.attributes)
             .then_with(|| compare_text(&a.name, &b.name)),
     };
 
@@ -104,20 +105,22 @@ fn compare_text(a: &str, b: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::{sort_entries, SortColumn, SortDirection, SortState};
-    use crate::domain::Entry;
+    use crate::domain::{Entry, EntryKind};
 
     fn file(name: &str, is_dir: bool) -> Entry {
         Entry {
             name: name.into(),
             archive_path: None,
             remote_path: None,
+            kind: if is_dir {
+                EntryKind::Directory
+            } else {
+                EntryKind::File
+            },
             is_dir,
             size_bytes: 0,
-            size_label: "-".into(),
-            type_label: if is_dir { "Folder" } else { "File" }.into(),
             modified_at: None,
-            modified_label: "-".into(),
-            attributes_label: "-".into(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }

@@ -4,19 +4,16 @@ use gtk::glib;
 use rust_i18n::t;
 
 use crate::{
-    application::Commander,
+    application::{
+        prepare_operation, start_operation_task, ActiveOperationHandle, Commander,
+        ConflictResolution, FileOperationKind, OperationEvent, OperationPlan,
+        PreparedOperation, SessionStore, StartedOperation,
+    },
     archive::ArchiveService,
     config::AppConfig,
-    domain::{
-        operation::{FileOperationKind, FileOperationRequest, OperationEvent},
-        ConflictResolution,
-    },
     presentation,
     remote::RemoteService,
-    ui::{
-        dialogs,
-        operations::{self, ActiveOperationHandle, PreparedOperation, StartedOperation},
-    },
+    ui::dialogs,
 };
 
 use super::{hosts::OperationsHost, navigation_controller::NavigationController};
@@ -41,6 +38,7 @@ pub struct OperationsController {
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
+    session_store: Rc<RefCell<SessionStore>>,
     runtime: OperationRuntime,
     app_config_cache: Rc<RefCell<AppConfig>>,
     navigation: NavigationController,
@@ -53,6 +51,7 @@ impl OperationsController {
         commander: Rc<RefCell<Commander>>,
         archive_service: Rc<RefCell<ArchiveService>>,
         remote_service: RemoteService,
+        session_store: Rc<RefCell<SessionStore>>,
         runtime: OperationRuntime,
         app_config_cache: Rc<RefCell<AppConfig>>,
         navigation: NavigationController,
@@ -63,6 +62,7 @@ impl OperationsController {
             commander,
             archive_service,
             remote_service,
+            session_store,
             runtime,
             app_config_cache,
             navigation,
@@ -79,8 +79,9 @@ impl OperationsController {
             return;
         }
 
-        let prepared = match operations::prepare_operation(
+        let prepared = match prepare_operation(
             &self.commander.borrow(),
+            Rc::clone(&self.session_store),
             &self.app_config_cache.borrow().file_operations,
             kind,
         ) {
@@ -106,8 +107,8 @@ impl OperationsController {
         }
     }
 
-    fn start_file_operation(&self, request: FileOperationRequest) {
-        let started = match operations::start_operation_task(
+    fn start_file_operation(&self, request: OperationPlan) {
+        let started = match start_operation_task(
             &self.archive_service.borrow(),
             &self.remote_service,
             request,
@@ -158,7 +159,7 @@ impl OperationsController {
 
     fn poll_transfer_operation(
         &self,
-        request: FileOperationRequest,
+        request: OperationPlan,
         receiver: std::sync::mpsc::Receiver<OperationEvent>,
     ) {
         let active_operation = Rc::clone(&self.runtime.active_operation);
@@ -166,7 +167,7 @@ impl OperationsController {
             &self.window,
             &t!(
                 "progress.operation_title",
-                kind = presentation::file_operation_label(&request.kind)
+                kind = presentation::file_operation_label(&request.kind())
             ),
             move || {
                 if let Some(handle) = active_operation.borrow().as_ref() {

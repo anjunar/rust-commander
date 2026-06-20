@@ -1,22 +1,20 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use rust_i18n::t;
 
 use crate::{
-    application::{app_state::AppState, commands::ViewUpdate, ActivePanel},
+    application::{
+        app_state::AppState, commands::ViewUpdate, ActivePanel, ArchiveExtractRequest,
+        FileOperationKind, LocalOperationRequest, OperationPlan, RemoteDownloadRequest,
+        RemoteUploadRequest, SessionStore,
+    },
     config::{ArchiveConfig, PanelSettings},
     domain::{
-        operation::{
-            ArchiveSourceRequest, FileOperationKind, FileOperationRequest, RemoteSourceRequest,
-            RemoteTargetRequest,
-        },
         selection::SelectionIntent,
         sorting::{SortColumn, SortDirection},
-        Entry, Panel, PanelLocation,
+        Entry, Panel, PanelLocation, RootLocation,
     },
-    fs::reader::rename_path,
-    platform, presentation,
 };
 
 pub struct Commander {
@@ -28,9 +26,10 @@ impl Commander {
     pub fn new(
         left_initial_path: PathBuf,
         right_initial_path: PathBuf,
-        _archive_config: ArchiveConfig,
         panel_settings: PanelSettings,
-    ) -> Result<Self> {
+        roots: Vec<RootLocation>,
+        initial_status: String,
+    ) -> Self {
         let left = Panel::new(
             PanelLocation::filesystem(left_initial_path.clone()),
             Vec::new(),
@@ -41,11 +40,10 @@ impl Commander {
             Vec::new(),
             panel_settings.folders_first,
         );
-        let roots = platform::available_roots();
-        Ok(Self {
-            state: AppState::new(left, right, roots, presentation::ready_status()),
+        Self {
+            state: AppState::new(left, right, roots, initial_status),
             panel_settings,
-        })
+        }
     }
 
     pub fn state(&self) -> &AppState {
@@ -145,43 +143,47 @@ impl Commander {
         panel: ActivePanel,
         column: SortColumn,
         direction: SortDirection,
+        status: String,
     ) -> ViewUpdate {
         self.state.active_panel = panel;
         self.state
             .panel_mut(panel)
             .set_sort_state(column, direction);
-        self.state.status = t!(
-            "status.sorted_panel",
-            panel = presentation::panel_label(panel),
-            column = presentation::sort_column_label(column)
-        )
-        .into_owned();
+        self.state.status = status;
         ViewUpdate::panel_entries(panel)
     }
 
-    pub fn rename_active(&mut self, new_name: &str) -> Result<ViewUpdate> {
+    pub fn rename_active_request(&self, new_name: &str) -> Result<(PathBuf, PathBuf)> {
         let panel = self.state.active_panel;
         self.state
             .panel(panel)
             .selected_entry()
             .context("No entry selected for rename")?;
-        let (source, target) = self.state.panel(panel).rename_target(new_name.trim())?;
+        self.state.panel(panel).rename_target(new_name.trim())
+    }
+
+    pub fn apply_active_rename(
+        &mut self,
+        new_name: &str,
+        status: impl Into<String>,
+    ) -> Result<ViewUpdate> {
+        let panel = self.state.active_panel;
+        let (source, target) = self.rename_active_request(new_name)?;
 
         if source == target {
             self.state.status = t!("status.rename_skipped").into_owned();
             return Ok(ViewUpdate::status());
         }
 
-        rename_path(&source, &target)?;
         self.state
             .panel_mut(panel)
             .rename_selected_entry(new_name.trim())?;
-        self.state.status = t!("status.renamed", path = target.display().to_string()).into_owned();
+        self.state.status = status.into();
 
         Ok(ViewUpdate::panel_entries(panel))
     }
 
-    pub fn create_directory_in_active(&mut self, name: &str) -> Result<ViewUpdate> {
+    pub fn create_directory_request(&self, name: &str) -> Result<PathBuf> {
         let panel = self.state.active_panel;
         let trimmed = name.trim();
 
@@ -201,19 +203,14 @@ impl Commander {
             bail!("An entry with this name already exists");
         }
 
-        fs::create_dir(&target)
-            .with_context(|| format!("Could not create directory {}", target.display()))?;
-
-        self.state.status = t!(
-            "status.created_directory",
-            path = target.display().to_string()
-        )
-        .into_owned();
-
-        Ok(ViewUpdate::status())
+        Ok(target)
     }
 
-    pub fn operation_request(&self, kind: FileOperationKind) -> Result<FileOperationRequest> {
+    pub fn operation_request(
+        &self,
+        kind: FileOperationKind,
+        session_store: &SessionStore,
+    ) -> Result<OperationPlan> {
         let source_panel = self.state.active_panel();
         let target_panel = self.state.inactive_panel();
 
@@ -232,72 +229,84 @@ impl Commander {
             bail!("No entries selected for this file operation");
         }
 
-        let target_directory = match kind {
-            FileOperationKind::Delete => None,
-            FileOperationKind::Copy | FileOperationKind::Move => {
-                target_panel.location.host_directory()
-            }
-        };
-
-        let archive_source = match &source_panel.location {
+        match &source_panel.location {
             PanelLocation::Archive(view) => {
                 if target_panel.location.filesystem_path().is_none() {
                     bail!("Archive items can only be copied to a real filesystem directory");
                 }
-                Some(ArchiveSourceRequest {
-                    session: view.session.clone(),
+                let session = session_store
+                    .archive(&view.session_key)
+                    .context("Archive session not found")?;
+                let target_directory = target_panel
+                    .location
+                    .host_directory()
+                    .context("No filesystem target directory available for archive copy")?;
+                Ok(OperationPlan::ArchiveExtract(ArchiveExtractRequest {
+                    session,
                     entry_paths: selected_items
                         .iter()
                         .filter_map(|item| item.archive_path.clone())
                         .collect(),
-                })
+                    target_directory,
+                }))
             }
-            PanelLocation::Filesystem(_) | PanelLocation::Remote(_) => None,
-        };
-
-        let remote_source = match &source_panel.location {
             PanelLocation::Remote(location) => {
                 if target_panel.location.filesystem_path().is_none() {
                     bail!("Remote downloads currently require a real filesystem target");
                 }
-                Some(RemoteSourceRequest {
-                    session: location.session.clone(),
+                let session = session_store
+                    .remote(&location.session_key)
+                    .context("Remote session not found")?;
+                let target_directory = target_panel
+                    .location
+                    .host_directory()
+                    .context("No filesystem target directory available for remote download")?;
+                Ok(OperationPlan::RemoteDownload(RemoteDownloadRequest {
+                    session,
                     entry_paths: selected_items
                         .iter()
                         .filter_map(|item| item.remote_path.clone())
                         .collect(),
-                })
+                    target_directory,
+                }))
             }
-            PanelLocation::Filesystem(_) | PanelLocation::Archive(_) => None,
-        };
+            PanelLocation::Filesystem(_) => {
+                let sources = selected_items
+                    .iter()
+                    .filter_map(|item| item.filesystem_path.clone())
+                    .collect::<Vec<_>>();
 
-        let remote_target = match (&source_panel.location, &target_panel.location, &kind) {
-            (
-                PanelLocation::Filesystem(_),
-                PanelLocation::Remote(location),
-                FileOperationKind::Copy,
-            ) => Some(RemoteTargetRequest {
-                session: location.session.clone(),
-                target_directory: location.current_path.clone(),
-            }),
-            (PanelLocation::Filesystem(_), PanelLocation::Remote(_), FileOperationKind::Move) => {
-                bail!("Remote targets currently support upload by copy only");
+                match (&target_panel.location, &kind) {
+                    (PanelLocation::Remote(location), FileOperationKind::Copy) => {
+                        let session = session_store
+                            .remote(&location.session_key)
+                            .context("Remote session not found")?;
+                        Ok(OperationPlan::RemoteUpload(RemoteUploadRequest {
+                            sources,
+                            session,
+                            target_directory: location.current_path.clone(),
+                        }))
+                    }
+                    (PanelLocation::Remote(_), FileOperationKind::Move) => {
+                        bail!("Remote targets currently support upload by copy only");
+                    }
+                    _ => {
+                        let target_directory = match kind {
+                            FileOperationKind::Delete => None,
+                            FileOperationKind::Copy | FileOperationKind::Move => {
+                                target_panel.location.host_directory()
+                            }
+                        };
+                        Ok(OperationPlan::Local(LocalOperationRequest {
+                            kind,
+                            sources,
+                            target_directory,
+                            use_recycle_bin: false,
+                        }))
+                    }
+                }
             }
-            _ => None,
-        };
-
-        Ok(FileOperationRequest {
-            kind,
-            sources: selected_items
-                .iter()
-                .filter_map(|item| item.filesystem_path.clone())
-                .collect(),
-            target_directory,
-            use_recycle_bin: false,
-            archive_source,
-            remote_source,
-            remote_target,
-        })
+        }
     }
 
     pub fn set_status(&mut self, status: impl Into<String>) -> ViewUpdate {
@@ -344,16 +353,13 @@ impl Commander {
         }
     }
 
-    pub fn queue_selection_after_file_operation(&mut self, request: &FileOperationRequest) {
-        if !matches!(
-            request.kind,
-            FileOperationKind::Delete | FileOperationKind::Move
-        ) {
+    pub fn queue_selection_after_file_operation(&mut self, plan: &OperationPlan) {
+        if !matches!(plan.kind(), FileOperationKind::Delete | FileOperationKind::Move) {
             return;
         }
 
-        let Some(source_directory) = request
-            .sources
+        let Some(source_directory) = plan
+            .local_sources()
             .first()
             .and_then(|source| source.parent().map(std::path::Path::to_path_buf))
         else {
@@ -381,37 +387,50 @@ mod tests {
     use std::{path::PathBuf, time::SystemTime};
 
     use crate::{
-        config::{ArchiveConfig, PanelSettings},
-        domain::{Entry, FileOperationKind, PanelLocation},
+        application::{FileOperationKind, OperationPlan},
+        config::PanelSettings,
+        domain::{Entry, EntryKind, PanelLocation},
         remote::{RemoteAuthConfig, RemotePath, RemoteProfile, RemoteRuntimeSecret, RemoteSession},
     };
 
-    use super::{ActivePanel, Commander};
+    use super::{ActivePanel, Commander, SessionStore};
 
     #[test]
     fn delete_request_allows_remote_in_inactive_panel() {
         let mut commander = Commander::new(
             PathBuf::from("/tmp/left"),
             PathBuf::from("/tmp/right"),
-            ArchiveConfig::default(),
             PanelSettings::default(),
+            Vec::new(),
+            "Ready".into(),
         )
-        .unwrap();
+        ;
 
         commander.state.active_panel = ActivePanel::Left;
         commander.state.left.location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
         commander.state.left.entries = vec![file_entry("keep.txt"), file_entry("delete.txt")];
         commander.state.left.select_single(1);
-        commander.state.right.location =
-            PanelLocation::remote(remote_session(), RemotePath::new("/home/test"));
+        let mut session_store = SessionStore::default();
+        let session_key = session_store.insert_remote(remote_session());
+        commander.state.right.location = PanelLocation::remote(
+            session_key,
+            "tester",
+            "example.com",
+            22,
+            "/home/test",
+        );
 
         let request = commander
-            .operation_request(FileOperationKind::Delete)
+            .operation_request(FileOperationKind::Delete, &session_store)
             .unwrap();
 
-        assert_eq!(request.sources, vec![PathBuf::from("/tmp/left/delete.txt")]);
-        assert!(request.target_directory.is_none());
-        assert!(request.remote_target.is_none());
+        match request {
+            OperationPlan::Local(local) => {
+                assert_eq!(local.sources, vec![PathBuf::from("/tmp/left/delete.txt")]);
+                assert!(local.target_directory.is_none());
+            }
+            _ => panic!("expected local operation plan"),
+        }
     }
 
     fn file_entry(name: &str) -> Entry {
@@ -419,13 +438,11 @@ mod tests {
             name: name.into(),
             archive_path: None,
             remote_path: None,
+            kind: EntryKind::File,
             is_dir: false,
             size_bytes: 1,
-            size_label: "1 B".into(),
-            type_label: "File".into(),
             modified_at: Some(SystemTime::now()),
-            modified_label: String::new(),
-            attributes_label: String::new(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }

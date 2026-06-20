@@ -1,10 +1,12 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gtk::glib;
+use rust_i18n::t;
 
 use crate::{
     application::{ActivePanel, Commander},
     domain::sorting::SortDirection,
+    presentation,
     ui::commander_view::CommanderView,
 };
 
@@ -129,9 +131,15 @@ impl PanelWiring {
                             gtk::SortType::Descending => SortDirection::Descending,
                             _ => SortDirection::Ascending,
                         };
+                        let status = t!(
+                            "status.sorted_panel",
+                            panel = presentation::panel_label(panel),
+                            column = presentation::sort_column_label(column)
+                        )
+                        .into_owned();
                         let update = {
                             let mut commander = commander.borrow_mut();
-                            commander.sort_panel(panel, column, direction)
+                            commander.sort_panel(panel, column, direction, status)
                         };
                         host.apply_update(update);
                     });

@@ -3,16 +3,16 @@ extern crate rust_i18n;
 
 i18n!("locales", fallback = "en");
 
-pub mod application;
-pub mod archive;
-pub mod config;
-pub mod domain;
-pub mod fs;
-pub mod i18n;
-pub mod platform;
-pub mod presentation;
-pub mod remote;
-pub mod ui;
-pub mod viewer;
+mod application;
+mod archive;
+mod config;
+mod domain;
+mod fs;
+mod i18n;
+mod platform;
+mod presentation;
+mod remote;
+mod ui;
+mod viewer;
 
 pub use ui::gtk_app::run;

@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::{
+    application::SessionStore,
     archive::ArchiveService,
     domain::{Entry, PanelLocation},
     remote::RemoteService,
@@ -16,6 +17,7 @@ pub struct EntryLoadResult {
 pub struct EntryLoader {
     archive_service: ArchiveService,
     remote_service: RemoteService,
+    session_store: SessionStore,
     show_hidden_files: bool,
 }
 
@@ -23,11 +25,13 @@ impl EntryLoader {
     pub fn new(
         archive_service: ArchiveService,
         remote_service: RemoteService,
+        session_store: SessionStore,
         show_hidden_files: bool,
     ) -> Self {
         Self {
             archive_service,
             remote_service,
+            session_store,
             show_hidden_files,
         }
     }
@@ -45,10 +49,24 @@ impl EntryLoader {
             PanelLocation::Filesystem(path) => {
                 crate::fs::reader::read_entries(path, self.show_hidden_files)
             }
-            PanelLocation::Archive(_) => Ok(self.archive_service.entries_for_location(location)?),
-            PanelLocation::Remote(location) => self
-                .remote_service
-                .read_entries(location, self.show_hidden_files),
+            PanelLocation::Archive(view) => {
+                let session = self
+                    .session_store
+                    .archive(&view.session_key)
+                    .ok_or_else(|| anyhow::anyhow!("Archive session not found"))?;
+                Ok(self.archive_service.entries_for_archive_view(view, &session))
+            }
+            PanelLocation::Remote(location) => {
+                let session = self
+                    .session_store
+                    .remote(&location.session_key)
+                    .ok_or_else(|| anyhow::anyhow!("Remote session not found"))?;
+                self.remote_service.read_entries(
+                    &session,
+                    &location.current_path,
+                    self.show_hidden_files,
+                )
+            }
         }
     }
 }

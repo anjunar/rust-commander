@@ -1,9 +1,14 @@
-use std::{sync::mpsc, thread};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::mpsc,
+    thread,
+};
 
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, Commander, EntryLoader},
+    application::{ActivePanel, Commander, EntryLoader, SessionStore},
     archive::ArchiveService,
     domain::{Entry, PanelLocation, SelectionIntent},
     presentation,
@@ -98,7 +103,11 @@ pub fn selected_navigation_request(
                         message: "Archive entry is missing its path".into(),
                     };
                 };
-                PanelLocation::archive(view.session, archive_path)
+                PanelLocation::archive(
+                    view.session_key.clone(),
+                    view.archive_path.clone(),
+                    archive_path,
+                )
             }
             PanelLocation::Remote(location) => {
                 let Some(remote_path) = selected.remote_path else {
@@ -106,7 +115,13 @@ pub fn selected_navigation_request(
                         message: "Remote entry is missing its path".into(),
                     };
                 };
-                PanelLocation::remote(location.session, remote_path)
+                PanelLocation::remote(
+                    location.session_key.clone(),
+                    location.username.clone(),
+                    location.host.clone(),
+                    location.port,
+                    remote_path,
+                )
             }
         };
 
@@ -190,10 +205,17 @@ pub fn spawn_directory_load(
     request: NavigationRequest,
     archive_service: ArchiveService,
     remote_service: RemoteService,
+    session_store: Rc<RefCell<SessionStore>>,
     show_hidden_files: bool,
 ) -> mpsc::Receiver<Result<DirectoryLoadResult, String>> {
     let (tx, rx) = mpsc::channel();
-    let loader = EntryLoader::new(archive_service, remote_service, show_hidden_files);
+    let session_store = session_store.borrow().clone();
+    let loader = EntryLoader::new(
+        archive_service,
+        remote_service,
+        session_store,
+        show_hidden_files,
+    );
 
     thread::spawn(move || {
         let result = loader

@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn navigation_prefers_parent_link() {
         let restored = apply_selection(
-            &[Entry::parent_link("Up"), entry("alpha")],
+            &[Entry::parent_link(), entry("alpha")],
             &SelectionIntent::for_navigation(None),
         );
 
@@ -331,13 +331,11 @@ mod tests {
             name: name.into(),
             archive_path: None,
             remote_path: None,
+            kind: crate::domain::entry::EntryKind::File,
             is_dir: false,
             size_bytes: 1,
-            size_label: "1 B".into(),
-            type_label: "File".into(),
             modified_at: Some(SystemTime::now()),
-            modified_label: String::new(),
-            attributes_label: String::new(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }
@@ -352,13 +350,15 @@ mod tests {
             name: name.into(),
             archive_path: Some(path.into()),
             remote_path: None,
+            kind: if path.ends_with('/') {
+                crate::domain::entry::EntryKind::Directory
+            } else {
+                crate::domain::entry::EntryKind::ArchiveItem
+            },
             is_dir: path.ends_with('/'),
             size_bytes: 1,
-            size_label: "1 B".into(),
-            type_label: "Archive".into(),
             modified_at: Some(SystemTime::now()),
-            modified_label: String::new(),
-            attributes_label: String::new(),
+            attributes: String::new(),
             is_parent_link: false,
         }
     }

@@ -16,20 +16,14 @@ use anyhow::{anyhow, bail, Context, Result};
 use ssh2::{CheckResult, FileStat, HashType, KnownHostFileKind, Session, Sftp};
 
 use crate::{
-    domain::{
-        operation::{
-            FileOperationKind, OperationEvent, OperationSnapshot, OperationSummary,
-            RemoteSourceRequest, RemoteTargetRequest,
-        },
-        Entry,
+    application::{
+        FileOperationKind, OperationEvent, OperationSnapshot, OperationSummary,
+        RemoteDownloadRequest, RemoteUploadRequest,
     },
-    fs::reader::format_bytes,
-    presentation,
+    domain::{Entry, EntryKind},
 };
 
-use super::{
-    RemoteAuthConfig, RemoteLocation, RemotePath, RemoteProfile, RemoteRuntimeSecret, RemoteSession,
-};
+use super::{RemoteAuthConfig, RemotePath, RemoteProfile, RemoteRuntimeSecret, RemoteSession};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SSH_SESSION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -69,25 +63,27 @@ struct ConnectedRemote {
 impl RemoteService {
     pub fn read_entries(
         &self,
-        location: &RemoteLocation,
+        session: &RemoteSession,
+        current_path: &str,
         show_hidden_files: bool,
     ) -> Result<Vec<Entry>> {
-        let connection = self.connect_sftp(&location.session)?;
+        let connection = self.connect_sftp(session)?;
+        let current_path = RemotePath::new(current_path);
         let mut entries = Vec::new();
-        if let Some(parent) = location.current_path.parent() {
-            let mut parent_entry = Entry::parent_link(presentation::parent_entry_type_label());
-            parent_entry.remote_path = Some(parent);
+        if let Some(parent) = current_path.parent() {
+            let mut parent_entry = Entry::parent_link();
+            parent_entry.remote_path = Some(parent.to_string());
             entries.push(parent_entry);
         }
 
-        let remote_dir = to_remote_fs_path(&location.current_path);
+        let remote_dir = to_remote_fs_path(&current_path);
         let mut listed = connection
             .sftp
             .readdir(remote_dir.as_path())
             .map_err(|error| {
                 anyhow!(describe_sftp_path_error(
                     "read remote directory",
-                    location.current_path.as_str(),
+                    current_path.as_str(),
                     &error
                 ))
             })?;
@@ -104,27 +100,23 @@ impl RemoteService {
                 continue;
             }
 
-            let remote_path = location.current_path.join(name);
+            let remote_path = current_path.join(name);
             let is_dir = stat_is_directory(&stat);
             let size_bytes = stat.size.unwrap_or(0);
             let modified_at = stat.mtime.map(system_time_from_unix);
             entries.push(Entry {
                 name: name.into(),
                 archive_path: None,
-                remote_path: Some(remote_path),
+                remote_path: Some(remote_path.to_string()),
+                kind: if is_dir {
+                    EntryKind::Directory
+                } else {
+                    EntryKind::File
+                },
                 is_dir,
                 size_bytes,
-                size_label: if is_dir {
-                    "-".into()
-                } else {
-                    format_bytes(size_bytes)
-                },
-                type_label: presentation::filesystem_entry_type_label(is_dir),
                 modified_at,
-                modified_label: modified_at
-                    .map(crate::fs::reader::format_system_time)
-                    .unwrap_or_default(),
-                attributes_label: remote_attributes(&stat, is_dir),
+                attributes: remote_attributes(&stat, is_dir),
                 is_parent_link: false,
             });
         }
@@ -134,8 +126,7 @@ impl RemoteService {
 
     pub fn start_download(
         &self,
-        source: RemoteSourceRequest,
-        target_directory: PathBuf,
+        source: RemoteDownloadRequest,
     ) -> (RemoteOperationHandle, Receiver<OperationEvent>) {
         let (tx, rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -145,7 +136,7 @@ impl RemoteService {
         let service = self.clone();
 
         thread::spawn(move || {
-            let result = service.run_download(source, target_directory, &tx, &cancelled);
+            let result = service.run_download(source, &tx, &cancelled);
             if let Err(error) = result {
                 let _ = tx.send(OperationEvent::Failed(error.to_string()));
             }
@@ -156,8 +147,7 @@ impl RemoteService {
 
     pub fn start_upload(
         &self,
-        sources: Vec<PathBuf>,
-        target: RemoteTargetRequest,
+        request: RemoteUploadRequest,
     ) -> (RemoteOperationHandle, Receiver<OperationEvent>) {
         let (tx, rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -167,7 +157,7 @@ impl RemoteService {
         let service = self.clone();
 
         thread::spawn(move || {
-            let result = service.run_upload(sources, target, &tx, &cancelled);
+            let result = service.run_upload(request, &tx, &cancelled);
             if let Err(error) = result {
                 let _ = tx.send(OperationEvent::Failed(error.to_string()));
             }
@@ -178,17 +168,22 @@ impl RemoteService {
 
     fn run_download(
         &self,
-        source: RemoteSourceRequest,
-        target_directory: PathBuf,
+        source: RemoteDownloadRequest,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
     ) -> Result<()> {
+        let target_directory = source.target_directory.clone();
         let connection = self.connect_sftp(&source.session)?;
-        let plan = self.build_remote_plan(&connection.sftp, &source.entry_paths)?;
+        let remote_paths = source
+            .entry_paths
+            .iter()
+            .map(RemotePath::new)
+            .collect::<Vec<_>>();
+        let plan = self.build_remote_plan(&connection.sftp, &remote_paths)?;
         let started_at = Instant::now();
         let mut progress = TransferProgress::default();
 
-        for remote_path in &source.entry_paths {
+        for remote_path in &remote_paths {
             let file_name = remote_path
                 .file_name()
                 .ok_or_else(|| anyhow!("Remote source has no file name: {remote_path}"))?;
@@ -229,22 +224,22 @@ impl RemoteService {
 
     fn run_upload(
         &self,
-        sources: Vec<PathBuf>,
-        target: RemoteTargetRequest,
+        request: RemoteUploadRequest,
         tx: &mpsc::Sender<OperationEvent>,
         cancelled: &Arc<AtomicBool>,
     ) -> Result<()> {
-        let connection = self.connect_sftp(&target.session)?;
-        let plan = build_local_plan(&sources)?;
+        let connection = self.connect_sftp(&request.session)?;
+        let plan = build_local_plan(&request.sources)?;
         let started_at = Instant::now();
         let mut progress = TransferProgress::default();
+        let remote_target_directory = RemotePath::new(&request.target_directory);
 
-        for source in &sources {
+        for source in &request.sources {
             let file_name = source
                 .file_name()
                 .and_then(|value| value.to_str())
                 .ok_or_else(|| anyhow!("Local source has no file name: {}", source.display()))?;
-            let remote_target = target.target_directory.join(file_name);
+            let remote_target = remote_target_directory.join(file_name);
             self.upload_path(
                 &connection.sftp,
                 source,
@@ -258,7 +253,7 @@ impl RemoteService {
             if cancelled.load(Ordering::Relaxed) {
                 let _ = tx.send(OperationEvent::Cancelled(operation_summary(
                     FileOperationKind::Copy,
-                    sources.clone(),
+                    request.sources.clone(),
                     None,
                     progress.processed_bytes,
                     progress.processed_entries,
@@ -270,7 +265,7 @@ impl RemoteService {
 
         let _ = tx.send(OperationEvent::Finished(operation_summary(
             FileOperationKind::Copy,
-            sources,
+            request.sources,
             None,
             plan.total_bytes,
             plan.total_entries,

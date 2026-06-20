@@ -17,9 +17,8 @@ use super::{
 };
 use crate::{
     archive::safe_join_extract_path,
-    domain::{Entry, PanelLocation},
+    domain::{ArchiveView, Entry, EntryKind},
     fs::reader::format_bytes,
-    presentation,
 };
 
 #[derive(Clone, Debug)]
@@ -85,27 +84,12 @@ impl ArchiveService {
         self.registry.resolve_for_path(path)?.open(path)
     }
 
-    pub fn entries_for_location(
+    pub fn entries_for_archive_view(
         &self,
-        location: &PanelLocation,
-    ) -> Result<Vec<Entry>, ArchiveError> {
-        match location {
-            PanelLocation::Filesystem(path) => crate::fs::reader::read_entries(path, false)
-                .map_err(|error| ArchiveError::IoError {
-                    detail: error.to_string(),
-                }),
-            PanelLocation::Archive(view) => {
-                Ok(self.entries_for_archive_path(&view.session, &view.current_path))
-            }
-            PanelLocation::Remote(_) => Err(ArchiveError::IoError {
-                detail: "Remote locations are handled by RemoteService".into(),
-            }),
-        }
-    }
-
-    pub fn archive_location_for_path(&self, path: &Path) -> Result<PanelLocation, ArchiveError> {
-        let session = self.open_archive(path)?;
-        Ok(PanelLocation::archive(session, ""))
+        view: &ArchiveView,
+        session: &ArchiveSession,
+    ) -> Vec<Entry> {
+        self.entries_for_archive_path(session, &view.current_path)
     }
 
     pub fn start_task(
@@ -278,13 +262,11 @@ impl ArchiveService {
                     name: directory_name.clone(),
                     archive_path: Some(join_archive_path(current_path, &directory_name)),
                     remote_path: None,
+                    kind: EntryKind::Directory,
                     is_dir: true,
                     size_bytes: 0,
-                    size_label: "-".into(),
-                    type_label: presentation::filesystem_entry_type_label(true),
                     modified_at: None,
-                    modified_label: "-".into(),
-                    attributes_label: "D".into(),
+                    attributes: "D".into(),
                     is_parent_link: false,
                 });
         }
@@ -292,10 +274,7 @@ impl ArchiveService {
         let mut entries = entries_by_name.into_values().collect::<Vec<_>>();
         entries.sort_by_key(|a| a.name.to_lowercase());
         if session.cached_entries().iter().any(|_| true) {
-            entries.insert(
-                0,
-                Entry::parent_link(presentation::parent_entry_type_label()),
-            );
+            entries.insert(0, Entry::parent_link());
         }
         entries
     }
@@ -313,23 +292,11 @@ fn archive_entry_to_panel_entry(entry: &ArchiveEntry) -> Entry {
         name: entry.display_name.clone(),
         archive_path: Some(entry.archive_path.clone()),
         remote_path: None,
+        kind: archive_entry_kind(entry.kind),
         is_dir,
         size_bytes: entry.size,
-        size_label: if is_dir {
-            "-".into()
-        } else {
-            format_bytes(entry.size)
-        },
-        type_label: presentation::archive_entry_type_label(entry.kind),
         modified_at: entry.modified_time,
-        modified_label: entry
-            .modified_time
-            .map(|time| {
-                let datetime: chrono::DateTime<chrono::Local> = time.into();
-                datetime.format("%Y-%m-%d %H:%M").to_string()
-            })
-            .unwrap_or_else(|| "-".into()),
-        attributes_label: entry.attributes.clone().unwrap_or_else(|| "-".into()),
+        attributes: entry.attributes.clone().unwrap_or_default(),
         is_parent_link: false,
     }
 }
@@ -339,6 +306,15 @@ fn archive_prefix(current_path: &str) -> String {
         String::new()
     } else {
         format!("{current_path}/")
+    }
+}
+
+fn archive_entry_kind(kind: ArchiveEntryKind) -> EntryKind {
+    match kind {
+        ArchiveEntryKind::Directory => EntryKind::Directory,
+        ArchiveEntryKind::File => EntryKind::File,
+        ArchiveEntryKind::Symlink => EntryKind::Symlink,
+        ArchiveEntryKind::Unknown => EntryKind::ArchiveItem,
     }
 }
 

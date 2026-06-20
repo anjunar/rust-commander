@@ -2,7 +2,7 @@ use std::{fs, path::Path, time::SystemTime};
 
 use anyhow::{Context, Result};
 
-use crate::{domain::entry::Entry, presentation};
+use crate::domain::entry::{Entry, EntryKind};
 
 pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
@@ -26,22 +26,21 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
             name: file_name.clone(),
             archive_path: None,
             remote_path: None,
+            kind: if metadata.is_dir() {
+                EntryKind::Directory
+            } else {
+                EntryKind::File
+            },
             is_dir: metadata.is_dir(),
             size_bytes: metadata.len(),
-            size_label: format_size(&metadata, metadata.is_dir()),
-            type_label: presentation::filesystem_entry_type_label(metadata.is_dir()),
             modified_at,
-            modified_label: format_modified(modified_at),
-            attributes_label: format_attributes(&metadata, &file_name),
+            attributes: format_attributes(&metadata, &file_name),
             is_parent_link: false,
         });
     }
 
     if path.parent().is_some() {
-        entries.insert(
-            0,
-            Entry::parent_link(presentation::parent_entry_type_label()),
-        );
+        entries.insert(0, Entry::parent_link());
     }
 
     Ok(entries)
@@ -71,13 +70,15 @@ pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>>
         name: file_name.clone(),
         archive_path: None,
         remote_path: None,
+        kind: if metadata.is_dir() {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        },
         is_dir: metadata.is_dir(),
         size_bytes: metadata.len(),
-        size_label: format_size(&metadata, metadata.is_dir()),
-        type_label: presentation::filesystem_entry_type_label(metadata.is_dir()),
         modified_at,
-        modified_label: format_modified(modified_at),
-        attributes_label: format_attributes(&metadata, &file_name),
+        attributes: format_attributes(&metadata, &file_name),
         is_parent_link: false,
     }))
 }
@@ -106,14 +107,6 @@ fn paths_resolve_to_same_entry(source: &Path, target: &Path) -> bool {
     source_path == target_path
 }
 
-fn format_size(metadata: &fs::Metadata, is_dir: bool) -> String {
-    if is_dir {
-        return "-".into();
-    }
-
-    format_bytes(metadata.len())
-}
-
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut unit_index = 0usize;
@@ -129,12 +122,6 @@ pub fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{value:.1} {}", UNITS[unit_index])
     }
-}
-
-fn format_modified(modified_at: Option<SystemTime>) -> String {
-    modified_at
-        .map(format_system_time)
-        .unwrap_or_else(|| "-".into())
 }
 
 pub fn format_system_time(timestamp: SystemTime) -> String {

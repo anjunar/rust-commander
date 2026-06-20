@@ -13,9 +13,9 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use crate::domain::operation::{
-    ConflictResolution, FileOperationKind, FileOperationRequest, OperationConflict, OperationEvent,
-    OperationSnapshot, OperationSummary,
+use crate::application::{
+    ConflictResolution, FileOperationKind, LocalOperationRequest, OperationConflict,
+    OperationEvent, OperationSnapshot, OperationSummary,
 };
 
 #[derive(Clone)]
@@ -47,7 +47,7 @@ struct CopyProgress {
 }
 
 pub fn start_operation(
-    request: FileOperationRequest,
+    request: LocalOperationRequest,
 ) -> (OperationHandle, Receiver<OperationEvent>) {
     let (tx, rx) = mpsc::channel();
     let (resolution_tx, resolution_rx) = mpsc::channel();
@@ -74,7 +74,7 @@ pub fn start_operation(
 }
 
 fn run_transfer(
-    request: FileOperationRequest,
+    request: LocalOperationRequest,
     tx: &mpsc::Sender<OperationEvent>,
     cancelled: &Arc<AtomicBool>,
     resolution_rx: &Receiver<ConflictResolution>,
@@ -146,7 +146,7 @@ fn run_transfer(
 }
 
 fn run_delete(
-    request: FileOperationRequest,
+    request: LocalOperationRequest,
     tx: &mpsc::Sender<OperationEvent>,
     cancelled: &Arc<AtomicBool>,
 ) -> Result<()> {

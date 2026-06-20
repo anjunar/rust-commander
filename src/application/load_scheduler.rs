@@ -1,4 +1,4 @@
-use crate::{application::ActivePanel, ui::navigation::NavigationRequest};
+use crate::application::{ActivePanel, NavigationRequest};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct PanelLoadRuntime {
@@ -83,7 +83,7 @@ mod tests {
     use crate::{
         application::{load_scheduler::LoadScheduler, ActivePanel},
         domain::PanelLocation,
-        ui::navigation::{LoadAction, NavigationRequest},
+        application::{LoadAction, NavigationRequest},
     };
 
     #[test]

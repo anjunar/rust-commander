@@ -88,18 +88,3 @@ impl RemoteSession {
         self.profile.start_directory.clone()
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct RemoteLocation {
-    pub session: RemoteSession,
-    pub current_path: RemotePath,
-}
-
-impl RemoteLocation {
-    pub fn new(session: RemoteSession, current_path: RemotePath) -> Self {
-        Self {
-            session,
-            current_path,
-        }
-    }
-}
