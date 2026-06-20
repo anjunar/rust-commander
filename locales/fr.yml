@@ -60,7 +60,7 @@ context:
 settings:
   title: Parametres de l'application
   description: Parametres minimaux pour la langue, l'affichage, les operations de fichiers et la visionneuse.
-  archive_info: "Etat actuel : backend ZIP integre plus emplacements reserves pour libarchive, UnRAR et les plugins."
+  archive_info: "Etat actuel : prise en charge ZIP/ISO integree plus backends natifs pour libarchive et UnRAR."
   language: Langue
   theme: Theme
   theme_system: Systeme

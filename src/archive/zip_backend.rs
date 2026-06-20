@@ -2,6 +2,7 @@ use std::{
     fs::{self, File},
     io,
     path::Path,
+    time::SystemTime,
 };
 
 use zip::ZipArchive;
@@ -58,12 +59,27 @@ impl ZipBackend {
             kind: Self::entry_kind(file),
             size: file.size(),
             packed_size: Some(file.compressed_size()),
-            modified_time: None,
+            modified_time: Self::modified_time(file),
             crc: Some(format!("{:08X}", file.crc32())),
             encrypted: false,
             method: Some(format!("{:?}", file.compression())),
             attributes: file.unix_mode().map(|mode| format!("{mode:o}")),
         })
+    }
+
+    fn modified_time(file: &zip::read::ZipFile<'_>) -> Option<SystemTime> {
+        let timestamp = file.last_modified();
+        let date = chrono::NaiveDate::from_ymd_opt(
+            timestamp.year().into(),
+            timestamp.month().into(),
+            timestamp.day().into(),
+        )?;
+        let datetime = date.and_hms_opt(
+            timestamp.hour().into(),
+            timestamp.minute().into(),
+            timestamp.second().into(),
+        )?;
+        Some(datetime.and_utc().into())
     }
 
     fn extract_selected(

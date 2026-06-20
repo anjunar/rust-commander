@@ -83,7 +83,7 @@ pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>>
 }
 
 pub fn rename_path(source: &Path, target: &Path) -> Result<()> {
-    if target.exists() {
+    if target.exists() && !paths_resolve_to_same_entry(source, target) {
         anyhow::bail!("An entry with this name already exists");
     }
 
@@ -94,6 +94,16 @@ pub fn rename_path(source: &Path, target: &Path) -> Result<()> {
             target.display()
         )
     })
+}
+
+fn paths_resolve_to_same_entry(source: &Path, target: &Path) -> bool {
+    let Ok(source_path) = fs::canonicalize(source) else {
+        return false;
+    };
+    let Ok(target_path) = fs::canonicalize(target) else {
+        return false;
+    };
+    source_path == target_path
 }
 
 fn format_size(metadata: &fs::Metadata, is_dir: bool) -> String {

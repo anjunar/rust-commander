@@ -19,6 +19,7 @@ rust-i18n = "4.1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 ssh2 = "0.9.5"
 toml = "0.8.23"
+trash = "5"
 unrar = "0.5.8"
 zip = { version = "0.6.6", default-features = true }
 

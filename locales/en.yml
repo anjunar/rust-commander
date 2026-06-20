@@ -60,7 +60,7 @@ context:
 settings:
   title: Application settings
   description: Minimal settings for language, view, file operations, and the viewer.
-  archive_info: "Current stage: built-in ZIP backend plus native-backend placeholders for libarchive, UnRAR and plugins."
+  archive_info: "Current stage: built-in ZIP/ISO support plus native backends for libarchive and UnRAR."
   language: Language
   theme: Theme
   theme_system: System

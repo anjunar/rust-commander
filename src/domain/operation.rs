@@ -18,6 +18,7 @@ pub struct FileOperationRequest {
     pub kind: FileOperationKind,
     pub sources: Vec<PathBuf>,
     pub target_directory: Option<PathBuf>,
+    pub use_recycle_bin: bool,
     pub archive_source: Option<ArchiveSourceRequest>,
     pub remote_source: Option<RemoteSourceRequest>,
     pub remote_target: Option<RemoteTargetRequest>,

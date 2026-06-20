@@ -60,7 +60,7 @@ context:
 settings:
   title: Anwendungseinstellungen
   description: Minimale Einstellungen fuer Sprache, Ansicht, Dateioperationen und Viewer.
-  archive_info: "Aktueller Stand: eingebautes ZIP-Backend plus Platzhalter fuer native Backends wie libarchive, UnRAR und Plugins."
+  archive_info: "Aktueller Stand: eingebauter ZIP/ISO-Support plus native Backends fuer libarchive und UnRAR."
   language: Sprache
   theme: Theme
   theme_system: System

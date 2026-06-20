@@ -158,15 +158,27 @@ fn run_delete(
     };
 
     for source in &request.sources {
-        delete_path(
-            source,
-            &plan,
-            &mut progress,
-            started_at,
-            tx,
-            &request.kind,
-            cancelled,
-        )?;
+        if request.use_recycle_bin {
+            delete_via_recycle_bin(
+                source,
+                &plan,
+                &mut progress,
+                started_at,
+                tx,
+                &request.kind,
+                cancelled,
+            )?;
+        } else {
+            delete_path(
+                source,
+                &plan,
+                &mut progress,
+                started_at,
+                tx,
+                &request.kind,
+                cancelled,
+            )?;
+        }
 
         if cancelled.load(Ordering::Relaxed) {
             let _ = tx.send(OperationEvent::Cancelled(summary(
@@ -405,6 +417,29 @@ fn delete_path(
     fs::remove_file(path).with_context(|| format!("Could not delete file {}", path.display()))?;
     progress.processed_bytes += file_len;
     progress.processed_entries += 1;
+    send_progress(tx, kind.clone(), path, plan, progress, started_at);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn delete_via_recycle_bin(
+    path: &Path,
+    plan: &OperationPlan,
+    progress: &mut CopyProgress,
+    started_at: Instant,
+    tx: &mpsc::Sender<OperationEvent>,
+    kind: &FileOperationKind,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<()> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+
+    let deleted = build_copy_plan(path)?;
+    trash::delete(path)
+        .with_context(|| format!("Could not move {} to the recycle bin", path.display()))?;
+    progress.processed_bytes += deleted.total_bytes;
+    progress.processed_entries += deleted.total_entries;
     send_progress(tx, kind.clone(), path, plan, progress, started_at);
     Ok(())
 }

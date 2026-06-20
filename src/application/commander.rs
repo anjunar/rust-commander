@@ -293,6 +293,7 @@ impl Commander {
                 .filter_map(|item| item.filesystem_path.clone())
                 .collect(),
             target_directory,
+            use_recycle_bin: false,
             archive_source,
             remote_source,
             remote_target,

@@ -72,7 +72,8 @@ pub fn prepare_operation(
     kind: FileOperationKind,
 ) -> Result<PreparedOperation> {
     let is_delete = matches!(kind, FileOperationKind::Delete);
-    let request = commander.operation_request(kind)?;
+    let mut request = commander.operation_request(kind)?;
+    request.use_recycle_bin = is_delete && file_operations.use_recycle_bin;
 
     if is_delete && !file_operations.confirm_delete {
         Ok(PreparedOperation::Start(request))
