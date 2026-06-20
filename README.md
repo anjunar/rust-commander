@@ -14,9 +14,23 @@ The goal is simple: a fast, practical, keyboard-friendly desktop file manager th
 
 ## Current Status
 
-RCommander is already usable as a real desktop application, not just a UI prototype. It supports the core commander workflow, native file panels, file operations with progress feedback, file viewing/editing, and initial archive support.
+RCommander is already usable as a real desktop application, not just a UI prototype. It supports the core commander workflow, native file panels, file operations with progress feedback, file viewing/editing, archive handling, and now SFTP remote file transfer as a major milestone for the project.
 
 The project is still young and evolving quickly. APIs, internal structure, and feature details may change while the application grows toward a more complete commander experience.
+
+## SFTP Milestone
+
+`v0.3.0` is centered on SFTP support. RCommander can now work across local and remote panes without turning remote access into a second-class feature.
+
+- SFTP remote browsing in a native commander pane
+- SFTP file download to the local filesystem
+- SFTP file upload from the local filesystem
+- Recursive directory download and upload
+- Password authentication
+- Public key authentication with optional passphrase
+- Cross-platform support on Windows, Linux, and macOS
+
+Host key verification is enforced against the user's OpenSSH `known_hosts` file by default. For demo and test environments, a per-profile `Insecure: skip host key verification` option is available. That override disables `known_hosts` validation and should only be used when you explicitly accept the MITM risk.
 
 ## Features
 
@@ -29,6 +43,11 @@ The project is still young and evolving quickly. APIs, internal structure, and f
 - Rename, create-directory, copy, move, and delete operations
 - Progress dialog for longer file operations
 - Conflict handling for overwrite, skip, rename, or cancel
+- SFTP remote browsing and directory navigation
+- SFTP upload and download between local and remote panes
+- Recursive SFTP directory transfer
+- SFTP password authentication
+- SFTP public key authentication
 - File viewer for text and binary files
 - Hex-style viewing for binary files
 - UTF-8 text file editing
@@ -72,6 +91,7 @@ The project currently depends on:
 - `gtk4` for the desktop UI
 - `sourceview5` for text viewing/editing support
 - `notify` for filesystem event handling
+- `ssh2` for SSH/SFTP connectivity
 - `zip` for ZIP archive support
 - `unrar` for RAR archive support via the bundled UnRAR library/license
 - `windows-sys` for Windows-specific integration

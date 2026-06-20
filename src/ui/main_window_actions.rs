@@ -15,7 +15,10 @@ use crate::{
 };
 
 impl MainWindow {
-    pub fn handle_connect_remote_for_panel(self: &Rc<Self>, panel: crate::application::ActivePanel) {
+    pub fn handle_connect_remote_for_panel(
+        self: &Rc<Self>,
+        panel: crate::application::ActivePanel,
+    ) {
         let update = {
             let mut commander = self.commander.borrow_mut();
             commander.set_active_panel(panel)
@@ -254,13 +257,15 @@ impl MainWindow {
         let active_panel = self.commander.borrow().state().active_panel;
         let remote_config = self.app_config_cache.borrow().remote.clone();
         let this = Rc::clone(self);
-        dialogs::prompt_remote_connection(&self.window, remote_config, move |action| {
-            match action {
+        dialogs::prompt_remote_connection(
+            &self.window,
+            remote_config,
+            move |action| match action {
                 dialogs::RemoteDialogAction::Connect(result) => {
                     if let Some(profile_name) = result.last_used_profile {
-                        if let Err(error) =
-                            this.update_remote_config(|remote| remote.last_used_profile = Some(profile_name))
-                        {
+                        if let Err(error) = this.update_remote_config(|remote| {
+                            remote.last_used_profile = Some(profile_name)
+                        }) {
                             dialogs::show_error(
                                 &this.window,
                                 &t!("error.could_not_save_settings"),
@@ -307,8 +312,8 @@ impl MainWindow {
                         );
                     }
                 }
-            }
-        });
+            },
+        );
     }
 
     pub fn handle_toggle_terminal(self: &Rc<Self>) {
@@ -496,10 +501,7 @@ impl MainWindow {
     }
 }
 
-fn upsert_remote_profile(
-    profiles: &mut Vec<RemoteProfile>,
-    profile: RemoteProfile,
-) {
+fn upsert_remote_profile(profiles: &mut Vec<RemoteProfile>, profile: RemoteProfile) {
     if let Some(existing) = profiles.iter_mut().find(|item| item.name == profile.name) {
         *existing = profile;
     } else {

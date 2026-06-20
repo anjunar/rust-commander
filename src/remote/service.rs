@@ -1,7 +1,7 @@
 use std::{
-    fs,
-    io::{Read, Write},
-    net::TcpStream,
+    env, fs,
+    io::{ErrorKind, Read, Write},
+    net::{TcpStream, ToSocketAddrs},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -9,11 +9,11 @@ use std::{
         Arc,
     },
     thread,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ssh2::{FileStat, Session, Sftp};
+use ssh2::{CheckResult, FileStat, HashType, KnownHostFileKind, Session, Sftp};
 
 use crate::{
     domain::{
@@ -27,7 +27,13 @@ use crate::{
     presentation,
 };
 
-use super::{RemoteAuthConfig, RemoteLocation, RemotePath, RemoteRuntimeSecret, RemoteSession};
+use super::{
+    RemoteAuthConfig, RemoteLocation, RemotePath, RemoteProfile, RemoteRuntimeSecret, RemoteSession,
+};
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const SSH_SESSION_TIMEOUT: Duration = Duration::from_secs(30);
+const SSH_SESSION_TIMEOUT_MS: u32 = 30_000;
 
 #[derive(Clone)]
 pub struct RemoteOperationHandle {
@@ -78,8 +84,12 @@ impl RemoteService {
         let mut listed = connection
             .sftp
             .readdir(remote_dir.as_path())
-            .with_context(|| {
-                format!("Could not read remote directory {}", location.current_path)
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote directory",
+                    location.current_path.as_str(),
+                    &error
+                ))
             })?;
         listed.sort_by(|(left, _), (right, _)| left.cmp(right));
 
@@ -286,7 +296,13 @@ impl RemoteService {
 
         let stat = sftp
             .stat(to_remote_fs_path(remote_path).as_path())
-            .with_context(|| format!("Could not stat remote path {remote_path}"))?;
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote path details",
+                    remote_path.as_str(),
+                    &error
+                ))
+            })?;
         if stat_is_directory(&stat) {
             fs::create_dir_all(local_target)
                 .with_context(|| format!("Could not create {}", local_target.display()))?;
@@ -328,7 +344,13 @@ impl RemoteService {
 
         let mut remote_file = sftp
             .open(to_remote_fs_path(remote_path).as_path())
-            .with_context(|| format!("Could not open remote file {remote_path}"))?;
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "open remote file",
+                    remote_path.as_str(),
+                    &error
+                ))
+            })?;
         let mut local_file = fs::File::create(local_target)
             .with_context(|| format!("Could not create {}", local_target.display()))?;
         let mut buffer = vec![0_u8; 1024 * 1024];
@@ -358,7 +380,7 @@ impl RemoteService {
         }
 
         if cancelled.load(Ordering::Relaxed) {
-            let _ = fs::remove_file(local_target);
+            remove_partial_local_file(local_target)?;
             return Ok(());
         }
 
@@ -438,7 +460,13 @@ impl RemoteService {
             .with_context(|| format!("Could not open {}", source.display()))?;
         let mut remote_file = sftp
             .create(to_remote_fs_path(remote_target).as_path())
-            .with_context(|| format!("Could not create remote file {remote_target}"))?;
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "create remote file",
+                    remote_target.as_str(),
+                    &error
+                ))
+            })?;
         let mut buffer = vec![0_u8; 1024 * 1024];
 
         loop {
@@ -466,7 +494,7 @@ impl RemoteService {
         }
 
         if cancelled.load(Ordering::Relaxed) {
-            let _ = sftp.unlink(to_remote_fs_path(remote_target).as_path());
+            remove_partial_remote_file(sftp, remote_target)?;
             return Ok(());
         }
 
@@ -495,7 +523,13 @@ impl RemoteService {
     fn build_remote_plan_for_path(&self, sftp: &Sftp, path: &RemotePath) -> Result<TransferPlan> {
         let stat = sftp
             .stat(to_remote_fs_path(path).as_path())
-            .with_context(|| format!("Could not stat remote path {path}"))?;
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote path details",
+                    path.as_str(),
+                    &error
+                ))
+            })?;
         if stat_is_directory(&stat) {
             let mut plan = TransferPlan {
                 total_bytes: 0,
@@ -519,7 +553,13 @@ impl RemoteService {
         let mut children = Vec::new();
         for (child_path, _) in sftp
             .readdir(to_remote_fs_path(path).as_path())
-            .with_context(|| format!("Could not read remote directory {path}"))?
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote directory",
+                    path.as_str(),
+                    &error
+                ))
+            })?
         {
             let Some(name) = child_path.file_name().and_then(|value| value.to_str()) else {
                 continue;
@@ -544,28 +584,40 @@ impl RemoteService {
                 continue;
             }
             sftp.mkdir(remote_fs_path.as_path(), 0o755)
-                .with_context(|| format!("Could not create remote directory {current}"))?;
+                .map_err(|error| {
+                    anyhow!(describe_sftp_path_error(
+                        "create remote directory",
+                        current.as_str(),
+                        &error
+                    ))
+                })?;
         }
         Ok(())
     }
 
     fn connect_sftp(&self, remote_session: &RemoteSession) -> Result<ConnectedRemote> {
-        let address = format!(
-            "{}:{}",
-            remote_session.profile().host,
-            remote_session.profile().port
-        );
-        let tcp = TcpStream::connect(&address)
-            .with_context(|| format!("Could not connect to {address}"))?;
+        let profile = remote_session.profile();
+        let tcp = connect_tcp(profile)?;
         let mut session = Session::new().context("Could not create SSH session")?;
+        session.set_timeout(SSH_SESSION_TIMEOUT_MS);
         session.set_tcp_stream(tcp);
-        session.handshake().context("SSH handshake failed")?;
+        session.handshake().map_err(|error| {
+            anyhow!(describe_ssh_session_error(
+                "complete the SSH handshake",
+                &error
+            ))
+        })?;
+        if !profile.skip_host_key_verification {
+            verify_known_host(&session, profile)?;
+        }
 
-        match (&remote_session.profile().auth, remote_session.secret()) {
+        match (&profile.auth, remote_session.secret()) {
             (RemoteAuthConfig::Password { username }, RemoteRuntimeSecret::Password(password)) => {
                 session
                     .userauth_password(username, password)
-                    .with_context(|| format!("Password authentication failed for {username}"))?;
+                    .map_err(|error| {
+                        anyhow!(describe_auth_error("password", username, profile, &error))
+                    })?;
             }
             (
                 RemoteAuthConfig::KeyFile {
@@ -575,6 +627,7 @@ impl RemoteService {
                 },
                 RemoteRuntimeSecret::KeyPassphrase(passphrase),
             ) => {
+                ensure_key_files_exist(private_key_path, public_key_path.as_deref())?;
                 session
                     .userauth_pubkey_file(
                         username,
@@ -582,7 +635,9 @@ impl RemoteService {
                         private_key_path,
                         Some(passphrase),
                     )
-                    .with_context(|| format!("Key authentication failed for {username}"))?;
+                    .map_err(|error| {
+                        anyhow!(describe_auth_error("public key", username, profile, &error))
+                    })?;
             }
             (
                 RemoteAuthConfig::KeyFile {
@@ -592,6 +647,7 @@ impl RemoteService {
                 },
                 RemoteRuntimeSecret::None,
             ) => {
+                ensure_key_files_exist(private_key_path, public_key_path.as_deref())?;
                 session
                     .userauth_pubkey_file(
                         username,
@@ -599,7 +655,9 @@ impl RemoteService {
                         private_key_path,
                         None,
                     )
-                    .with_context(|| format!("Key authentication failed for {username}"))?;
+                    .map_err(|error| {
+                        anyhow!(describe_auth_error("public key", username, profile, &error))
+                    })?;
             }
             (RemoteAuthConfig::Password { .. }, _) => {
                 bail!("A password is required for this remote profile");
@@ -610,7 +668,12 @@ impl RemoteService {
         }
 
         if !session.authenticated() {
-            bail!("SSH authentication failed");
+            bail!(
+                "Authentication failed for {}@{}:{}",
+                profile.auth.username(),
+                profile.host,
+                profile.port
+            );
         }
 
         let sftp = session.sftp().context("Could not start SFTP session")?;
@@ -702,4 +765,281 @@ fn to_remote_fs_path(path: &RemotePath) -> PathBuf {
 
 fn system_time_from_unix(value: u64) -> SystemTime {
     UNIX_EPOCH + std::time::Duration::from_secs(value)
+}
+
+fn connect_tcp(profile: &RemoteProfile) -> Result<TcpStream> {
+    let address = format!("{}:{}", profile.host, profile.port);
+    let resolved = (profile.host.as_str(), profile.port)
+        .to_socket_addrs()
+        .with_context(|| format!("Could not resolve remote host {address}"))?
+        .collect::<Vec<_>>();
+    if resolved.is_empty() {
+        bail!("Could not resolve remote host {address}");
+    }
+
+    let mut last_error = None;
+    for socket_address in resolved {
+        match TcpStream::connect_timeout(&socket_address, CONNECT_TIMEOUT) {
+            Ok(stream) => {
+                stream
+                    .set_read_timeout(Some(SSH_SESSION_TIMEOUT))
+                    .with_context(|| format!("Could not configure read timeout for {address}"))?;
+                stream
+                    .set_write_timeout(Some(SSH_SESSION_TIMEOUT))
+                    .with_context(|| format!("Could not configure write timeout for {address}"))?;
+                return Ok(stream);
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    let error = last_error
+        .unwrap_or_else(|| std::io::Error::other(format!("No reachable address for {address}")));
+    bail!("{}", describe_connect_error(&address, &error));
+}
+
+fn verify_known_host(session: &Session, profile: &RemoteProfile) -> Result<()> {
+    let known_hosts_path = find_known_hosts_path().ok_or_else(|| {
+        anyhow!(
+            "SSH host key verification is required, but no OpenSSH known_hosts file was found. \
+Add {}:{} to ~/.ssh/known_hosts first.",
+            profile.host,
+            profile.port
+        )
+    })?;
+
+    let mut known_hosts = session
+        .known_hosts()
+        .context("Could not initialize SSH known_hosts verification")?;
+    known_hosts
+        .read_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
+        .with_context(|| {
+            format!(
+                "Could not read SSH known_hosts file {}",
+                known_hosts_path.display()
+            )
+        })?;
+
+    let (host_key, _) = session
+        .host_key()
+        .ok_or_else(|| anyhow!("SSH server did not provide a host key during handshake"))?;
+    let fingerprint = session
+        .host_key_hash(HashType::Sha256)
+        .map(format_fingerprint)
+        .unwrap_or_else(|| "<unavailable>".into());
+
+    match known_hosts.check_port(&profile.host, profile.port, host_key) {
+        CheckResult::Match => Ok(()),
+        CheckResult::NotFound => bail!(
+            "SSH host key for {}:{} was not found in {}. \
+Connect once with OpenSSH to record the host key, then retry. Server fingerprint: SHA256:{}",
+            profile.host,
+            profile.port,
+            known_hosts_path.display(),
+            fingerprint
+        ),
+        CheckResult::Mismatch => bail!(
+            "SSH host key mismatch for {}:{} against {}. \
+This may indicate a server change or a man-in-the-middle risk. Server fingerprint: SHA256:{}",
+            profile.host,
+            profile.port,
+            known_hosts_path.display(),
+            fingerprint
+        ),
+        CheckResult::Failure => bail!(
+            "SSH host key verification failed for {}:{} using {}",
+            profile.host,
+            profile.port,
+            known_hosts_path.display()
+        ),
+    }
+}
+
+fn ensure_key_files_exist(private_key_path: &Path, public_key_path: Option<&Path>) -> Result<()> {
+    if !private_key_path.is_file() {
+        bail!(
+            "Private key file was not found: {}",
+            private_key_path.display()
+        );
+    }
+    if let Some(public_key_path) = public_key_path {
+        if !public_key_path.is_file() {
+            bail!(
+                "Public key file was not found: {}",
+                public_key_path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn remove_partial_local_file(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "Download was cancelled, but the partial local file could not be removed: {}",
+                path.display()
+            )
+        }),
+    }
+}
+
+fn remove_partial_remote_file(sftp: &Sftp, path: &RemotePath) -> Result<()> {
+    match sftp.unlink(to_remote_fs_path(path).as_path()) {
+        Ok(()) => Ok(()),
+        Err(error) if is_remote_not_found_error(&error) => Ok(()),
+        Err(error) => bail!(
+            "Upload was cancelled, but the partial remote file could not be removed: {} ({})",
+            path,
+            error.message()
+        ),
+    }
+}
+
+fn describe_connect_error(address: &str, error: &std::io::Error) -> String {
+    match error.kind() {
+        ErrorKind::TimedOut => {
+            format!("Could not reach remote host {address}: connection timed out")
+        }
+        ErrorKind::ConnectionRefused => {
+            format!("Could not reach remote host {address}: connection was refused")
+        }
+        ErrorKind::NotFound | ErrorKind::AddrNotAvailable => {
+            format!("Could not reach remote host {address}: host not found")
+        }
+        _ => format!("Could not connect to remote host {address}: {error}"),
+    }
+}
+
+fn describe_ssh_session_error(action: &str, error: &ssh2::Error) -> String {
+    let detail = error.message();
+    if contains_any(detail, &["timed out", "socket timeout"]) {
+        format!("SSH session timed out while trying to {action}: {detail}")
+    } else {
+        format!("Could not {action}: {detail}")
+    }
+}
+
+fn describe_auth_error(
+    method: &str,
+    username: &str,
+    profile: &RemoteProfile,
+    error: &ssh2::Error,
+) -> String {
+    let detail = error.message();
+    if contains_any(
+        detail,
+        &[
+            "authentication failed",
+            "username/publickey combination invalid",
+        ],
+    ) {
+        format!(
+            "Authentication failed for {}@{}:{} using {} authentication: {}",
+            username, profile.host, profile.port, method, detail
+        )
+    } else if contains_any(detail, &["timed out", "socket timeout"]) {
+        format!(
+            "Authentication timed out for {}@{}:{} using {} authentication: {}",
+            username, profile.host, profile.port, method, detail
+        )
+    } else {
+        format!(
+            "Could not authenticate {}@{}:{} using {} authentication: {}",
+            username, profile.host, profile.port, method, detail
+        )
+    }
+}
+
+fn describe_sftp_path_error(action: &str, path: &str, error: &ssh2::Error) -> String {
+    let detail = error.message();
+    if is_remote_not_found_error(error) {
+        format!("Remote path not found while trying to {action}: {path} ({detail})")
+    } else if contains_any(detail, &["permission denied", "not authorized"]) {
+        format!("Permission denied while trying to {action}: {path} ({detail})")
+    } else if contains_any(detail, &["file already exists"]) {
+        format!("Remote target already exists: {path} ({detail})")
+    } else if contains_any(detail, &["not a directory"]) {
+        format!("Remote path is not a directory: {path} ({detail})")
+    } else if contains_any(detail, &["timed out", "socket timeout"]) {
+        format!("SFTP operation timed out while trying to {action}: {path} ({detail})")
+    } else {
+        format!("Could not {action} {path}: {detail}")
+    }
+}
+
+fn is_remote_not_found_error(error: &ssh2::Error) -> bool {
+    contains_any(error.message(), &["no such file", "no such path"])
+}
+
+fn contains_any(value: &str, needles: &[&str]) -> bool {
+    let value = value.to_ascii_lowercase();
+    needles.iter().any(|needle| value.contains(needle))
+}
+
+fn find_known_hosts_path() -> Option<PathBuf> {
+    let home = env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .or_else(|| env::var_os("USERPROFILE").filter(|value| !value.is_empty()))
+        .or_else(|| {
+            let drive = env::var_os("HOMEDRIVE")?;
+            let path = env::var_os("HOMEPATH")?;
+            if drive.is_empty() || path.is_empty() {
+                None
+            } else {
+                let mut combined = PathBuf::from(drive);
+                combined.push(path);
+                Some(combined.into_os_string())
+            }
+        })?;
+
+    known_hosts_candidates(Path::new(&home))
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+fn known_hosts_candidates(home: &Path) -> Vec<PathBuf> {
+    vec![
+        home.join(".ssh").join("known_hosts"),
+        home.join(".ssh").join("known_hosts2"),
+    ]
+}
+
+fn format_fingerprint(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{describe_connect_error, format_fingerprint, known_hosts_candidates};
+
+    #[test]
+    fn returns_known_hosts_candidates_in_priority_order() {
+        let candidates = known_hosts_candidates(Path::new("/tmp/home"));
+        assert_eq!(candidates[0], Path::new("/tmp/home/.ssh/known_hosts"));
+        assert_eq!(candidates[1], Path::new("/tmp/home/.ssh/known_hosts2"));
+    }
+
+    #[test]
+    fn formats_connect_timeout_for_user_facing_error() {
+        let error = std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out");
+        assert_eq!(
+            describe_connect_error("example.com:22", &error),
+            "Could not reach remote host example.com:22: connection timed out"
+        );
+    }
+
+    #[test]
+    fn formats_sha256_fingerprint_as_hex() {
+        assert_eq!(format_fingerprint(&[0x01, 0xab, 0xff]), "01abff");
+    }
 }

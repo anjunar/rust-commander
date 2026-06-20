@@ -280,11 +280,7 @@ impl Commander {
                 session: location.session.clone(),
                 target_directory: location.current_path.clone(),
             }),
-            (
-                PanelLocation::Filesystem(_),
-                PanelLocation::Remote(_),
-                FileOperationKind::Move,
-            ) => {
+            (PanelLocation::Filesystem(_), PanelLocation::Remote(_), FileOperationKind::Move) => {
                 bail!("Remote targets currently support upload by copy only");
             }
             _ => None,
@@ -405,12 +401,12 @@ mod tests {
         commander.state.left.location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
         commander.state.left.entries = vec![file_entry("keep.txt"), file_entry("delete.txt")];
         commander.state.left.select_single(1);
-        commander.state.right.location = PanelLocation::remote(
-            remote_session(),
-            RemotePath::new("/home/test"),
-        );
+        commander.state.right.location =
+            PanelLocation::remote(remote_session(), RemotePath::new("/home/test"));
 
-        let request = commander.operation_request(FileOperationKind::Delete).unwrap();
+        let request = commander
+            .operation_request(FileOperationKind::Delete)
+            .unwrap();
 
         assert_eq!(request.sources, vec![PathBuf::from("/tmp/left/delete.txt")]);
         assert!(request.target_directory.is_none());
@@ -443,6 +439,7 @@ mod tests {
                     username: "tester".into(),
                 },
                 start_directory: RemotePath::new("/home/test"),
+                skip_host_key_verification: false,
             },
             RemoteRuntimeSecret::Password("secret".into()),
         )

@@ -432,7 +432,7 @@ pub fn prompt_remote_connection<F>(
         window,
         content,
         actions,
-    } = build_modal_window(parent, "Connect To Remote", 520, 420);
+    } = build_modal_window(parent, "Connect To Remote", 520, 470);
 
     let state = Rc::new(RefCell::new(remote_config));
     let callback: Rc<dyn Fn(RemoteDialogAction)> = Rc::new(on_action);
@@ -469,6 +469,20 @@ pub fn prompt_remote_connection<F>(
     start_directory_entry.set_placeholder_text(Some("Start directory"));
     start_directory_entry.set_text("/");
     content.append(&start_directory_entry);
+
+    let skip_host_key_verification_switch = gtk::Switch::builder().active(false).build();
+    content.append(&switch_row(
+        "Insecure: skip host key verification",
+        &skip_host_key_verification_switch,
+    ));
+
+    let host_key_warning = gtk::Label::new(Some(
+        "Only use this for test or demo servers. This disables known_hosts validation and allows man-in-the-middle attacks.",
+    ));
+    host_key_warning.set_xalign(0.0);
+    host_key_warning.set_wrap(true);
+    host_key_warning.add_css_class("dim-label");
+    content.append(&host_key_warning);
 
     let auth_row = settings_row();
     let auth_label = row_label("Authentication");
@@ -520,6 +534,7 @@ pub fn prompt_remote_connection<F>(
         let port_input = port_input.clone();
         let username_entry = username_entry.clone();
         let start_directory_entry = start_directory_entry.clone();
+        let skip_host_key_verification_switch = skip_host_key_verification_switch.clone();
         let auth_dropdown = auth_dropdown.clone();
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
@@ -533,6 +548,7 @@ pub fn prompt_remote_connection<F>(
                 port_input.set_value(profile.port as f64);
                 username_entry.set_text(profile.auth.username());
                 start_directory_entry.set_text(profile.start_directory.as_str());
+                skip_host_key_verification_switch.set_active(profile.skip_host_key_verification);
                 match &profile.auth {
                     RemoteAuthConfig::Password { .. } => {
                         auth_dropdown.set_selected(0);
@@ -563,6 +579,7 @@ pub fn prompt_remote_connection<F>(
                 port_input.set_value(22.0);
                 username_entry.set_text("");
                 start_directory_entry.set_text("/");
+                skip_host_key_verification_switch.set_active(false);
                 auth_dropdown.set_selected(0);
                 password_entry.set_text("");
                 private_key_entry.set_text("");
@@ -588,7 +605,12 @@ pub fn prompt_remote_connection<F>(
             let selected_index = state
                 .last_used_profile
                 .as_ref()
-                .and_then(|name| state.profiles.iter().position(|profile| profile.name == *name))
+                .and_then(|name| {
+                    state
+                        .profiles
+                        .iter()
+                        .position(|profile| profile.name == *name)
+                })
                 .map(|index| index + 1)
                 .unwrap_or(0);
             profile_dropdown.set_selected(selected_index as u32);
@@ -641,6 +663,7 @@ pub fn prompt_remote_connection<F>(
         let port_input = port_input.clone();
         let username_entry = username_entry.clone();
         let start_directory_entry = start_directory_entry.clone();
+        let skip_host_key_verification_switch = skip_host_key_verification_switch.clone();
         let auth_dropdown = auth_dropdown.clone();
         let private_key_entry = private_key_entry.clone();
         let public_key_entry = public_key_entry.clone();
@@ -688,6 +711,7 @@ pub fn prompt_remote_connection<F>(
                 port: port_input.value() as u16,
                 auth,
                 start_directory: crate::remote::RemotePath::new(start_directory_entry.text()),
+                skip_host_key_verification: skip_host_key_verification_switch.is_active(),
             };
 
             callback(RemoteDialogAction::SaveProfile {
@@ -702,7 +726,10 @@ pub fn prompt_remote_connection<F>(
                         state.profiles.retain(|item| item.name != previous_name);
                     }
                 }
-                if let Some(existing) = state.profiles.iter_mut().find(|item| item.name == profile.name)
+                if let Some(existing) = state
+                    .profiles
+                    .iter_mut()
+                    .find(|item| item.name == profile.name)
                 {
                     *existing = profile.clone();
                 } else {
@@ -764,6 +791,7 @@ pub fn prompt_remote_connection<F>(
         let port_input = port_input.clone();
         let username_entry = username_entry.clone();
         let start_directory_entry = start_directory_entry.clone();
+        let skip_host_key_verification_switch = skip_host_key_verification_switch.clone();
         let auth_dropdown = auth_dropdown.clone();
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
@@ -806,6 +834,7 @@ pub fn prompt_remote_connection<F>(
                 port: port_input.value() as u16,
                 auth,
                 start_directory: crate::remote::RemotePath::new(start_directory_entry.text()),
+                skip_host_key_verification: skip_host_key_verification_switch.is_active(),
             };
             let secret_text = password_entry.text().to_string();
             let secret = match &profile.auth {

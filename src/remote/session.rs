@@ -19,6 +19,7 @@ pub struct RemoteProfile {
     pub port: u16,
     pub auth: RemoteAuthConfig,
     pub start_directory: RemotePath,
+    pub skip_host_key_verification: bool,
 }
 
 impl Default for RemoteProfile {
@@ -31,6 +32,7 @@ impl Default for RemoteProfile {
                 username: String::new(),
             },
             start_directory: RemotePath::root(),
+            skip_host_key_verification: false,
         }
     }
 }
