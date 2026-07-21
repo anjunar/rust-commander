@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use super::{describe_connect_error, format_fingerprint, known_hosts_candidates};
+use super::{
+    describe_connect_error, format_fingerprint, known_hosts_candidates, known_hosts_entry_name,
+    HostKeyAlgorithm,
+};
 
 #[test]
 fn returns_known_hosts_candidates_in_priority_order() {
@@ -21,4 +24,19 @@ fn formats_connect_timeout_for_user_facing_error() {
 #[test]
 fn formats_sha256_fingerprint_as_hex() {
     assert_eq!(format_fingerprint(&[0x01, 0xab, 0xff]), "01abff");
+}
+
+#[test]
+fn formats_known_hosts_entry_name_for_default_and_custom_ports() {
+    assert_eq!(known_hosts_entry_name("example.com", 22), "example.com");
+    assert_eq!(
+        known_hosts_entry_name("example.com", 2222),
+        "[example.com]:2222"
+    );
+}
+
+#[test]
+fn maps_host_key_algorithm_labels() {
+    assert_eq!(HostKeyAlgorithm::Ed25519.label(), "ssh-ed25519");
+    assert_eq!(HostKeyAlgorithm::Rsa.label(), "ssh-rsa");
 }

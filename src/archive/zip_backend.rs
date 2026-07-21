@@ -8,8 +8,11 @@ use std::{
 use zip::ZipArchive;
 
 use super::{
-    safe_join_extract_path, ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError,
-    ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
+    archive_entry_display_name, archive_entry_matches_selection, normalize_archive_entry_path,
+    safe_join_extract_path,
+    zip_name::decode_zip_entry_name,
+    ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveFormat,
+    ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -30,10 +33,6 @@ impl ZipBackend {
         })
     }
 
-    fn normalize_entry_path(path: &str) -> String {
-        path.replace('\\', "/").trim_matches('/').to_string()
-    }
-
     fn entry_kind(file: &zip::read::ZipFile<'_>) -> ArchiveEntryKind {
         if file.is_dir() {
             ArchiveEntryKind::Directory
@@ -42,20 +41,20 @@ impl ZipBackend {
         }
     }
 
+    fn decoded_entry_path(file: &zip::read::ZipFile<'_>) -> String {
+        let decoded = decode_zip_entry_name(file.name_raw(), file.extra_data(), file.name());
+        normalize_archive_entry_path(&decoded)
+    }
+
     fn entry_from_zip_file(file: &zip::read::ZipFile<'_>) -> Option<ArchiveEntry> {
-        let archive_path = Self::normalize_entry_path(file.name());
+        let archive_path = Self::decoded_entry_path(file);
         if archive_path.is_empty() {
             return None;
         }
 
-        let display_name = archive_path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&archive_path)
-            .to_string();
         Some(ArchiveEntry {
+            display_name: archive_entry_display_name(&archive_path),
             archive_path,
-            display_name,
             kind: Self::entry_kind(file),
             size: file.size(),
             modified_time: Self::modified_time(file),
@@ -93,7 +92,7 @@ impl ZipBackend {
                         path: session.archive_path().to_path_buf(),
                         detail: error.to_string(),
                     })?;
-            let archive_path = Self::normalize_entry_path(file.name());
+            let archive_path = Self::decoded_entry_path(&file);
             if archive_path.is_empty() || !predicate(&archive_path) {
                 continue;
             }
@@ -178,10 +177,7 @@ impl ArchiveBackend for ZipBackend {
         entry_path: &str,
         target_dir: &Path,
     ) -> Result<(), ArchiveError> {
-        let requested = Self::normalize_entry_path(entry_path);
-        self.extract_selected(session, target_dir, |candidate| {
-            candidate == requested || candidate.starts_with(&format!("{requested}/"))
-        })
+        self.extract_entries(session, &[entry_path.to_string()], target_dir)
     }
 
     fn extract_entries(
@@ -192,12 +188,10 @@ impl ArchiveBackend for ZipBackend {
     ) -> Result<(), ArchiveError> {
         let requested = entry_paths
             .iter()
-            .map(|path| Self::normalize_entry_path(path))
+            .map(|path| normalize_archive_entry_path(path))
             .collect::<Vec<_>>();
         self.extract_selected(session, target_dir, |candidate| {
-            requested
-                .iter()
-                .any(|path| candidate == path || candidate.starts_with(&format!("{path}/")))
+            archive_entry_matches_selection(candidate, &requested)
         })
     }
 }

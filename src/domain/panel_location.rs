@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use crate::domain::entry::Entry;
+use crate::domain::{entry::Entry, entry_key::EntryKey};
 
 #[derive(Clone, Debug)]
 pub enum PanelLocation {
@@ -96,6 +96,43 @@ impl PanelLocation {
         }
     }
 
+    /// Short label for a tab title.
+    pub fn tab_title(&self) -> String {
+        match self {
+            Self::Filesystem(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .filter(|n| !n.is_empty());
+                name.unwrap_or_else(|| path.display().to_string())
+            }
+            Self::Archive(view) => {
+                let archive_name = view
+                    .archive_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| view.archive_path.display().to_string());
+                if view.current_path.is_empty() {
+                    archive_name
+                } else {
+                    view.current_path
+                        .rsplit('/')
+                        .find(|part| !part.is_empty())
+                        .unwrap_or(archive_name.as_str())
+                        .to_string()
+                }
+            }
+            Self::Remote(location) => {
+                let leaf = location
+                    .current_path
+                    .rsplit('/')
+                    .find(|part| !part.is_empty())
+                    .unwrap_or("/");
+                format!("{}@{}", location.host, leaf)
+            }
+        }
+    }
+
     pub fn history_key(&self) -> String {
         match self {
             Self::Filesystem(path) => format!("fs:{}", path.display()),
@@ -111,11 +148,31 @@ impl PanelLocation {
         }
     }
 
+    /// Volume/drive root for filesystem, archive root, or remote `/`.
+    pub fn root(&self) -> Self {
+        match self {
+            Self::Filesystem(path) => Self::Filesystem(filesystem_volume_root(path)),
+            Self::Archive(view) => Self::archive(
+                view.session_key.clone(),
+                view.archive_path.clone(),
+                String::new(),
+            ),
+            Self::Remote(location) => Self::remote(
+                location.session_key.clone(),
+                location.username.clone(),
+                location.host.clone(),
+                location.port,
+                "/",
+            ),
+        }
+    }
+
     pub fn parent(&self) -> Option<Self> {
         match self {
-            Self::Filesystem(path) => Some(Self::Filesystem(
-                path.parent().unwrap_or(path.as_path()).to_path_buf(),
-            )),
+            Self::Filesystem(path) => {
+                let parent = path.parent()?;
+                Some(Self::Filesystem(parent.to_path_buf()))
+            }
             Self::Archive(view) => {
                 if view.current_path.is_empty() {
                     return Some(Self::Filesystem(
@@ -146,6 +203,48 @@ impl PanelLocation {
                     parent,
                 )
             }),
+        }
+    }
+
+    /// Entry to focus in `next_location` when leaving this location by going up one level.
+    pub fn entry_key_when_leaving_to(&self, next_location: &Self) -> Option<EntryKey> {
+        let parent = self.parent()?;
+        if parent.history_key() != next_location.history_key() {
+            return None;
+        }
+
+        match self {
+            Self::Filesystem(path) => path
+                .file_name()
+                .map(|name| EntryKey::FilesystemName(name.to_os_string())),
+            Self::Archive(view) if view.current_path.is_empty() => view
+                .archive_path
+                .file_name()
+                .map(|name| EntryKey::FilesystemName(name.to_os_string())),
+            Self::Archive(view) => {
+                let child = view
+                    .current_path
+                    .rsplit_once('/')
+                    .map(|(_, child)| child)
+                    .unwrap_or(view.current_path.as_str());
+                if child.is_empty() {
+                    None
+                } else {
+                    Some(EntryKey::ArchiveEntry(view.current_path.clone()))
+                }
+            }
+            Self::Remote(location) => {
+                let child = location
+                    .current_path
+                    .rsplit_once('/')
+                    .map(|(_, child)| child)
+                    .unwrap_or(location.current_path.as_str());
+                if child.is_empty() || location.current_path == "/" {
+                    None
+                } else {
+                    Some(EntryKey::RemoteEntry(location.current_path.clone()))
+                }
+            }
         }
     }
 
@@ -228,5 +327,19 @@ fn remote_parent_path(path: &str) -> Option<String> {
     match trimmed.rsplit_once('/') {
         Some(("", _)) | None => Some("/".into()),
         Some((parent, _)) => Some(parent.to_string()),
+    }
+}
+
+fn filesystem_volume_root(path: &Path) -> PathBuf {
+    let root: PathBuf = path
+        .components()
+        .take_while(|component| {
+            matches!(component, Component::Prefix(_) | Component::RootDir)
+        })
+        .collect();
+    if root.as_os_str().is_empty() {
+        path.to_path_buf()
+    } else {
+        root
     }
 }

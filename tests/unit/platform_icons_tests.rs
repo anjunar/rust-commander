@@ -1,6 +1,17 @@
 use std::{fs, time::Duration};
 
 use super::*;
+use crate::config::IconStyle;
+
+#[test]
+fn set_icon_style_clears_cache_and_updates_style() {
+    set_icon_style(IconStyle::Symbolic);
+    assert_eq!(icon_style(), IconStyle::Symbolic);
+    set_icon_style(IconStyle::System);
+    assert_eq!(icon_style(), IconStyle::System);
+    set_icon_style(IconStyle::Symbolic);
+    assert_eq!(icon_style(), IconStyle::Symbolic);
+}
 
 #[test]
 fn path_stamp_tracks_size_changes() {

@@ -52,3 +52,25 @@ fn disabling_folders_first_uses_plain_sort_order() {
     assert_eq!(entries[0].name, "alpha.txt");
     assert_eq!(entries[1].name, "zeta");
 }
+
+#[test]
+fn type_column_sorts_by_file_extension() {
+    let mut entries = vec![
+        file("readme.md", false),
+        file("notes.txt", false),
+        file("archive.zip", false),
+    ];
+
+    sort_entries(
+        &mut entries,
+        SortState {
+            column: SortColumn::Type,
+            direction: SortDirection::Ascending,
+        },
+        false,
+    );
+
+    assert_eq!(entries[0].name, "readme.md");
+    assert_eq!(entries[1].name, "notes.txt");
+    assert_eq!(entries[2].name, "archive.zip");
+}

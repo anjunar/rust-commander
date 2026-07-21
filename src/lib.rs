@@ -17,4 +17,5 @@ mod remote;
 mod ui;
 mod viewer;
 
+pub use archive::archive_worker_main;
 pub use ui::gtk_app::run;

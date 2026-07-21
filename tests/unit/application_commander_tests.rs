@@ -20,12 +20,12 @@ fn delete_request_allows_remote_in_inactive_panel() {
     );
 
     commander.state.active_panel = ActivePanel::Left;
-    commander.state.left.location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
-    commander.state.left.entries = vec![file_entry("keep.txt"), file_entry("delete.txt")];
-    commander.state.left.select_single(1);
+    commander.state.left.active_mut().location = PanelLocation::filesystem(PathBuf::from("/tmp/left"));
+    commander.state.left.active_mut().entries = vec![file_entry("keep.txt"), file_entry("delete.txt")];
+    commander.state.left.active_mut().select_single(1);
     let mut session_store = SessionStore::default();
     let session_key = session_store.insert_remote(remote_session());
-    commander.state.right.location =
+    commander.state.right.active_mut().location =
         PanelLocation::remote(session_key, "tester", "example.com", 22, "/home/test");
 
     let request = commander

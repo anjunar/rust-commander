@@ -9,11 +9,12 @@ pub mod operation_runner;
 pub mod services;
 
 pub use app_state::{ActivePanel, AppState};
-pub use commander::Commander;
+pub use commander::{Commander, CreateDirectoryTarget};
 pub use commands::ViewUpdate;
 pub use errors::{NavigationError, OperationError};
 pub use load_scheduler::LoadScheduler;
 pub use navigation::{
+    filesystem_navigation_request, location_root_navigation_request, parent_navigation_request,
     refresh_request, root_navigation_request, selected_navigation_request, spawn_directory_load,
     LoadAction, NavigationRequest, SelectedNavigation,
 };
@@ -23,8 +24,8 @@ pub use operation::{
     RemoteDownloadRequest, RemoteUploadRequest,
 };
 pub use operation_runner::{
-    prepare_operation, start_operation_task, ActiveOperationHandle, PreparedOperation,
-    StartedOperation,
+    prepare_operation_with_options, start_operation_task, ActiveOperationHandle, DeleteMode,
+    PreparedOperation, StartedOperation,
 };
 pub use services::{
     system_platform_port, ConfigStore, EntryLoader, SessionStore, SharedPlatformPort, TaskSpawner,

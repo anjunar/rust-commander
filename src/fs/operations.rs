@@ -96,7 +96,14 @@ fn run_transfer(
     let mut completed_targets: Vec<PathBuf> = Vec::new();
     for source in &request.sources {
         let source_name = source.file_name().context("Source path has no file name")?;
-        let target_path = target_directory.join(source_name);
+        let target_path = if request.sources.len() == 1 {
+            request
+                .target_path
+                .clone()
+                .unwrap_or_else(|| target_directory.join(source_name))
+        } else {
+            target_directory.join(source_name)
+        };
         let transfer_result = copy_path(
             source,
             &target_path,
@@ -626,6 +633,37 @@ pub fn progress_percent(snapshot: &OperationSnapshot) -> f64 {
     }
 
     (snapshot.processed_bytes as f64 / snapshot.total_bytes as f64).clamp(0.0, 1.0)
+}
+
+pub fn copy_entry(source: &Path, target: &Path) -> Result<()> {
+    let metadata = fs::metadata(source)
+        .with_context(|| format!("Could not read metadata for {}", source.display()))?;
+
+    if metadata.is_dir() {
+        fs::create_dir(target)
+            .with_context(|| format!("Could not create directory {}", target.display()))?;
+        for entry in fs::read_dir(source)
+            .with_context(|| format!("Could not read directory {}", source.display()))?
+        {
+            let entry = entry?;
+            copy_entry(&entry.path(), &target.join(entry.file_name()))?;
+        }
+        return Ok(());
+    }
+
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Could not create target folder {}", parent.display()))?;
+    }
+    fs::copy(source, target)
+        .with_context(|| {
+            format!(
+                "Could not copy {} to {}",
+                source.display(),
+                target.display()
+            )
+        })?;
+    Ok(())
 }
 
 #[cfg(test)]

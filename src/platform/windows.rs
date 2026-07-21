@@ -4,12 +4,11 @@ use std::{
     process::Command,
 };
 
-use anyhow::{anyhow, Context, Result};
-
-use crate::platform::context_menu::ContextMenuRequest;
+use anyhow::{Context, Result};
 
 use crate::domain::roots::RootLocation;
 use crate::platform::assets::asset_path;
+use crate::platform::context_menu::ContextMenuRequest;
 
 pub fn available_roots() -> Vec<RootLocation> {
     let mut roots = Vec::new();
@@ -36,32 +35,67 @@ pub fn available_roots() -> Vec<RootLocation> {
 }
 
 pub fn open_path(path: &Path) -> Result<()> {
-    use std::{ffi::OsStr, ptr::null};
+    use std::os::windows::process::CommandExt;
 
-    use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
-
-    let operation = to_wide(OsStr::new("open"));
-    let target = to_wide(path.as_os_str());
-
-    let result = unsafe {
-        // ShellExecuteW should return a value > 32 after asking Explorer to run
-        // the default "open" verb for the selected path.
-        ShellExecuteW(
-            null_mut_hwnd(),
-            operation.as_ptr(),
-            target.as_ptr(),
-            null(),
-            null(),
-            SW_SHOWNORMAL,
-        )
+    use windows_sys::Win32::System::Threading::{
+        CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, DETACHED_PROCESS,
     };
 
-    if result as usize <= 32 {
-        return Err(anyhow!("ShellExecuteW failed")).with_context(|| {
-            format!("Could not launch the default action for {}", path.display())
-        });
+    // Out-of-process associations: in-process ShellExecute can load hostile
+    // shell extensions into the UI process.
+    let absolute = normalize_open_path(path);
+
+    Command::new("cmd.exe")
+        .args(["/C", "start", "", "/B"])
+        .arg(&absolute)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()
+        .with_context(|| {
+            format!(
+                "Could not launch the default action for {}",
+                path.display()
+            )
+        })?;
+
+    Ok(())
+}
+
+fn normalize_open_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(path))
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Open the native Windows Explorer Properties sheet for a local path.
+pub fn show_file_properties(path: &Path) -> Result<()> {
+    use windows_sys::Win32::UI::Shell::{SHObjectProperties, SHOP_FILEPATH};
+
+    let absolute = normalize_open_path(path);
+    if !absolute.exists() {
+        anyhow::bail!("Path does not exist: {}", absolute.display());
     }
 
+    let file = wide_null(absolute.as_os_str());
+    let ok = unsafe {
+        SHObjectProperties(
+            std::ptr::null_mut(),
+            SHOP_FILEPATH as u32,
+            file.as_ptr(),
+            std::ptr::null(),
+        )
+    };
+    if ok == 0 {
+        anyhow::bail!(
+            "Could not open Windows properties for {}",
+            absolute.display()
+        );
+    }
     Ok(())
 }
 
@@ -78,6 +112,52 @@ pub fn open_console(path: &Path) -> Result<()> {
         .with_context(|| format!("Could not open a console for {}", path.display()))?;
 
     Ok(())
+}
+
+/// Force the window with `window_title` to the foreground.
+///
+/// Needed after closing a modal on Windows: if the user Alt-Tabbed away while the
+/// dialog was open, destroying the dialog often activates that other app, and a
+/// later GTK `present()` cannot steal focus under the foreground lock.
+pub fn force_foreground_window(window_title: &str) {
+    use std::ffi::OsStr;
+
+    use windows_sys::Win32::{
+        System::Threading::{AttachThreadInput, GetCurrentThreadId},
+        UI::WindowsAndMessaging::{
+            BringWindowToTop, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+            SetForegroundWindow, ShowWindow, SW_RESTORE,
+        },
+    };
+
+    let title_w = to_wide(OsStr::new(window_title));
+    let hwnd = unsafe { FindWindowW(std::ptr::null(), title_w.as_ptr()) };
+    if hwnd.is_null() {
+        return;
+    }
+
+    unsafe {
+        if IsIconic(hwnd) != 0 {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+
+        let foreground = GetForegroundWindow();
+        if foreground == hwnd {
+            return;
+        }
+
+        let fore_thread = GetWindowThreadProcessId(foreground, std::ptr::null_mut());
+        let cur_thread = GetCurrentThreadId();
+        if fore_thread != 0 && fore_thread != cur_thread {
+            let _ = AttachThreadInput(cur_thread, fore_thread, 1);
+            let _ = SetForegroundWindow(hwnd);
+            let _ = BringWindowToTop(hwnd);
+            let _ = AttachThreadInput(cur_thread, fore_thread, 0);
+        } else {
+            let _ = SetForegroundWindow(hwnd);
+            let _ = BringWindowToTop(hwnd);
+        }
+    }
 }
 
 pub fn apply_runtime_window_icon(window_title: &str) -> Result<()> {
@@ -282,8 +362,61 @@ fn to_wide(value: &std::ffi::OsStr) -> Vec<u16> {
     value.encode_wide().chain(std::iter::once(0)).collect()
 }
 
-fn null_mut_hwnd() -> *mut core::ffi::c_void {
-    std::ptr::null::<core::ffi::c_void>() as *mut core::ffi::c_void
+/// Resolves a Windows `.lnk` shortcut to its target path, if possible.
+pub fn resolve_shortcut_target(path: &Path) -> Option<PathBuf> {
+    use windows::{
+        core::{Interface, PCWSTR},
+        Win32::{
+            Foundation::MAX_PATH,
+            System::Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile,
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, STGM_READ,
+            },
+            UI::Shell::{IShellLinkW, ShellLink},
+        },
+    };
+
+    if !path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+    {
+        return None;
+    }
+
+    unsafe {
+        let com_initialized =
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).is_ok();
+
+        let result = (|| -> Option<PathBuf> {
+            let shell_link: IShellLinkW =
+                CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+            let persist: IPersistFile = shell_link.cast().ok()?;
+            let wide = to_wide(path.as_os_str());
+            persist.Load(PCWSTR(wide.as_ptr()), STGM_READ).ok()?;
+
+            let mut buffer = vec![0u16; MAX_PATH as usize];
+            shell_link
+                .GetPath(&mut buffer, std::ptr::null_mut(), 0)
+                .ok()?;
+            let len = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+            if len == 0 {
+                return None;
+            }
+            let target = String::from_utf16_lossy(&buffer[..len]);
+            if target.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(target))
+            }
+        })();
+
+        if com_initialized {
+            CoUninitialize();
+        }
+
+        result
+    }
 }
 
 #[cfg(test)]

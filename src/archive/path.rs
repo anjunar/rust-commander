@@ -2,6 +2,26 @@ use std::path::{Component, Path, PathBuf};
 
 use super::ArchiveError;
 
+/// Normalize archive entry paths to forward slashes without leading/trailing `/`.
+pub(crate) fn normalize_archive_entry_path(path: &str) -> String {
+    path.replace('\\', "/").trim_matches('/').to_string()
+}
+
+pub(crate) fn archive_entry_display_name(archive_path: &str) -> String {
+    archive_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(archive_path)
+        .to_string()
+}
+
+/// True when `candidate` is exactly selected or nested under a selected directory.
+pub(crate) fn archive_entry_matches_selection(candidate: &str, selection: &[String]) -> bool {
+    selection
+        .iter()
+        .any(|selected| candidate == selected || candidate.starts_with(&format!("{selected}/")))
+}
+
 pub fn safe_join_extract_path(
     target_dir: &Path,
     archive_entry_path: &str,

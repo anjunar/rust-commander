@@ -17,6 +17,7 @@ pub struct EntryLoader {
     remote_service: RemoteService,
     session_store: SessionStore,
     show_hidden_files: bool,
+    force_refresh: bool,
 }
 
 impl EntryLoader {
@@ -25,12 +26,14 @@ impl EntryLoader {
         remote_service: RemoteService,
         session_store: SessionStore,
         show_hidden_files: bool,
+        force_refresh: bool,
     ) -> Self {
         Self {
             archive_service,
             remote_service,
             session_store,
             show_hidden_files,
+            force_refresh,
         }
     }
 
@@ -74,11 +77,22 @@ impl EntryLoader {
                         session_key: location.session_key.clone(),
                     }))?;
                 self.remote_service
-                    .read_entries(&session, &location.current_path, self.show_hidden_files)
-                    .map_err(|error| Box::new(NavigationError::ReadRemote {
-                        location: PanelLocation::Remote(location.clone()),
-                        detail: error.to_string(),
-                    }))
+                    .read_entries(
+                        &location.session_key,
+                        &session,
+                        &location.current_path,
+                        self.show_hidden_files,
+                        self.force_refresh,
+                    )
+                    .map_err(|error| match error.downcast::<crate::remote::HostKeyUntrusted>() {
+                        Ok(untrusted) => Box::new(NavigationError::HostKeyTrustRequired {
+                            offer: untrusted.0,
+                        }),
+                        Err(error) => Box::new(NavigationError::ReadRemote {
+                            location: PanelLocation::Remote(location.clone()),
+                            detail: error.to_string(),
+                        }),
+                    })
             }
         }
     }

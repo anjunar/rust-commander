@@ -1,9 +1,13 @@
 use std::cmp::Ordering;
 
+use serde::{Deserialize, Serialize};
+
 use crate::domain::entry::Entry;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SortColumn {
+    #[default]
     Name,
     Size,
     Type,
@@ -11,8 +15,10 @@ pub enum SortColumn {
     Attributes,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SortDirection {
+    #[default]
     Ascending,
     Descending,
 }
@@ -59,9 +65,7 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState, folders_first: b
             .size_bytes
             .cmp(&b.size_bytes)
             .then_with(|| compare_text(&a.name, &b.name)),
-        SortColumn::Type => a
-            .kind
-            .cmp(&b.kind)
+        SortColumn::Type => compare_text(file_extension(&a.name), file_extension(&b.name))
             .then_with(|| compare_text(&a.name, &b.name)),
         SortColumn::Modified => a
             .modified_at
@@ -81,6 +85,17 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState, folders_first: b
 
 fn compare_text(a: &str, b: &str) -> Ordering {
     a.to_lowercase().cmp(&b.to_lowercase())
+}
+
+pub fn file_extension(name: &str) -> &str {
+    let Some((stem, extension)) = name.rsplit_once('.') else {
+        return "";
+    };
+    if stem.is_empty() {
+        ""
+    } else {
+        extension
+    }
 }
 
 #[cfg(test)]

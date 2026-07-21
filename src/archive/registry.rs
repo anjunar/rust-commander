@@ -3,7 +3,7 @@ use std::{cmp::Reverse, path::Path, sync::Arc};
 use super::{
     probe::{archive_family_for_format, probe_multipart_zip},
     ArchiveBackend, ArchiveError, ArchiveFormatDetector, ArchiveProbe, ArchiveSupport, IsoBackend,
-    LibArchiveBackend, PluginArchiveBackend, UnrarBackend, ZipBackend,
+    LibArchiveBackend, PluginArchiveBackend, SevenZipBackend, UnrarBackend, ZipBackend,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -24,13 +24,16 @@ impl ArchiveBackendRegistry {
             Arc::new(ZipBackend::new()),
             Arc::new(IsoBackend::new()),
             Arc::new(LibArchiveBackend::new()),
+            Arc::new(SevenZipBackend::new()),
             Arc::new(UnrarBackend::new()),
             Arc::new(PluginArchiveBackend::new_stub()),
         ])
     }
 
     pub fn is_archive_path(&self, path: &Path) -> bool {
-        self.probe_path(path).is_some()
+        // Extension first: never open the file just to decide Enter behavior.
+        ArchiveFormatDetector::detect_from_extension(path).is_some()
+            || self.probe_path(path).is_some()
     }
 
     pub fn probe_path(&self, path: &Path) -> Option<ArchiveProbe> {
@@ -39,38 +42,29 @@ impl ArchiveBackendRegistry {
         }
 
         let detected_format = ArchiveFormatDetector::detect(path)?;
-        Some(ArchiveProbe::supported(
-            archive_family_for_format(detected_format),
-            Some(detected_format),
-        ))
+        let family = archive_family_for_format(detected_format);
+        if self.backend_that_can_open(path).is_some() {
+            Some(ArchiveProbe::supported(family, Some(detected_format)))
+        } else {
+            Some(ArchiveProbe {
+                family,
+                detected_format: Some(detected_format),
+                layout: super::probe::ArchiveLayout::SingleFile,
+                support: ArchiveSupport::NotSupportedYet {
+                    reason: format!(
+                        "Opening {detected_format:?} archives is not supported yet"
+                    ),
+                },
+            })
+        }
     }
 
-    pub fn resolve_for_path(&self, path: &Path) -> Result<Arc<dyn ArchiveBackend>, ArchiveError> {
-        if let Some(probe) = self.probe_path(path) {
-            if let ArchiveSupport::NotSupportedYet { reason } = probe.support {
-                return Err(ArchiveError::FeatureNotSupported {
-                    backend: "archive probe".into(),
-                    feature: reason,
-                });
-            }
-        }
-
+    /// Resolve a backend for opening. Uses extension/`can_open` only — no probe.
+    pub fn backend_that_can_open(&self, path: &Path) -> Option<Arc<dyn ArchiveBackend>> {
         self.backends
             .iter()
             .find(|backend| backend.can_open(path))
             .cloned()
-            .ok_or_else(|| {
-                if self.probe_path(path).is_some() {
-                    ArchiveError::BackendNotFound {
-                        backend: "registered archive backend".into(),
-                        path: Some(path.to_path_buf()),
-                    }
-                } else {
-                    ArchiveError::UnsupportedFormat {
-                        path: path.to_path_buf(),
-                    }
-                }
-            })
     }
 
     pub fn backend_for_session(

@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.102"
 chrono = "0.4.45"
+encoding_rs = "0.8"
 gtk = { package = "gtk4", version = "0.11.3", features = ["v4_12"] }
 iso9660_simple = "0.2.7"
 memchr = "2.7.4"
@@ -15,6 +16,7 @@ notify = "8.2.0"
 sourceview5 = { version = "0.11.0", features = ["gtk_v4_12"] }
 image = "0.24"
 ico = "0.4"
+regex = "1.11"
 rust-i18n = "4.1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 ssh2 = "0.9.5"
@@ -22,6 +24,7 @@ toml = "0.8.23"
 trash = "5"
 unrar = "0.5.8"
 zip = { version = "0.6.6", default-features = true }
+sevenz-rust2 = "0.20"
 
 [build-dependencies]
 winres = "0.1.11"
@@ -38,4 +41,4 @@ gdk_x11 = { version = "0.11.0", package = "gdk4-x11" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
-windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }

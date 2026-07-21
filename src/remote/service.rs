@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env, fs,
     io::{ErrorKind, Read, Write},
     net::{TcpStream, ToSocketAddrs},
@@ -6,13 +7,16 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ssh2::{CheckResult, FileStat, HashType, KnownHostFileKind, Session, Sftp};
+use ssh2::{
+    CheckResult, FileStat, HashType, HostKeyType, KnownHostFileKind, KnownHostKeyFormat, Session,
+    Sftp,
+};
 
 use crate::{
     application::{
@@ -28,6 +32,81 @@ use super::{RemoteAuthConfig, RemotePath, RemoteProfile, RemoteRuntimeSecret, Re
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SSH_SESSION_TIMEOUT: Duration = Duration::from_secs(30);
 const SSH_SESSION_TIMEOUT_MS: u32 = 30_000;
+
+/// Host key presented by the server when it is not yet trusted in `known_hosts`.
+#[derive(Clone, Debug)]
+pub struct HostKeyTrustOffer {
+    pub host: String,
+    pub port: u16,
+    pub fingerprint_sha256: String,
+    pub host_key: Vec<u8>,
+    pub key_type: HostKeyAlgorithm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostKeyAlgorithm {
+    Rsa,
+    Dss,
+    Ecdsa256,
+    Ecdsa384,
+    Ecdsa521,
+    Ed25519,
+    Unknown,
+}
+
+impl HostKeyAlgorithm {
+    fn from_ssh2(key_type: HostKeyType) -> Self {
+        match key_type {
+            HostKeyType::Rsa => Self::Rsa,
+            HostKeyType::Dss => Self::Dss,
+            HostKeyType::Ecdsa256 => Self::Ecdsa256,
+            HostKeyType::Ecdsa384 => Self::Ecdsa384,
+            HostKeyType::Ecdsa521 => Self::Ecdsa521,
+            HostKeyType::Ed25519 => Self::Ed25519,
+            HostKeyType::Unknown => Self::Unknown,
+        }
+    }
+
+    fn to_known_host_format(self) -> KnownHostKeyFormat {
+        match self {
+            Self::Rsa => KnownHostKeyFormat::SshRsa,
+            Self::Dss => KnownHostKeyFormat::SshDss,
+            Self::Ecdsa256 => KnownHostKeyFormat::Ecdsa256,
+            Self::Ecdsa384 => KnownHostKeyFormat::Ecdsa384,
+            Self::Ecdsa521 => KnownHostKeyFormat::Ecdsa521,
+            Self::Ed25519 => KnownHostKeyFormat::Ed25519,
+            Self::Unknown => KnownHostKeyFormat::Unknown,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rsa => "ssh-rsa",
+            Self::Dss => "ssh-dss",
+            Self::Ecdsa256 => "ecdsa-sha2-nistp256",
+            Self::Ecdsa384 => "ecdsa-sha2-nistp384",
+            Self::Ecdsa521 => "ecdsa-sha2-nistp521",
+            Self::Ed25519 => "ssh-ed25519",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Returned (via `anyhow`) when the server host key is not yet trusted.
+#[derive(Clone, Debug)]
+pub struct HostKeyUntrusted(pub HostKeyTrustOffer);
+
+impl std::fmt::Display for HostKeyUntrusted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SSH host key for {}:{} is not trusted yet. Server fingerprint: SHA256:{}",
+            self.0.host, self.0.port, self.0.fingerprint_sha256
+        )
+    }
+}
+
+impl std::error::Error for HostKeyUntrusted {}
 
 #[derive(Clone)]
 pub struct RemoteOperationHandle {
@@ -57,9 +136,18 @@ struct TransferProgress {
     processed_entries: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct RemoteListingCacheKey {
+    session_key: String,
+    path: String,
+    show_hidden_files: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct RemoteService {
     task_spawner: TaskSpawner,
+    /// Cached SFTP directory listings keyed by session + path + hidden-files flag.
+    listing_cache: Arc<Mutex<HashMap<RemoteListingCacheKey, Vec<Entry>>>>,
 }
 
 struct ConnectedRemote {
@@ -74,14 +162,55 @@ struct TransferRuntime<'a> {
     tx: &'a mpsc::Sender<OperationEvent>,
     cancelled: &'a Arc<AtomicBool>,
     resolution_rx: &'a Receiver<ConflictResolution>,
+    force_overwrite: bool,
 }
 
 impl RemoteService {
     pub fn new(task_spawner: TaskSpawner) -> Self {
-        Self { task_spawner }
+        Self {
+            task_spawner,
+            listing_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Persist a previously offered host key into the user's OpenSSH `known_hosts`.
+    pub fn trust_host_key(offer: &HostKeyTrustOffer) -> Result<()> {
+        trust_host_key(offer)
     }
 
     pub fn read_entries(
+        &self,
+        session_key: &str,
+        session: &RemoteSession,
+        current_path: &str,
+        show_hidden_files: bool,
+        force_refresh: bool,
+    ) -> Result<Vec<Entry>> {
+        let key = listing_cache_key(session_key, current_path, show_hidden_files);
+        if !force_refresh {
+            if let Ok(cache) = self.listing_cache.lock() {
+                if let Some(entries) = cache.get(&key) {
+                    return Ok(entries.clone());
+                }
+            }
+        }
+
+        let entries = self.fetch_directory_entries(session, current_path, show_hidden_files)?;
+        if let Ok(mut cache) = self.listing_cache.lock() {
+            cache.insert(key, entries.clone());
+        }
+        Ok(entries)
+    }
+
+    /// Drop cached listings for a remote directory (any session).
+    pub fn invalidate_listing_cache_for_path(&self, current_path: &str) {
+        let path = RemotePath::new(current_path).as_str().to_string();
+        if let Ok(mut cache) = self.listing_cache.lock() {
+            cache.retain(|key, _| key.path != path);
+        }
+    }
+
+    fn fetch_directory_entries(
         &self,
         session: &RemoteSession,
         current_path: &str,
@@ -121,14 +250,25 @@ impl RemoteService {
             }
 
             let remote_path = current_path.join(name);
-            let is_dir = stat_is_directory(&stat);
-            let size_bytes = stat.size.unwrap_or(0);
+            let is_symlink = stat_is_symlink(&stat);
+            let is_dir = if is_symlink {
+                connection
+                    .sftp
+                    .stat(path.as_path())
+                    .map(|followed| stat_is_directory(&followed))
+                    .unwrap_or(false)
+            } else {
+                stat_is_directory(&stat)
+            };
+            let size_bytes = if is_dir { 0 } else { stat.size.unwrap_or(0) };
             let modified_at = stat.mtime.map(system_time_from_unix);
             entries.push(Entry {
                 name: name.into(),
                 archive_path: None,
                 remote_path: Some(remote_path.to_string()),
-                kind: if is_dir {
+                kind: if is_symlink {
+                    EntryKind::Symlink
+                } else if is_dir {
                     EntryKind::Directory
                 } else {
                     EntryKind::File
@@ -142,6 +282,80 @@ impl RemoteService {
         }
 
         Ok(entries)
+    }
+
+    /// Create a single remote directory (does not create missing parents).
+    pub fn create_directory(&self, session: &RemoteSession, path: &str) -> Result<()> {
+        let connection = self.connect_sftp(session)?;
+        let remote_path = RemotePath::new(path);
+        if remote_path.is_root() {
+            bail!("Cannot create the remote root directory");
+        }
+
+        let remote_fs_path = to_remote_fs_path(&remote_path);
+        if connection.sftp.stat(remote_fs_path.as_path()).is_ok() {
+            bail!("An entry with this name already exists");
+        }
+
+        connection
+            .sftp
+            .mkdir(remote_fs_path.as_path(), 0o755)
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "create remote directory",
+                    remote_path.as_str(),
+                    &error
+                ))
+            })?;
+        Ok(())
+    }
+
+    /// Change remote Unix permission bits (`mode` is masked to `0o7777`).
+    pub fn set_permissions(
+        &self,
+        session: &RemoteSession,
+        path: &str,
+        mode: u32,
+    ) -> Result<()> {
+        let connection = self.connect_sftp(session)?;
+        let remote_path = RemotePath::new(path);
+        let remote_fs_path = to_remote_fs_path(&remote_path);
+
+        let current = connection
+            .sftp
+            .stat(remote_fs_path.as_path())
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "read remote permissions",
+                    remote_path.as_str(),
+                    &error
+                ))
+            })?;
+        const S_IFMT: u32 = 0o170000;
+        let file_type = current.perm.unwrap_or(0) & S_IFMT;
+        let next_perm = file_type | (mode & 0o7777);
+
+        connection
+            .sftp
+            .setstat(
+                remote_fs_path.as_path(),
+                FileStat {
+                    size: None,
+                    uid: None,
+                    gid: None,
+                    perm: Some(next_perm),
+                    mtime: None,
+                    atime: None,
+                },
+            )
+            .map_err(|error| {
+                anyhow!(describe_sftp_path_error(
+                    "set remote permissions",
+                    remote_path.as_str(),
+                    &error
+                ))
+            })?;
+        Ok(())
     }
 
     pub fn start_download(
@@ -224,6 +438,7 @@ impl RemoteService {
                 tx,
                 cancelled,
                 resolution_rx,
+                force_overwrite: source.force_overwrite,
             };
             self.download_path(&connection.sftp, remote_path, &local_target, &mut runtime)?;
             if cancelled.load(Ordering::Relaxed) {
@@ -276,6 +491,7 @@ impl RemoteService {
                 tx,
                 cancelled,
                 resolution_rx,
+                force_overwrite: request.force_overwrite,
             };
             self.upload_path(&connection.sftp, source, &remote_target, &mut runtime)?;
             if cancelled.load(Ordering::Relaxed) {
@@ -642,17 +858,14 @@ impl RemoteService {
                 },
                 RemoteRuntimeSecret::KeyPassphrase(passphrase),
             ) => {
-                ensure_key_files_exist(private_key_path, public_key_path.as_deref())?;
-                session
-                    .userauth_pubkey_file(
-                        username,
-                        public_key_path.as_deref(),
-                        private_key_path,
-                        Some(passphrase),
-                    )
-                    .map_err(|error| {
-                        anyhow!(describe_auth_error("public key", username, profile, &error))
-                    })?;
+                authenticate_with_key_file(
+                    &session,
+                    username,
+                    private_key_path,
+                    public_key_path.as_deref(),
+                    Some(passphrase),
+                    profile,
+                )?;
             }
             (
                 RemoteAuthConfig::KeyFile {
@@ -662,17 +875,14 @@ impl RemoteService {
                 },
                 RemoteRuntimeSecret::None,
             ) => {
-                ensure_key_files_exist(private_key_path, public_key_path.as_deref())?;
-                session
-                    .userauth_pubkey_file(
-                        username,
-                        public_key_path.as_deref(),
-                        private_key_path,
-                        None,
-                    )
-                    .map_err(|error| {
-                        anyhow!(describe_auth_error("public key", username, profile, &error))
-                    })?;
+                authenticate_with_key_file(
+                    &session,
+                    username,
+                    private_key_path,
+                    public_key_path.as_deref(),
+                    None,
+                    profile,
+                )?;
             }
             (RemoteAuthConfig::Password { .. }, _) => {
                 bail!("A password is required for this remote profile");
@@ -712,6 +922,10 @@ fn resolve_local_target_conflict(
     runtime: &mut TransferRuntime<'_>,
 ) -> Result<Option<PathBuf>> {
     while local_target.exists() {
+        if runtime.force_overwrite {
+            cleanup_local_path(&local_target)?;
+            break;
+        }
         let _ = runtime.tx.send(OperationEvent::Conflict(OperationConflict {
             kind: FileOperationKind::Copy,
             source: PathBuf::from(remote_source.as_str()),
@@ -759,6 +973,10 @@ fn resolve_remote_target_conflict(
         .stat(to_remote_fs_path(&remote_target).as_path())
         .is_ok()
     {
+        if runtime.force_overwrite {
+            cleanup_remote_path(sftp, &remote_target)?;
+            break;
+        }
         let _ = runtime.tx.send(OperationEvent::Conflict(OperationConflict {
             kind: FileOperationKind::Copy,
             source: local_source.to_path_buf(),
@@ -1042,6 +1260,14 @@ fn stat_is_directory(stat: &FileStat) -> bool {
         .unwrap_or(false)
 }
 
+fn stat_is_symlink(stat: &FileStat) -> bool {
+    const S_IFMT: u32 = 0o170000;
+    const S_IFLNK: u32 = 0o120000;
+    stat.perm
+        .map(|perm| perm & S_IFMT == S_IFLNK)
+        .unwrap_or(false)
+}
+
 fn send_progress(
     tx: &mpsc::Sender<OperationEvent>,
     kind: FileOperationKind,
@@ -1074,6 +1300,18 @@ fn operation_summary(
         total_bytes,
         total_entries,
         elapsed: started_at.elapsed(),
+    }
+}
+
+fn listing_cache_key(
+    session_key: &str,
+    current_path: &str,
+    show_hidden_files: bool,
+) -> RemoteListingCacheKey {
+    RemoteListingCacheKey {
+        session_key: session_key.to_string(),
+        path: RemotePath::new(current_path).as_str().to_string(),
+        show_hidden_files,
     }
 }
 
@@ -1117,14 +1355,11 @@ fn connect_tcp(profile: &RemoteProfile) -> Result<TcpStream> {
 }
 
 fn verify_known_host(session: &Session, profile: &RemoteProfile) -> Result<()> {
-    let known_hosts_path = find_known_hosts_path().ok_or_else(|| {
-        anyhow!(
-            "SSH host key verification is required, but no OpenSSH known_hosts file was found. \
-Add {}:{} to ~/.ssh/known_hosts first.",
-            profile.host,
-            profile.port
-        )
-    })?;
+    let offer = host_key_trust_offer(session, profile)?;
+
+    let Some(known_hosts_path) = find_known_hosts_path() else {
+        return Err(anyhow!(HostKeyUntrusted(offer)));
+    };
 
     let mut known_hosts = session
         .known_hosts()
@@ -1138,31 +1373,16 @@ Add {}:{} to ~/.ssh/known_hosts first.",
             )
         })?;
 
-    let (host_key, _) = session
-        .host_key()
-        .ok_or_else(|| anyhow!("SSH server did not provide a host key during handshake"))?;
-    let fingerprint = session
-        .host_key_hash(HashType::Sha256)
-        .map(format_fingerprint)
-        .unwrap_or_else(|| "<unavailable>".into());
-
-    match known_hosts.check_port(&profile.host, profile.port, host_key) {
+    match known_hosts.check_port(&profile.host, profile.port, &offer.host_key) {
         CheckResult::Match => Ok(()),
-        CheckResult::NotFound => bail!(
-            "SSH host key for {}:{} was not found in {}. \
-Connect once with OpenSSH to record the host key, then retry. Server fingerprint: SHA256:{}",
-            profile.host,
-            profile.port,
-            known_hosts_path.display(),
-            fingerprint
-        ),
+        CheckResult::NotFound => Err(anyhow!(HostKeyUntrusted(offer))),
         CheckResult::Mismatch => bail!(
             "SSH host key mismatch for {}:{} against {}. \
 This may indicate a server change or a man-in-the-middle risk. Server fingerprint: SHA256:{}",
             profile.host,
             profile.port,
             known_hosts_path.display(),
-            fingerprint
+            offer.fingerprint_sha256
         ),
         CheckResult::Failure => bail!(
             "SSH host key verification failed for {}:{} using {}",
@@ -1170,6 +1390,103 @@ This may indicate a server change or a man-in-the-middle risk. Server fingerprin
             profile.port,
             known_hosts_path.display()
         ),
+    }
+}
+
+fn host_key_trust_offer(session: &Session, profile: &RemoteProfile) -> Result<HostKeyTrustOffer> {
+    let (host_key, key_type) = session
+        .host_key()
+        .ok_or_else(|| anyhow!("SSH server did not provide a host key during handshake"))?;
+    let fingerprint = session
+        .host_key_hash(HashType::Sha256)
+        .map(format_fingerprint)
+        .unwrap_or_else(|| "<unavailable>".into());
+    Ok(HostKeyTrustOffer {
+        host: profile.host.clone(),
+        port: profile.port,
+        fingerprint_sha256: fingerprint,
+        host_key: host_key.to_vec(),
+        key_type: HostKeyAlgorithm::from_ssh2(key_type),
+    })
+}
+
+fn trust_host_key(offer: &HostKeyTrustOffer) -> Result<()> {
+    if matches!(offer.key_type, HostKeyAlgorithm::Unknown) {
+        bail!(
+            "Cannot trust SSH host key for {}:{}: unsupported key type",
+            offer.host,
+            offer.port
+        );
+    }
+
+    let known_hosts_path = known_hosts_write_path()
+        .context("Could not resolve OpenSSH known_hosts path under the user home directory")?;
+    if let Some(parent) = known_hosts_path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Could not create SSH directory {}",
+                parent.display()
+            )
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+        }
+    }
+
+    let session = Session::new().context("Could not create SSH session for known_hosts update")?;
+    let mut known_hosts = session
+        .known_hosts()
+        .context("Could not initialize SSH known_hosts for writing")?;
+    if known_hosts_path.is_file() {
+        known_hosts
+            .read_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
+            .with_context(|| {
+                format!(
+                    "Could not read SSH known_hosts file {}",
+                    known_hosts_path.display()
+                )
+            })?;
+    }
+
+    let host_name = known_hosts_entry_name(&offer.host, offer.port);
+    known_hosts
+        .add(
+            &host_name,
+            &offer.host_key,
+            "rust-commander",
+            offer.key_type.to_known_host_format(),
+        )
+        .with_context(|| {
+            format!(
+                "Could not add {}:{} to known_hosts",
+                offer.host, offer.port
+            )
+        })?;
+    known_hosts
+        .write_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
+        .with_context(|| {
+            format!(
+                "Could not write SSH known_hosts file {}",
+                known_hosts_path.display()
+            )
+        })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&known_hosts_path, fs::Permissions::from_mode(0o600));
+    }
+
+    Ok(())
+}
+
+fn known_hosts_entry_name(host: &str, port: u16) -> String {
+    if port == 22 {
+        host.to_string()
+    } else {
+        format!("[{host}]:{port}")
     }
 }
 
@@ -1189,6 +1506,75 @@ fn ensure_key_files_exist(private_key_path: &Path, public_key_path: Option<&Path
         }
     }
     Ok(())
+}
+
+fn authenticate_with_key_file(
+    session: &Session,
+    username: &str,
+    private_key_path: &Path,
+    public_key_path: Option<&Path>,
+    passphrase: Option<&str>,
+    profile: &RemoteProfile,
+) -> Result<()> {
+    ensure_key_files_exist(private_key_path, public_key_path)?;
+
+    let file_error = match session.userauth_pubkey_file(
+        username,
+        public_key_path,
+        private_key_path,
+        passphrase,
+    ) {
+        Ok(()) => return Ok(()),
+        Err(error) => error,
+    };
+
+    // On Windows, libssh2 defaults to WinCNG which cannot load OpenSSH Ed25519 keys
+    // (auth fails with "unknown error"). Fall back to the system ssh-agent, which can
+    // sign with those keys after `ssh-add`.
+    match authenticate_with_agent(session, username) {
+        Ok(()) => Ok(()),
+        Err(agent_error) => {
+            let mut message = describe_auth_error("public key", username, profile, &file_error);
+            message.push_str(&format!(
+                "\nSSH agent fallback also failed: {agent_error}\n\
+On Windows, Ed25519 OpenSSH keys often cannot be loaded from a file. \
+Start the OpenSSH Authentication Agent service, run `ssh-add` for your key, \
+or use an RSA key instead."
+            ));
+            bail!(message)
+        }
+    }
+}
+
+fn authenticate_with_agent(session: &Session, username: &str) -> Result<()> {
+    let mut agent = session
+        .agent()
+        .context("Could not create SSH agent handle")?;
+    agent
+        .connect()
+        .context("Could not connect to SSH agent (is the OpenSSH Authentication Agent service running?)")?;
+    agent
+        .list_identities()
+        .context("Could not list identities from SSH agent")?;
+    let identities = agent
+        .identities()
+        .context("Could not read identities from SSH agent")?;
+    if identities.is_empty() {
+        bail!("no identities found in the SSH agent (try: ssh-add path\\to\\private_key)");
+    }
+
+    let mut last_error = None;
+    for identity in &identities {
+        match agent.userauth(username, identity) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    match last_error {
+        Some(error) => bail!("{}", error.message()),
+        None => bail!("SSH agent authentication failed"),
+    }
 }
 
 fn remove_partial_local_file(path: &Path) -> Result<()> {
@@ -1298,7 +1684,19 @@ fn contains_any(value: &str, needles: &[&str]) -> bool {
 }
 
 fn find_known_hosts_path() -> Option<PathBuf> {
-    let home = env::var_os("HOME")
+    let home = user_home_dir()?;
+    known_hosts_candidates(&home)
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+fn known_hosts_write_path() -> Option<PathBuf> {
+    let home = user_home_dir()?;
+    known_hosts_candidates(&home).into_iter().next()
+}
+
+fn user_home_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
         .filter(|value| !value.is_empty())
         .or_else(|| env::var_os("USERPROFILE").filter(|value| !value.is_empty()))
         .or_else(|| {
@@ -1311,11 +1709,8 @@ fn find_known_hosts_path() -> Option<PathBuf> {
                 combined.push(path);
                 Some(combined.into_os_string())
             }
-        })?;
-
-    known_hosts_candidates(Path::new(&home))
-        .into_iter()
-        .find(|path| path.is_file())
+        })
+        .map(PathBuf::from)
 }
 
 fn known_hosts_candidates(home: &Path) -> Vec<PathBuf> {

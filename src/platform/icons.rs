@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
@@ -8,7 +8,7 @@ use std::{
 
 use gtk::gdk;
 
-use crate::domain::{entry::Entry, panel_location::PanelLocation};
+use crate::{config::IconStyle, domain::entry::Entry};
 
 #[derive(Clone)]
 pub struct FileIcon {
@@ -31,14 +31,35 @@ struct CachedIcon {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum IconKey {
     ParentDirectory,
+    /// Reserved for per-path shell icons when listing needs a unique icon.
+    #[allow(dead_code)]
     ExistingPath(PathBuf),
     FileExtension(String),
     Directory,
     File,
 }
 
-pub fn icon_for_entry(location: &PanelLocation, entry: &Entry) -> FileIcon {
-    let key = icon_key_for_entry(location, entry);
+/// Apply icon style from settings and drop cached paintables.
+pub fn set_icon_style(style: IconStyle) {
+    ICON_STYLE.with(|cell| {
+        if cell.get() != style {
+            cell.set(style);
+            clear_icon_cache();
+        }
+    });
+}
+
+pub fn icon_style() -> IconStyle {
+    ICON_STYLE.with(Cell::get)
+}
+
+pub fn clear_icon_cache() {
+    ICON_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+/// Fast icon lookup for file lists: directories and extensions only.
+pub fn icon_for_listing_entry(entry: &Entry) -> FileIcon {
+    let key = listing_icon_key(entry);
     let stamp = cache_stamp_for_key(&key);
 
     ICON_CACHE.with(|cache| {
@@ -64,19 +85,10 @@ pub fn icon_for_entry(location: &PanelLocation, entry: &Entry) -> FileIcon {
     })
 }
 
-fn icon_key_for_entry(location: &PanelLocation, entry: &Entry) -> IconKey {
+fn listing_icon_key(entry: &Entry) -> IconKey {
     if entry.is_parent_link {
-        return IconKey::ParentDirectory;
-    }
-
-    if let Some(base_path) = location.filesystem_path() {
-        let full_path = base_path.join(&entry.name);
-        if full_path.exists() {
-            return IconKey::ExistingPath(full_path);
-        }
-    }
-
-    if entry.is_dir {
+        IconKey::ParentDirectory
+    } else if entry.is_dir {
         IconKey::Directory
     } else if let Some(extension) = Path::new(&entry.name)
         .extension()
@@ -98,8 +110,21 @@ fn fallback_icon_name(entry: &Entry) -> &'static str {
     }
 }
 
+pub fn fallback_icon_name_for_row(is_parent_link: bool, is_dir: bool) -> &'static str {
+    if is_parent_link {
+        "go-up-symbolic"
+    } else if is_dir {
+        "folder-symbolic"
+    } else {
+        "text-x-generic-symbolic"
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn load_icon(key: &IconKey) -> Option<gdk::Paintable> {
+    if icon_style() != IconStyle::System {
+        return None;
+    }
     windows::load_icon(key)
 }
 
@@ -109,6 +134,7 @@ fn load_icon(_key: &IconKey) -> Option<gdk::Paintable> {
 }
 
 thread_local! {
+    static ICON_STYLE: Cell<IconStyle> = const { Cell::new(IconStyle::Symbolic) };
     static ICON_CACHE: RefCell<HashMap<IconKey, CachedIcon>> = RefCell::new(HashMap::new());
 }
 
@@ -129,7 +155,13 @@ fn path_stamp(path: &Path) -> Option<PathStamp> {
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr::null_mut, slice};
+    use std::{
+        ffi::OsStr,
+        os::windows::ffi::OsStrExt,
+        path::{Path, PathBuf},
+        ptr::null_mut,
+        slice,
+    };
 
     use gtk::gdk::{self, MemoryFormat, MemoryTexture};
     use gtk::glib::{object::Cast, Bytes};
@@ -165,8 +197,8 @@ mod windows {
             };
 
         let result = unsafe {
-            // Ask the shell for the icon associated with either the concrete path
-            // or a synthetic extension/directory hint when no real file is needed.
+            // Extension/directory hints only (USEFILEATTRIBUTES): avoids opening
+            // live paths like `.7z` that can load hostile shell handlers.
             SHGetFileInfoW(
                 path_wide.as_ptr(),
                 attributes,
@@ -187,16 +219,28 @@ mod windows {
         paintable
     }
 
-    fn icon_request(key: &IconKey) -> (&Path, u32, bool) {
+    fn icon_request(key: &IconKey) -> (std::borrow::Cow<'_, Path>, u32, bool) {
         match key {
-            IconKey::ParentDirectory | IconKey::Directory => {
-                (Path::new("folder"), FILE_ATTRIBUTE_DIRECTORY, true)
+            IconKey::ParentDirectory | IconKey::Directory => (
+                std::borrow::Cow::Borrowed(Path::new("folder")),
+                FILE_ATTRIBUTE_DIRECTORY,
+                true,
+            ),
+            IconKey::ExistingPath(path) => {
+                // Listing never uses ExistingPath today; keep the arm for completeness
+                // but still prefer attributes-only when possible.
+                (std::borrow::Cow::Borrowed(path.as_path()), 0, false)
             }
-            IconKey::ExistingPath(path) => (path.as_path(), 0, false),
-            IconKey::FileExtension(extension) => {
-                (Path::new(extension), FILE_ATTRIBUTE_NORMAL, true)
-            }
-            IconKey::File => (Path::new("file"), FILE_ATTRIBUTE_NORMAL, true),
+            IconKey::FileExtension(extension) => (
+                std::borrow::Cow::Owned(PathBuf::from(format!("file.{extension}"))),
+                FILE_ATTRIBUTE_NORMAL,
+                true,
+            ),
+            IconKey::File => (
+                std::borrow::Cow::Borrowed(Path::new("file")),
+                FILE_ATTRIBUTE_NORMAL,
+                true,
+            ),
         }
     }
 
@@ -230,8 +274,6 @@ mod windows {
 
         let mut bits = null_mut();
         let bitmap = unsafe {
-            // Render the native HICON into a 32-bit DIB so GTK can wrap the BGRA
-            // pixels in a MemoryTexture without any Win32-specific lifetime hooks.
             CreateDIBSection(
                 memory_dc,
                 &header as *const _ as *const _,
@@ -298,11 +340,6 @@ mod windows {
 
     fn to_wide(value: &OsStr) -> Vec<u16> {
         value.encode_wide().chain(std::iter::once(0)).collect()
-    }
-
-    #[cfg(test)]
-    mod tests {
-        include!("../../tests/unit/platform_icons_windows_tests.rs");
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{fmt, path::PathBuf};
 
-use crate::domain::PanelLocation;
+use crate::{domain::PanelLocation, remote::HostKeyTrustOffer};
 
 #[derive(Clone, Debug)]
 pub enum NavigationError {
@@ -18,6 +18,9 @@ pub enum NavigationError {
         location: PanelLocation,
         detail: String,
     },
+    HostKeyTrustRequired {
+        offer: HostKeyTrustOffer,
+    },
 }
 
 impl NavigationError {
@@ -26,6 +29,7 @@ impl NavigationError {
             Self::MissingArchiveSession { .. } => "Archive session not found",
             Self::MissingRemoteSession { .. } => "Remote session not found",
             Self::ReadFilesystem { detail, .. } | Self::ReadRemote { detail, .. } => detail,
+            Self::HostKeyTrustRequired { .. } => "SSH host key verification is required",
         }
     }
 }
@@ -45,6 +49,11 @@ impl fmt::Display for NavigationError {
             Self::ReadRemote { location, detail } => {
                 write!(f, "Could not read {}: {detail}", location.display_label())
             }
+            Self::HostKeyTrustRequired { offer } => write!(
+                f,
+                "SSH host key for {}:{} is not trusted yet (SHA256:{})",
+                offer.host, offer.port, offer.fingerprint_sha256
+            ),
         }
     }
 }

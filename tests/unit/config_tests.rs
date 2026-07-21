@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use super::{
     load_from_path, load_or_default_from_path, save_to_path, AppConfig, ArchiveConfig,
-    FileOperationsConfig, GeneralConfig, LocaleConfig, PaneConfig, PanelSettings,
-    ThemePreference, ViewerConfig, WindowConfig, WindowPosition,
+    EditorConfig, FavoriteEntry, FileOperationsConfig, GeneralConfig, IconStyle, LocaleConfig,
+    PaneConfig, PanelSettings, ThemePreference, ViewerConfig, WindowConfig, WindowPosition,
 };
 use crate::remote::RemoteConfig;
 
@@ -19,8 +19,14 @@ fn config_roundtrip_preserves_window_state() {
             maximized: true,
         },
         panes: PaneConfig {
+            left_tabs: Vec::new(),
+            right_tabs: Vec::new(),
+            left_active_tab: 0,
+            right_active_tab: 0,
             left_directory: Some(PathBuf::from("/tmp/left")),
             right_directory: Some(PathBuf::from("/tmp/right")),
+            left_cursor: Some("alpha.txt".into()),
+            right_cursor: Some("..".into()),
         },
         archive: ArchiveConfig::default(),
         locale: LocaleConfig {
@@ -28,6 +34,7 @@ fn config_roundtrip_preserves_window_state() {
         },
         general: GeneralConfig {
             theme: ThemePreference::Dark,
+            icon_style: IconStyle::System,
             restore_last_session: false,
         },
         panels: PanelSettings {
@@ -46,7 +53,18 @@ fn config_roundtrip_preserves_window_state() {
             line_wrap: true,
             show_line_numbers: false,
         },
+        editor: EditorConfig {
+            width: 1100,
+            height: 800,
+            maximized: true,
+            max_edit_size_mb: 15,
+        },
         remote: RemoteConfig::default(),
+        favorites: vec![FavoriteEntry {
+            name: "Temp".into(),
+            path: PathBuf::from("/tmp"),
+        }],
+        folder_sort: Vec::new(),
     };
 
     save_to_path(&config, &temp_path).unwrap();
@@ -60,8 +78,11 @@ fn config_roundtrip_preserves_window_state() {
     assert!(loaded.window.maximized);
     assert_eq!(loaded.panes.left_directory, Some(PathBuf::from("/tmp/left")));
     assert_eq!(loaded.panes.right_directory, Some(PathBuf::from("/tmp/right")));
+    assert_eq!(loaded.panes.left_cursor.as_deref(), Some("alpha.txt"));
+    assert_eq!(loaded.panes.right_cursor.as_deref(), Some(".."));
     assert_eq!(loaded.locale.language.as_deref(), Some("fr"));
     assert_eq!(loaded.general.theme, ThemePreference::Dark);
+    assert_eq!(loaded.general.icon_style, IconStyle::System);
     assert!(!loaded.general.restore_last_session);
     assert!(loaded.panels.show_hidden_files);
     assert!(!loaded.panels.folders_first);
@@ -79,6 +100,17 @@ fn config_roundtrip_preserves_window_state() {
     assert_eq!(loaded.viewer.streaming_threshold_mb, 64);
     assert!(loaded.viewer.line_wrap);
     assert!(!loaded.viewer.show_line_numbers);
+    assert_eq!(loaded.editor.width, 1100);
+    assert_eq!(loaded.editor.height, 800);
+    assert!(loaded.editor.maximized);
+    assert_eq!(loaded.editor.max_edit_size_mb, 15);
+    assert_eq!(
+        loaded.favorites,
+        vec![FavoriteEntry {
+            name: "Temp".into(),
+            path: PathBuf::from("/tmp"),
+        }]
+    );
 }
 
 #[test]
@@ -107,6 +139,8 @@ language = "de"
     assert_eq!(loaded.locale.language.as_deref(), Some("de"));
     assert_eq!(loaded.general.theme, ThemePreference::System);
     assert!(loaded.general.restore_last_session);
+    assert!(loaded.panes.left_cursor.is_none());
+    assert!(loaded.panes.right_cursor.is_none());
     assert!(!loaded.panels.show_hidden_files);
     assert!(loaded.panels.folders_first);
     assert!(loaded.file_operations.use_recycle_bin);
@@ -115,6 +149,10 @@ language = "de"
     assert_eq!(loaded.viewer.streaming_threshold_mb, 20);
     assert!(!loaded.viewer.line_wrap);
     assert!(loaded.viewer.show_line_numbers);
+    assert_eq!(loaded.editor.width, EditorConfig::default().width);
+    assert_eq!(loaded.editor.height, EditorConfig::default().height);
+    assert!(!loaded.editor.maximized);
+    assert!(loaded.favorites.is_empty());
 }
 
 #[test]
