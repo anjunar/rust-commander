@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use anyhow::Result;
+use gtk::gio;
 use gtk::prelude::*;
 
 use crate::{
@@ -17,6 +18,14 @@ pub fn run() -> Result<()> {
         configure_macos_runtime();
     }
 
+    // On Windows, avoid GtkApplication single-instance file forwarding: a remote
+    // open can go through in-process shell APIs and abort on bad extensions.
+    #[cfg(target_os = "windows")]
+    let app = gtk::Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    #[cfg(not(target_os = "windows"))]
     let app = gtk::Application::builder().application_id(APP_ID).build();
 
     #[cfg(target_os = "windows")]
@@ -27,6 +36,7 @@ pub fn run() -> Result<()> {
     app.connect_activate(|app| {
         let app_config = config::load_or_default();
         i18n::apply_locale(app_config.locale.language.as_deref());
+        crate::platform::set_icon_style(app_config.general.icon_style);
 
         let fallback_path = match std::env::current_dir() {
             Ok(path) => path,

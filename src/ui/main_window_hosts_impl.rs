@@ -22,11 +22,15 @@ impl ViewHost for MainWindow {
     fn set_status(&self, status: String) {
         self.set_status_message(status);
     }
+
+    fn apply_panel_selection(&self, panel: ActivePanel) {
+        MainWindow::apply_panel_selection(self, panel);
+    }
 }
 
 impl NavigationHost for MainWindow {
-    fn set_navigation_busy(&self, busy: bool, message: &str) {
-        MainWindow::set_navigation_busy(self, busy, message);
+    fn set_navigation_busy(&self, panel: ActivePanel, busy: bool, message: &str) {
+        MainWindow::set_navigation_busy(self, panel, busy, message);
     }
 
     fn focus_active_panel(&self) {
@@ -63,6 +67,15 @@ impl NavigationHost for MainWindow {
                 callback();
             });
         }
+    }
+
+    fn update_panel_row_size(&self, panel: ActivePanel, index: usize, size_label: &str) {
+        let panel_view = self.commander_view.panel(panel);
+        panel_view.update_row_size(index, size_label);
+        let commander = self.commander.borrow();
+        panel_view.set_footer(&crate::presentation::panel_footer_line(
+            commander.state().panel(panel),
+        ));
     }
 }
 

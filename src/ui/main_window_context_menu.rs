@@ -48,7 +48,7 @@ pub struct ContextMenuController {
     #[cfg(not(target_os = "windows"))]
     right_panel_root: gtk::Box,
     commander: Rc<RefCell<Commander>>,
-_platform_port: SharedPlatformPort,
+    platform_port: SharedPlatformPort,
     #[cfg(not(target_os = "windows"))]
     runtime: ContextMenuRuntime,
     #[cfg(not(target_os = "windows"))]
@@ -74,7 +74,7 @@ impl ContextMenuController {
             #[cfg(not(target_os = "windows"))]
             right_panel_root,
             commander,
-            _platform_port: platform_port,
+            platform_port,
             #[cfg(not(target_os = "windows"))]
             runtime: _runtime,
             #[cfg(not(target_os = "windows"))]
@@ -93,13 +93,13 @@ impl ContextMenuController {
             let mut commander = self.commander.borrow_mut();
             let mut update = commander.set_active_panel(panel);
             if let Some(index) = clicked_index {
-                let keep_multi_selection = commander
+                let keep_marks = commander
                     .state()
                     .panel(panel)
                     .selection_indices()
                     .contains(&index);
-                if !keep_multi_selection {
-                    update = commander.select_single(panel, index);
+                if !keep_marks {
+                    update = commander.set_cursor(panel, index);
                 }
             }
             let panel_state = commander.state().panel(panel);
@@ -128,7 +128,7 @@ impl ContextMenuController {
         #[cfg(target_os = "windows")]
         {
             if let Err(error) = self
-                ._platform_port
+                .platform_port
                 .show_context_menu(directory, selected_paths)
             {
                 self.show_command_failed(error);

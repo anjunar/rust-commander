@@ -1,9 +1,17 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gtk::prelude::*;
 
 use crate::{
     application::{ActivePanel, AppState},
     ui::file_panel_view::FilePanelView,
 };
+
+/// Pull the divider to exact center when the user drags near the midpoint.
+const CENTER_SNAP_IN_PX: i32 = 18;
+/// Keep the divider stuck until the drag moves farther out (hysteresis).
+const CENTER_SNAP_OUT_PX: i32 = 32;
 
 pub struct CommanderView {
     pub root: gtk::Paned,
@@ -21,7 +29,8 @@ impl CommanderView {
         root.set_resize_end_child(true);
         root.set_shrink_start_child(false);
         root.set_shrink_end_child(false);
-        root.set_wide_handle(true);
+        root.set_wide_handle(false);
+        install_center_snap(&root);
 
         let left = FilePanelView::new(ActivePanel::Left);
         let right = FilePanelView::new(ActivePanel::Right);
@@ -40,13 +49,33 @@ impl CommanderView {
     }
 
     pub fn apply_entries(&self, state: &AppState, panel: ActivePanel) {
-        let panel_state = state.panel(panel);
+        let tabs = state.tabs(panel);
+        let panel_state = tabs.active();
         let panel_view = self.panel(panel);
+        let tab_titles: Vec<(usize, String)> = tabs
+            .tabs()
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| (index, tab.panel.location.tab_title()))
+            .collect();
+        panel_view.set_tabs(&tab_titles, tabs.active_index());
         panel_view.set_path(&panel_state.location.display_label());
+        panel_view.set_footer(&crate::presentation::panel_footer_line(panel_state));
+        let size_labels = panel_state
+            .entries
+            .iter()
+            .map(|entry| panel_state.size_label_for(entry))
+            .collect::<Vec<_>>();
         panel_view.set_entries(
             &panel_state.location,
             &panel_state.entries,
+            panel_state.cursor_index(),
             panel_state.selection_indices(),
+            &size_labels,
+        );
+        panel_view.apply_sort(
+            panel_state.sort_state.column,
+            panel_state.sort_state.direction,
         );
     }
 
@@ -75,9 +104,14 @@ impl CommanderView {
         self.right.refresh_labels();
     }
 
-    pub fn set_interaction_enabled(&self, enabled: bool) {
-        self.left.set_interaction_enabled(enabled);
-        self.right.set_interaction_enabled(enabled);
+    pub fn refresh_lists_after_layout(&self) {
+        self.left.refresh_list_after_resize();
+        self.right.refresh_list_after_resize();
+    }
+
+    pub fn reload_icons(&self) {
+        self.left.reload_icons();
+        self.right.reload_icons();
     }
 }
 
@@ -85,4 +119,43 @@ impl Default for CommanderView {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn install_center_snap(paned: &gtk::Paned) {
+    let snapping = Rc::new(Cell::new(false));
+    let latched = Rc::new(Cell::new(false));
+
+    paned.connect_notify_local(Some("position"), move |paned, _| {
+        if snapping.get() {
+            return;
+        }
+
+        let width = paned.width();
+        if width <= 0 {
+            return;
+        }
+
+        let center = width / 2;
+        let position = paned.position();
+        let distance = (position - center).abs();
+
+        if latched.get() {
+            if distance > CENTER_SNAP_OUT_PX {
+                latched.set(false);
+                return;
+            }
+        } else if distance <= CENTER_SNAP_IN_PX {
+            latched.set(true);
+        } else {
+            return;
+        }
+
+        if position == center {
+            return;
+        }
+
+        snapping.set(true);
+        paned.set_position(center);
+        snapping.set(false);
+    });
 }

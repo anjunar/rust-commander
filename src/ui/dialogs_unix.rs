@@ -33,6 +33,7 @@ pub fn prompt_unix_chmod<F>(
 
     let mode_entry = gtk::Entry::new();
     mode_entry.set_hexpand(true);
+    mode_entry.set_activates_default(true);
     mode_entry.set_placeholder_text(Some(&t!("dialog.chmod_placeholder")));
     content.append(&mode_entry);
 
@@ -102,6 +103,7 @@ pub fn prompt_unix_chown<F>(
 
     let owner_entry = gtk::Entry::new();
     owner_entry.set_hexpand(true);
+    owner_entry.set_activates_default(true);
     owner_entry.set_placeholder_text(Some(&t!("dialog.chown_placeholder")));
     content.append(&owner_entry);
 

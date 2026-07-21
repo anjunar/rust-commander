@@ -1,13 +1,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gtk::{glib, prelude::*};
+use rust_i18n::t;
 
 use crate::remote::{
-    RemoteAuthConfig, RemoteConfig, RemoteProfile, RemoteRuntimeSecret, RemoteSession,
+    HostKeyTrustOffer, RemoteAuthConfig, RemoteConfig, RemoteProfile, RemoteRuntimeSecret,
+    RemoteSession,
 };
 
 use super::build_modal_window;
-use super::dialogs_base::ModalWindow;
+use super::dialogs_base::{present_with_focus, ModalWindow};
 
 type AuthVisibilityFn = Rc<dyn Fn(bool)>;
 type PopulateFormFn = Rc<dyn Fn(Option<&RemoteProfile>)>;
@@ -41,13 +43,13 @@ pub fn prompt_remote_connection<F>(
         window,
         content,
         actions,
-    } = build_modal_window(parent, "Connect To Remote", 520, 470);
+    } = build_modal_window(parent, &t!("dialog.remote_title"), 520, 470);
 
     let state = Rc::new(RefCell::new(remote_config));
     let callback: Rc<dyn Fn(RemoteDialogAction)> = Rc::new(on_action);
 
     let picker_row = settings_row();
-    let picker_label = row_label("Saved profile");
+    let picker_label = row_label(&t!("dialog.remote_saved_profile"));
     let profile_model = gtk::StringList::new(&[]);
     let profile_dropdown = gtk::DropDown::new(Some(profile_model.clone()), gtk::Expression::NONE);
     picker_row.append(&picker_label);
@@ -55,15 +57,15 @@ pub fn prompt_remote_connection<F>(
     content.append(&picker_row);
 
     let profile_name_entry = gtk::Entry::new();
-    profile_name_entry.set_placeholder_text(Some("Profile name"));
+    profile_name_entry.set_placeholder_text(Some(&t!("dialog.remote_profile_name")));
     content.append(&profile_name_entry);
 
     let host_entry = gtk::Entry::new();
-    host_entry.set_placeholder_text(Some("Host"));
+    host_entry.set_placeholder_text(Some(&t!("dialog.remote_host")));
     content.append(&host_entry);
 
     let port_row = settings_row();
-    let port_label = row_label("Port");
+    let port_label = row_label(&t!("dialog.remote_port"));
     let port_adjustment = gtk::Adjustment::new(22.0, 1.0, 65535.0, 1.0, 10.0, 0.0);
     let port_input = gtk::SpinButton::new(Some(&port_adjustment), 1.0, 0);
     port_row.append(&port_label);
@@ -71,68 +73,62 @@ pub fn prompt_remote_connection<F>(
     content.append(&port_row);
 
     let username_entry = gtk::Entry::new();
-    username_entry.set_placeholder_text(Some("Username"));
+    username_entry.set_placeholder_text(Some(&t!("dialog.remote_username")));
     content.append(&username_entry);
 
     let start_directory_entry = gtk::Entry::new();
-    start_directory_entry.set_placeholder_text(Some("Start directory"));
+    start_directory_entry.set_placeholder_text(Some(&t!("dialog.remote_start_directory")));
     start_directory_entry.set_text("/");
     content.append(&start_directory_entry);
 
     let skip_host_key_verification_switch = gtk::Switch::builder().active(false).build();
     content.append(&switch_row(
-        "Insecure: skip host key verification",
+        &t!("dialog.remote_skip_host_key"),
         &skip_host_key_verification_switch,
     ));
 
-    let host_key_warning = gtk::Label::new(Some(
-        "Only use this for test or demo servers. This disables known_hosts validation and allows man-in-the-middle attacks.",
-    ));
+    let host_key_warning = gtk::Label::new(Some(&t!("dialog.remote_skip_host_key_warning")));
     host_key_warning.set_xalign(0.0);
     host_key_warning.set_wrap(true);
     host_key_warning.add_css_class("dim-label");
     content.append(&host_key_warning);
 
     let auth_row = settings_row();
-    let auth_label = row_label("Authentication");
-    let auth_model = gtk::StringList::new(&["Password", "Key file"]);
+    let auth_label = row_label(&t!("dialog.remote_authentication"));
+    let auth_password = t!("dialog.remote_auth_password").into_owned();
+    let auth_key_file = t!("dialog.remote_auth_key_file").into_owned();
+    let auth_model = gtk::StringList::new(&[&auth_password, &auth_key_file]);
     let auth_dropdown = gtk::DropDown::new(Some(auth_model.clone()), gtk::Expression::NONE);
     auth_row.append(&auth_label);
     auth_row.append(&auth_dropdown);
     content.append(&auth_row);
 
     let password_entry = gtk::PasswordEntry::new();
-    password_entry.set_placeholder_text(Some("Password or passphrase"));
+    password_entry.set_placeholder_text(Some(&t!("dialog.remote_password_placeholder")));
     content.append(&password_entry);
 
     let private_key_entry = gtk::Entry::new();
-    private_key_entry.set_placeholder_text(Some("Private key path"));
+    private_key_entry.set_placeholder_text(Some(&t!("dialog.remote_private_key")));
     content.append(&private_key_entry);
 
-    let public_key_entry = gtk::Entry::new();
-    public_key_entry.set_placeholder_text(Some("Public key path (optional)"));
-    content.append(&public_key_entry);
-
     let save_profile_switch = gtk::Switch::builder().active(false).build();
-    content.append(&switch_row(
-        "Save profile without secret",
+    content.append(&switch_row_with_help(
+        &t!("dialog.remote_save_profile_label"),
+        &t!("dialog.remote_save_profile_tooltip"),
         &save_profile_switch,
     ));
 
-    let delete_profile_button = gtk::Button::with_label("Delete profile");
+    let delete_profile_button = gtk::Button::with_label(&t!("dialog.remote_delete_profile"));
     delete_profile_button.add_css_class("destructive-action");
     content.append(&delete_profile_button);
 
     let update_auth_visibility: AuthVisibilityFn = Rc::new({
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
-        let public_key_entry = public_key_entry.clone();
         move |is_password: bool| {
             password_entry.set_visible(true);
             private_key_entry.set_visible(!is_password);
-            public_key_entry.set_visible(!is_password);
             private_key_entry.set_sensitive(!is_password);
-            public_key_entry.set_sensitive(!is_password);
         }
     });
     update_auth_visibility(true);
@@ -147,7 +143,6 @@ pub fn prompt_remote_connection<F>(
         let auth_dropdown = auth_dropdown.clone();
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
-        let public_key_entry = public_key_entry.clone();
         let save_profile_switch = save_profile_switch.clone();
         let delete_profile_button = delete_profile_button.clone();
         move |profile| {
@@ -162,21 +157,12 @@ pub fn prompt_remote_connection<F>(
                     RemoteAuthConfig::Password { .. } => {
                         auth_dropdown.set_selected(0);
                         private_key_entry.set_text("");
-                        public_key_entry.set_text("");
                     }
                     RemoteAuthConfig::KeyFile {
-                        private_key_path,
-                        public_key_path,
-                        ..
+                        private_key_path, ..
                     } => {
                         auth_dropdown.set_selected(1);
                         private_key_entry.set_text(&private_key_path.display().to_string());
-                        public_key_entry.set_text(
-                            &public_key_path
-                                .as_ref()
-                                .map(|path| path.display().to_string())
-                                .unwrap_or_default(),
-                        );
                     }
                 }
                 password_entry.set_text("");
@@ -192,7 +178,6 @@ pub fn prompt_remote_connection<F>(
                 auth_dropdown.set_selected(0);
                 password_entry.set_text("");
                 private_key_entry.set_text("");
-                public_key_entry.set_text("");
                 save_profile_switch.set_active(false);
                 delete_profile_button.set_sensitive(false);
             }
@@ -206,7 +191,7 @@ pub fn prompt_remote_connection<F>(
         let populate_form = Rc::clone(&populate_form);
         move || {
             let state = state.borrow();
-            let mut names = vec!["New connection".to_string()];
+            let mut names = vec![t!("dialog.remote_new_connection").into_owned()];
             names.extend(state.profiles.iter().map(|profile| profile.name.clone()));
             let name_refs = names.iter().map(String::as_str).collect::<Vec<_>>();
             profile_model.splice(0, profile_model.n_items(), &name_refs);
@@ -245,9 +230,9 @@ pub fn prompt_remote_connection<F>(
         });
     }
 
-    let cancel_button = gtk::Button::with_label("Cancel");
-    let save_button = gtk::Button::with_label("Save");
-    let connect_button = gtk::Button::with_label("Connect");
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let save_button = gtk::Button::with_label(&t!("common.save"));
+    let connect_button = gtk::Button::with_label(&t!("dialog.remote_connect"));
     save_button.add_css_class("accent");
     connect_button.add_css_class("suggested-action");
     actions.append(&cancel_button);
@@ -275,7 +260,6 @@ pub fn prompt_remote_connection<F>(
         let skip_host_key_verification_switch = skip_host_key_verification_switch.clone();
         let auth_dropdown = auth_dropdown.clone();
         let private_key_entry = private_key_entry.clone();
-        let public_key_entry = public_key_entry.clone();
         let save_profile_switch = save_profile_switch.clone();
         save_button.connect_clicked(move |_| {
             let current_index = profile_dropdown.selected() as usize;
@@ -307,10 +291,7 @@ pub fn prompt_remote_connection<F>(
                 RemoteAuthConfig::KeyFile {
                     username: username.clone(),
                     private_key_path: private_key.into(),
-                    public_key_path: match public_key_entry.text().trim() {
-                        "" => None,
-                        value => Some(value.into()),
-                    },
+                    public_key_path: None,
                 }
             };
 
@@ -404,7 +385,6 @@ pub fn prompt_remote_connection<F>(
         let auth_dropdown = auth_dropdown.clone();
         let password_entry = password_entry.clone();
         let private_key_entry = private_key_entry.clone();
-        let public_key_entry = public_key_entry.clone();
         let save_profile_switch = save_profile_switch.clone();
         connect_button.connect_clicked(move |_| {
             let profile_name = profile_name_entry.text().to_string();
@@ -426,10 +406,7 @@ pub fn prompt_remote_connection<F>(
                 RemoteAuthConfig::KeyFile {
                     username: username.clone(),
                     private_key_path: private_key.into(),
-                    public_key_path: match public_key_entry.text().trim() {
-                        "" => None,
-                        value => Some(value.into()),
-                    },
+                    public_key_path: None,
                 }
             };
 
@@ -485,6 +462,69 @@ pub fn prompt_remote_connection<F>(
     });
 }
 
+pub fn confirm_ssh_host_key<F>(
+    parent: &gtk::ApplicationWindow,
+    offer: &HostKeyTrustOffer,
+    on_trust: F,
+) where
+    F: FnOnce() + 'static,
+{
+    let ModalWindow {
+        window,
+        content,
+        actions,
+    } = build_modal_window(parent, &t!("dialog.ssh_host_key_title"), 520, 220);
+
+    let heading = gtk::Label::new(Some(&t!("dialog.ssh_host_key_heading")));
+    heading.set_xalign(0.0);
+    heading.add_css_class("title-2");
+    content.append(&heading);
+
+    let detail = gtk::Label::new(Some(&t!(
+        "dialog.ssh_host_key_detail",
+        host = offer.host.as_str(),
+        port = offer.port,
+        key_type = offer.key_type.label(),
+        fingerprint = offer.fingerprint_sha256.as_str()
+    )));
+    detail.set_xalign(0.0);
+    detail.set_wrap(true);
+    content.append(&detail);
+
+    let warning = gtk::Label::new(Some(&t!("dialog.ssh_host_key_warning")));
+    warning.set_xalign(0.0);
+    warning.set_wrap(true);
+    warning.add_css_class("dim-label");
+    content.append(&warning);
+
+    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
+    let trust_button = gtk::Button::with_label(&t!("dialog.ssh_host_key_trust"));
+    trust_button.add_css_class("suggested-action");
+    actions.append(&cancel_button);
+    actions.append(&trust_button);
+    window.set_default_widget(Some(&trust_button));
+
+    {
+        let window = window.clone();
+        cancel_button.connect_clicked(move |_| {
+            window.close();
+        });
+    }
+
+    let callback = Rc::new(RefCell::new(Some(on_trust)));
+    {
+        let window = window.clone();
+        trust_button.connect_clicked(move |_| {
+            window.close();
+            if let Some(on_trust) = callback.borrow_mut().take() {
+                glib::idle_add_local_once(on_trust);
+            }
+        });
+    }
+
+    present_with_focus(window, &trust_button);
+}
+
 fn settings_row() -> gtk::Box {
     gtk::Box::new(gtk::Orientation::Horizontal, 8)
 }
@@ -499,6 +539,28 @@ fn row_label(text: &str) -> gtk::Label {
 fn switch_row(text: &str, switch: &gtk::Switch) -> gtk::Box {
     let row = settings_row();
     row.append(&row_label(text));
+    row.append(switch);
+    row
+}
+
+fn switch_row_with_help(text: &str, tooltip: &str, switch: &gtk::Switch) -> gtk::Box {
+    let row = settings_row();
+
+    let label_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    label_box.set_hexpand(true);
+    label_box.set_valign(gtk::Align::Center);
+    label_box.set_tooltip_text(Some(tooltip));
+
+    let label = gtk::Label::new(Some(text));
+    label.set_xalign(0.0);
+    label_box.append(&label);
+
+    let help = gtk::Label::new(Some("ⓘ"));
+    help.add_css_class("help-hint");
+    help.set_valign(gtk::Align::Center);
+    label_box.append(&help);
+
+    row.append(&label_box);
     row.append(switch);
     row
 }

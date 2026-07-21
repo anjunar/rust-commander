@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nginx configuration highlighting for GtkSourceView.
+  Bundled with RCommander; not part of upstream GtkSourceView.
+-->
+<language id="nginx" _name="Nginx" version="2.0" _section="Other">
+  <metadata>
+    <property name="mimetypes">text/x-nginx-conf</property>
+    <property name="globs">nginx.conf;*.nginx</property>
+    <property name="line-comment-start">#</property>
+  </metadata>
+
+  <styles>
+    <style id="comment" _name="Comment" map-to="def:comment"/>
+    <style id="string" _name="String" map-to="def:string"/>
+    <style id="escaped-character" _name="Escaped Character" map-to="def:special-char"/>
+    <style id="keyword" _name="Keyword" map-to="def:keyword"/>
+    <style id="directive" _name="Directive" map-to="def:statement"/>
+    <style id="variable" _name="Variable" map-to="def:identifier"/>
+    <style id="number" _name="Number" map-to="def:decimal"/>
+    <style id="boolean" _name="Boolean" map-to="def:boolean"/>
+    <style id="operator" _name="Operator" map-to="def:operator"/>
+  </styles>
+
+  <definitions>
+    <context id="nginx">
+      <include>
+        <context id="comment" style-ref="comment">
+          <start>#</start>
+          <end>$</end>
+          <include>
+            <context ref="def:in-comment"/>
+          </include>
+        </context>
+
+        <context id="string-double" end-at-line-end="true" style-ref="string">
+          <start>"</start>
+          <end>"</end>
+          <include>
+            <context id="escape-double" style-ref="escaped-character">
+              <match>\\.</match>
+            </context>
+            <context ref="variable"/>
+          </include>
+        </context>
+
+        <context id="string-single" end-at-line-end="true" style-ref="string">
+          <start>'</start>
+          <end>'</end>
+          <include>
+            <context id="escape-single" style-ref="escaped-character">
+              <match>\\.</match>
+            </context>
+            <context ref="variable"/>
+          </include>
+        </context>
+
+        <context id="variable" style-ref="variable">
+          <match>\$\{?[A-Za-z_][A-Za-z0-9_]*\}?</match>
+        </context>
+
+        <context id="number" style-ref="number">
+          <match>\b[0-9]+([kKmMgG])?\b</match>
+        </context>
+
+        <context id="boolean" style-ref="boolean">
+          <keyword>on</keyword>
+          <keyword>off</keyword>
+        </context>
+
+        <context id="blocks" style-ref="keyword">
+          <keyword>events</keyword>
+          <keyword>http</keyword>
+          <keyword>mail</keyword>
+          <keyword>stream</keyword>
+          <keyword>server</keyword>
+          <keyword>location</keyword>
+          <keyword>upstream</keyword>
+          <keyword>map</keyword>
+          <keyword>geo</keyword>
+          <keyword>split_clients</keyword>
+          <keyword>types</keyword>
+          <keyword>if</keyword>
+          <keyword>limit_except</keyword>
+        </context>
+
+        <context id="directives" style-ref="directive">
+          <keyword>include</keyword>
+          <keyword>user</keyword>
+          <keyword>worker_processes</keyword>
+          <keyword>worker_connections</keyword>
+          <keyword>worker_rlimit_nofile</keyword>
+          <keyword>pid</keyword>
+          <keyword>error_log</keyword>
+          <keyword>access_log</keyword>
+          <keyword>log_format</keyword>
+          <keyword>listen</keyword>
+          <keyword>server_name</keyword>
+          <keyword>root</keyword>
+          <keyword>alias</keyword>
+          <keyword>index</keyword>
+          <keyword>try_files</keyword>
+          <keyword>rewrite</keyword>
+          <keyword>return</keyword>
+          <keyword>break</keyword>
+          <keyword>set</keyword>
+          <keyword>proxy_pass</keyword>
+          <keyword>proxy_set_header</keyword>
+          <keyword>proxy_hide_header</keyword>
+          <keyword>proxy_read_timeout</keyword>
+          <keyword>proxy_connect_timeout</keyword>
+          <keyword>proxy_send_timeout</keyword>
+          <keyword>proxy_buffering</keyword>
+          <keyword>proxy_buffers</keyword>
+          <keyword>proxy_buffer_size</keyword>
+          <keyword>fastcgi_pass</keyword>
+          <keyword>fastcgi_param</keyword>
+          <keyword>fastcgi_index</keyword>
+          <keyword>uwsgi_pass</keyword>
+          <keyword>scgi_pass</keyword>
+          <keyword>client_max_body_size</keyword>
+          <keyword>client_body_timeout</keyword>
+          <keyword>client_header_timeout</keyword>
+          <keyword>keepalive_timeout</keyword>
+          <keyword>send_timeout</keyword>
+          <keyword>sendfile</keyword>
+          <keyword>tcp_nopush</keyword>
+          <keyword>tcp_nodelay</keyword>
+          <keyword>gzip</keyword>
+          <keyword>gzip_types</keyword>
+          <keyword>gzip_comp_level</keyword>
+          <keyword>gzip_vary</keyword>
+          <keyword>ssl_certificate</keyword>
+          <keyword>ssl_certificate_key</keyword>
+          <keyword>ssl_protocols</keyword>
+          <keyword>ssl_ciphers</keyword>
+          <keyword>ssl_prefer_server_ciphers</keyword>
+          <keyword>ssl_session_cache</keyword>
+          <keyword>ssl_session_timeout</keyword>
+          <keyword>add_header</keyword>
+          <keyword>expires</keyword>
+          <keyword>charset</keyword>
+          <keyword>default_type</keyword>
+          <keyword>types_hash_max_size</keyword>
+          <keyword>server_tokens</keyword>
+          <keyword>resolver</keyword>
+          <keyword>resolver_timeout</keyword>
+          <keyword>allow</keyword>
+          <keyword>deny</keyword>
+          <keyword>auth_basic</keyword>
+          <keyword>auth_basic_user_file</keyword>
+          <keyword>open_file_cache</keyword>
+          <keyword>open_file_cache_valid</keyword>
+          <keyword>open_file_cache_min_uses</keyword>
+          <keyword>limit_req</keyword>
+          <keyword>limit_req_zone</keyword>
+          <keyword>limit_conn</keyword>
+          <keyword>limit_conn_zone</keyword>
+          <keyword>stub_status</keyword>
+          <keyword>daemon</keyword>
+          <keyword>master_process</keyword>
+          <keyword>error_page</keyword>
+          <keyword>internal</keyword>
+          <keyword>valid_referers</keyword>
+          <keyword>satisfy</keyword>
+          <keyword>underscores_in_headers</keyword>
+          <keyword>large_client_header_buffers</keyword>
+          <keyword>proxy_http_version</keyword>
+          <keyword>proxy_ssl_server_name</keyword>
+          <keyword>proxy_ssl_name</keyword>
+          <keyword>proxy_ssl_verify</keyword>
+          <keyword>real_ip_header</keyword>
+          <keyword>set_real_ip_from</keyword>
+          <keyword>real_ip_recursive</keyword>
+          <keyword>http2</keyword>
+          <keyword>http2_push</keyword>
+          <keyword>quic</keyword>
+          <keyword>reuseport</keyword>
+          <keyword>so_keepalive</keyword>
+          <keyword>ssl</keyword>
+          <keyword>default_server</keyword>
+        </context>
+
+        <context id="brace-open" style-ref="operator">
+          <match>\{</match>
+        </context>
+        <context id="brace-close" style-ref="operator">
+          <match>\}</match>
+        </context>
+        <context id="semicolon" style-ref="operator">
+          <match>;</match>
+        </context>
+      </include>
+    </context>
+  </definitions>
+</language>

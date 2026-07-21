@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::{glib, prelude::*};
+use gtk::prelude::*;
 use rust_i18n::t;
 
 use crate::{config::AppConfig, i18n};
@@ -73,6 +73,25 @@ where
     theme_row.append(&theme_label);
     theme_row.append(&theme_dropdown);
     content.append(&theme_row);
+
+    let icon_style_row = settings_row();
+    let icon_style_label = row_label(&t!("settings.icon_style"));
+    let icon_style_options = [
+        t!("settings.icon_style_symbolic").into_owned(),
+        t!("settings.icon_style_system").into_owned(),
+    ];
+    let icon_style_option_refs = icon_style_options
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let icon_style_model = gtk::StringList::new(&icon_style_option_refs);
+    let icon_style_dropdown =
+        gtk::DropDown::new(Some(icon_style_model.clone()), gtk::Expression::NONE);
+    icon_style_dropdown
+        .set_selected(icon_style_to_index(current_config.general.icon_style) as u32);
+    icon_style_row.append(&icon_style_label);
+    icon_style_row.append(&icon_style_dropdown);
+    content.append(&icon_style_row);
 
     let view_section = section_label(&t!("settings.section_view"));
     content.append(&view_section);
@@ -151,6 +170,24 @@ where
         &show_line_numbers_switch,
     ));
 
+    let editor_section = section_label(&t!("settings.section_editor"));
+    content.append(&editor_section);
+
+    let edit_limit_row = settings_row();
+    let edit_limit_label = row_label(&t!("settings.max_edit_size_mb"));
+    let edit_limit_adjustment = gtk::Adjustment::new(
+        current_config.editor.max_edit_size_mb as f64,
+        1.0,
+        512.0,
+        1.0,
+        5.0,
+        0.0,
+    );
+    let edit_limit_input = gtk::SpinButton::new(Some(&edit_limit_adjustment), 1.0, 0);
+    edit_limit_row.append(&edit_limit_label);
+    edit_limit_row.append(&edit_limit_input);
+    content.append(&edit_limit_row);
+
     let reset_button = gtk::Button::with_label(&t!("settings.reset_defaults"));
     let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
     let save_button = gtk::Button::with_label(&t!("common.save"));
@@ -163,24 +200,29 @@ where
     {
         let language_dropdown = language_dropdown.clone();
         let theme_dropdown = theme_dropdown.clone();
+        let icon_style_dropdown = icon_style_dropdown.clone();
         let show_hidden_switch = show_hidden_switch.clone();
         let folders_first_switch = folders_first_switch.clone();
         let use_recycle_bin_switch = use_recycle_bin_switch.clone();
         let confirm_delete_switch = confirm_delete_switch.clone();
         let confirm_overwrite_switch = confirm_overwrite_switch.clone();
         let threshold_input = threshold_input.clone();
+        let edit_limit_input = edit_limit_input.clone();
         let line_wrap_switch = line_wrap_switch.clone();
         let show_line_numbers_switch = show_line_numbers_switch.clone();
         reset_button.connect_clicked(move |_| {
             let defaults = AppConfig::default();
             language_dropdown.set_selected(default_language_index() as u32);
             theme_dropdown.set_selected(theme_to_index(defaults.general.theme) as u32);
+            icon_style_dropdown
+                .set_selected(icon_style_to_index(defaults.general.icon_style) as u32);
             show_hidden_switch.set_active(defaults.panels.show_hidden_files);
             folders_first_switch.set_active(defaults.panels.folders_first);
             use_recycle_bin_switch.set_active(defaults.file_operations.use_recycle_bin);
             confirm_delete_switch.set_active(defaults.file_operations.confirm_delete);
             confirm_overwrite_switch.set_active(defaults.file_operations.confirm_overwrite);
             threshold_input.set_value(defaults.viewer.streaming_threshold_mb as f64);
+            edit_limit_input.set_value(defaults.editor.max_edit_size_mb as f64);
             line_wrap_switch.set_active(defaults.viewer.line_wrap);
             show_line_numbers_switch.set_active(defaults.viewer.show_line_numbers);
         });
@@ -199,12 +241,14 @@ where
         let callback = Rc::clone(&callback);
         let language_dropdown = language_dropdown.clone();
         let theme_dropdown = theme_dropdown.clone();
+        let icon_style_dropdown = icon_style_dropdown.clone();
         let show_hidden_switch = show_hidden_switch.clone();
         let folders_first_switch = folders_first_switch.clone();
         let use_recycle_bin_switch = use_recycle_bin_switch.clone();
         let confirm_delete_switch = confirm_delete_switch.clone();
         let confirm_overwrite_switch = confirm_overwrite_switch.clone();
         let threshold_input = threshold_input.clone();
+        let edit_limit_input = edit_limit_input.clone();
         let line_wrap_switch = line_wrap_switch.clone();
         let show_line_numbers_switch = show_line_numbers_switch.clone();
         let current_config = current_config.clone();
@@ -215,6 +259,7 @@ where
                 .get(language_dropdown.selected() as usize)
                 .map(|locale| (*locale).to_string());
             next_config.general.theme = index_to_theme(theme_dropdown.selected());
+            next_config.general.icon_style = index_to_icon_style(icon_style_dropdown.selected());
             next_config.panels.show_hidden_files = show_hidden_switch.is_active();
             next_config.panels.folders_first = folders_first_switch.is_active();
             next_config.file_operations.use_recycle_bin = use_recycle_bin_switch.is_active();
@@ -223,6 +268,7 @@ where
             next_config.viewer.streaming_threshold_mb = threshold_input.value() as u64;
             next_config.viewer.line_wrap = line_wrap_switch.is_active();
             next_config.viewer.show_line_numbers = show_line_numbers_switch.is_active();
+            next_config.editor.max_edit_size_mb = edit_limit_input.value().max(1.0) as u64;
 
             if let Some(on_save) = callback.borrow_mut().take() {
                 on_save(next_config);
@@ -231,10 +277,7 @@ where
         });
     }
 
-    glib::idle_add_local_once(move || {
-        window.present();
-        save_button.grab_focus();
-    });
+    super::dialogs_base::present_with_focus(window, &save_button);
 }
 
 fn settings_row() -> gtk::Box {
@@ -275,6 +318,20 @@ fn index_to_theme(index: u32) -> crate::config::ThemePreference {
         1 => crate::config::ThemePreference::Light,
         2 => crate::config::ThemePreference::Dark,
         _ => crate::config::ThemePreference::System,
+    }
+}
+
+fn icon_style_to_index(style: crate::config::IconStyle) -> usize {
+    match style {
+        crate::config::IconStyle::Symbolic => 0,
+        crate::config::IconStyle::System => 1,
+    }
+}
+
+fn index_to_icon_style(index: u32) -> crate::config::IconStyle {
+    match index {
+        1 => crate::config::IconStyle::System,
+        _ => crate::config::IconStyle::Symbolic,
     }
 }
 

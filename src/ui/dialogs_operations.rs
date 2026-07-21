@@ -1,4 +1,8 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
@@ -9,22 +13,21 @@ use crate::{
     presentation,
 };
 
-use super::dialogs_base::{build_modal_window, ModalWindow};
+use super::dialogs_base::{build_modal_window, present_with_focus, show_error, ModalWindow};
 
 pub fn confirm_operation<F>(parent: &gtk::ApplicationWindow, request: OperationPlan, on_confirm: F)
 where
     F: FnOnce(OperationPlan) + 'static,
 {
     let source_label = source_label(&request);
-    let target_label = target_label(&request);
+    let destination_text = editable_destination_text(&request);
 
     let (title, detail, confirm_label) = match request.kind() {
         FileOperationKind::Copy => (
             t!("dialog.copy_confirmation_title").into_owned(),
             t!(
                 "dialog.copy_confirmation_detail",
-                source = source_label.as_str(),
-                target = target_label.as_str()
+                source = source_label.as_str()
             )
             .into_owned(),
             presentation::file_operation_label(&FileOperationKind::Copy),
@@ -33,28 +36,48 @@ where
             t!("dialog.move_confirmation_title").into_owned(),
             t!(
                 "dialog.move_confirmation_detail",
-                source = source_label.as_str(),
-                target = target_label.as_str()
+                source = source_label.as_str()
             )
             .into_owned(),
             presentation::file_operation_label(&FileOperationKind::Move),
         ),
-        FileOperationKind::Delete => (
-            t!("dialog.delete_confirmation_title").into_owned(),
-            t!(
-                "dialog.delete_confirmation_detail",
-                source = source_label.as_str()
-            )
-            .into_owned(),
-            presentation::file_operation_label(&FileOperationKind::Delete),
-        ),
+        FileOperationKind::Delete => {
+            let permanent = matches!(&request, OperationPlan::Local(local) if !local.use_recycle_bin);
+            if permanent {
+                (
+                    t!("dialog.delete_permanent_confirmation_title").into_owned(),
+                    t!(
+                        "dialog.delete_permanent_confirmation_detail",
+                        source = source_label.as_str()
+                    )
+                    .into_owned(),
+                    t!("common.delete_permanent").into_owned(),
+                )
+            } else {
+                (
+                    t!("dialog.delete_confirmation_title").into_owned(),
+                    t!(
+                        "dialog.delete_confirmation_detail",
+                        source = source_label.as_str()
+                    )
+                    .into_owned(),
+                    presentation::file_operation_label(&FileOperationKind::Delete),
+                )
+            }
+        }
     };
 
+    let has_destination_entry = destination_text.is_some();
     let ModalWindow {
         window,
         content,
         actions,
-    } = build_modal_window(parent, &title, 480, 160);
+    } = build_modal_window(
+        parent,
+        &title,
+        if has_destination_entry { 560 } else { 480 },
+        if has_destination_entry { 180 } else { 160 },
+    );
 
     let title_label = gtk::Label::new(Some(&title));
     title_label.set_xalign(0.0);
@@ -66,6 +89,15 @@ where
     detail_label.set_xalign(0.0);
     detail_label.set_wrap(true);
     content.append(&detail_label);
+
+    let destination_entry = destination_text.as_ref().map(|text| {
+        let entry = gtk::Entry::new();
+        entry.set_text(text);
+        entry.set_hexpand(true);
+        entry.set_activates_default(true);
+        content.append(&entry);
+        entry
+    });
 
     let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
     let confirm_button = gtk::Button::with_label(&confirm_label);
@@ -85,21 +117,53 @@ where
     let request = Rc::new(RefCell::new(Some(request)));
     {
         let window = window.clone();
+        let parent = parent.clone();
         let callback = Rc::clone(&callback);
         let request = Rc::clone(&request);
+        let destination_entry = destination_entry.clone();
         confirm_button.connect_clicked(move |_| {
+            let mut prepared = match request.borrow_mut().take() {
+                Some(value) => value,
+                None => return,
+            };
+
+            if let Some(entry) = &destination_entry {
+                if let Err(detail) = apply_edited_destination(&mut prepared, &entry.text()) {
+                    *request.borrow_mut() = Some(prepared);
+                    show_error(
+                        &parent,
+                        &t!("error.operation_unavailable"),
+                        &detail,
+                    );
+                    return;
+                }
+            }
+
             window.close();
-            if let (Some(on_confirm), Some(request)) =
-                (callback.borrow_mut().take(), request.borrow_mut().take())
-            {
+            if let Some(on_confirm) = callback.borrow_mut().take() {
                 glib::idle_add_local_once(move || {
-                    on_confirm(request);
+                    on_confirm(prepared);
                 });
             }
         });
     }
 
-    window.present();
+    if let Some(entry) = destination_entry {
+        let selection = destination_text
+            .as_deref()
+            .and_then(filename_selection_bounds);
+        glib::idle_add_local_once(move || {
+            window.present();
+            entry.grab_focus();
+            if let Some((start, end)) = selection {
+                entry.select_region(start, end);
+            } else {
+                entry.select_region(0, -1);
+            }
+        });
+    } else {
+        present_with_focus(window, &confirm_button);
+    }
 }
 
 pub fn show_conflict<F>(
@@ -149,7 +213,7 @@ pub fn show_conflict<F>(
     actions.append(&skip_button);
     actions.append(&rename_button);
     actions.append(&overwrite_button);
-    window.set_default_widget(Some(&skip_button));
+    window.set_default_widget(Some(&overwrite_button));
 
     let callback = Rc::new(RefCell::new(Some(on_resolution)));
     let resolve = |resolution: ConflictResolution,
@@ -190,7 +254,7 @@ pub fn show_conflict<F>(
         });
     }
 
-    window.present();
+    present_with_focus(window, &overwrite_button);
 }
 
 #[derive(Clone)]
@@ -349,25 +413,100 @@ fn source_label(request: &OperationPlan) -> String {
     }
 }
 
-fn target_label(request: &OperationPlan) -> String {
+fn editable_destination_text(request: &OperationPlan) -> Option<String> {
     match request {
-        OperationPlan::ArchiveExtract(request) => request.target_directory.display().to_string(),
-        OperationPlan::RemoteDownload(request) => request.target_directory.display().to_string(),
-        OperationPlan::Local(request) => request
-            .target_directory
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "-".into()),
+        OperationPlan::Local(request)
+            if matches!(
+                request.kind,
+                FileOperationKind::Copy | FileOperationKind::Move
+            ) =>
+        {
+            let directory = request.target_directory.as_ref()?;
+            if request.sources.len() == 1 {
+                let name = request.sources[0].file_name()?;
+                Some(directory.join(name).display().to_string())
+            } else {
+                Some(directory.display().to_string())
+            }
+        }
+        OperationPlan::ArchiveExtract(request) => {
+            Some(request.target_directory.display().to_string())
+        }
+        OperationPlan::RemoteDownload(request) => {
+            Some(request.target_directory.display().to_string())
+        }
+        OperationPlan::RemoteUpload(request) => Some(request.target_directory.clone()),
+        OperationPlan::Local(_) => None,
+    }
+}
+
+fn apply_edited_destination(request: &mut OperationPlan, edited: &str) -> Result<(), String> {
+    let trimmed = edited.trim();
+    if trimmed.is_empty() {
+        return Err(t!("error.empty_destination").into_owned());
+    }
+
+    match request {
+        OperationPlan::Local(local) => apply_local_destination(local, trimmed),
+        OperationPlan::ArchiveExtract(request) => {
+            request.target_directory = PathBuf::from(trimmed);
+            Ok(())
+        }
+        OperationPlan::RemoteDownload(request) => {
+            request.target_directory = PathBuf::from(trimmed);
+            Ok(())
+        }
         OperationPlan::RemoteUpload(request) => {
-            let profile = request.session.profile();
-            format!(
-                "{}@{}:{}",
-                profile.auth.username(),
-                profile.host,
-                request.target_directory
-            )
+            request.target_directory = trimmed.to_string();
+            Ok(())
         }
     }
+}
+
+fn apply_local_destination(
+    local: &mut crate::application::LocalOperationRequest,
+    trimmed: &str,
+) -> Result<(), String> {
+    let path = PathBuf::from(trimmed);
+    let has_separator = trimmed.contains('/') || trimmed.contains('\\');
+
+    if local.sources.len() == 1 {
+        let treat_as_directory =
+            trimmed.ends_with('/') || trimmed.ends_with('\\') || path.is_dir();
+        if treat_as_directory {
+            local.target_directory = Some(path);
+            local.target_path = None;
+        } else if !has_separator {
+            let directory = local
+                .target_directory
+                .clone()
+                .ok_or_else(|| t!("error.invalid_destination").into_owned())?;
+            local.target_path = Some(directory.join(trimmed));
+        } else {
+            let parent = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .ok_or_else(|| t!("error.invalid_destination").into_owned())?;
+            local.target_directory = Some(parent.to_path_buf());
+            local.target_path = Some(path);
+        }
+    } else {
+        local.target_directory = Some(path);
+        local.target_path = None;
+    }
+
+    Ok(())
+}
+
+fn filename_selection_bounds(path: &str) -> Option<(i32, i32)> {
+    let name = Path::new(path).file_name()?.to_str()?;
+    if name.is_empty() || !path.ends_with(name) {
+        return None;
+    }
+
+    let total = path.chars().count() as i32;
+    let name_len = name.chars().count() as i32;
+    Some((total - name_len, total))
 }
 
 pub(crate) fn selected_paths_summary(paths: &[PathBuf]) -> String {

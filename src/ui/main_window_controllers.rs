@@ -89,6 +89,7 @@ impl MainWindowControllers {
             navigation.clone(),
             context_menu_handler,
             remote_connect_handler,
+            window.config_store.clone(),
         );
 
         let terminal_host: Rc<dyn TerminalHost> = window.clone();

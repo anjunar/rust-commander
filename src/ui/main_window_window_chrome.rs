@@ -7,7 +7,7 @@ use crate::{
     ui::{commander_view::CommanderView, terminal_dock::TerminalDock, theme::ThemeController},
 };
 
-use super::{command_bar::command_bar_labels, APP_WINDOW_TITLE};
+use super::APP_WINDOW_TITLE;
 
 #[derive(Clone)]
 pub struct WindowChromeController {
@@ -132,9 +132,13 @@ impl WindowChromeController {
         &self,
         commander_view: &CommanderView,
         terminal_dock: &TerminalDock,
+        menu_bar: Option<&gtk::PopoverMenuBar>,
     ) {
         commander_view.refresh_labels();
         terminal_dock.refresh_toolbar();
+        if let Some(menu_bar) = menu_bar {
+            super::menu::refresh_menu_bar(menu_bar);
+        }
         if let Some(titlebar) = self.window.titlebar() {
             if let Ok(header) = titlebar.downcast::<gtk::HeaderBar>() {
                 if let Some(title_widget) = header.title_widget() {
@@ -143,31 +147,6 @@ impl WindowChromeController {
                     }
                 }
             }
-        }
-
-        let labels = command_bar_labels();
-        let mut index = 0usize;
-        let mut child = self
-            .window
-            .child()
-            .and_then(|child| child.downcast::<gtk::Box>().ok())
-            .and_then(|shell| shell.last_child());
-        while let Some(widget) = child {
-            let previous = widget.prev_sibling();
-            if let Ok(button_row) = widget.clone().downcast::<gtk::Box>() {
-                let mut button = button_row.first_child();
-                while let Some(widget) = button {
-                    button = widget.next_sibling();
-                    if let Ok(button) = widget.downcast::<gtk::Button>() {
-                        if let Some(label) = labels.get(index) {
-                            button.set_label(label);
-                        }
-                        index += 1;
-                    }
-                }
-                break;
-            }
-            child = previous;
         }
     }
 }

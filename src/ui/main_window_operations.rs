@@ -4,9 +4,9 @@ use rust_i18n::t;
 
 use crate::{
     application::{
-        prepare_operation, start_operation_task, ActiveOperationHandle, Commander,
-        FileOperationKind, OperationPlan, PreparedOperation, SessionStore, StartedOperation,
-        TaskSpawner,
+        prepare_operation_with_options, start_operation_task, ActiveOperationHandle, Commander,
+        DeleteMode, FileOperationKind, OperationPlan, PreparedOperation, SessionStore,
+        StartedOperation, TaskSpawner,
     },
     archive::ArchiveService,
     config::AppConfig,
@@ -78,6 +78,14 @@ impl OperationsController {
     }
 
     pub fn handle_operation(&self, kind: FileOperationKind) {
+        self.handle_operation_with_delete_mode(kind, DeleteMode::Default);
+    }
+
+    pub fn handle_delete_permanent(&self) {
+        self.handle_operation_with_delete_mode(FileOperationKind::Delete, DeleteMode::Permanent);
+    }
+
+    fn handle_operation_with_delete_mode(&self, kind: FileOperationKind, delete_mode: DeleteMode) {
         if self.runtime.active_operation.borrow().is_some() {
             dialogs::show_error(
                 &self.window,
@@ -87,11 +95,12 @@ impl OperationsController {
             return;
         }
 
-        let prepared = match prepare_operation(
+        let prepared = match prepare_operation_with_options(
             &self.commander.borrow(),
             Rc::clone(&self.session_store),
             &self.app_config_cache.borrow().file_operations,
             kind,
+            delete_mode,
         ) {
             Ok(prepared) => prepared,
             Err(error) => {
