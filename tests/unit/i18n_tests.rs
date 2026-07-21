@@ -10,4 +10,7 @@ fn resolves_translations_from_locale_files() {
 
     apply_locale(Some("fr"));
     assert_eq!(t!("entry.folder"), "Dossier");
+
+    apply_locale(Some("ru"));
+    assert_eq!(t!("entry.folder"), "Папка");
 }
