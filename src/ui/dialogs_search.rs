@@ -45,6 +45,7 @@ pub fn show_find_files<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("search.title"), 680, 560);
 
     let description = gtk::Label::new(Some(&t!("search.description")));

@@ -19,6 +19,7 @@ pub fn prompt_unix_chmod<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.chmod_title"), 460, 180);
 
     let label = gtk::Label::new(Some(&t!("dialog.chmod_prompt")));
@@ -89,6 +90,7 @@ pub fn prompt_unix_chown<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.chown_title"), 460, 180);
 
     let label = gtk::Label::new(Some(&t!("dialog.chown_prompt")));

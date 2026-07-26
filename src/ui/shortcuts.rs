@@ -30,6 +30,9 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
         MainWindow::handle_copy_with_rename,
     );
     add_action(window, "move-files", MainWindow::handle_move);
+    add_action(window, "clipboard-copy", MainWindow::handle_clipboard_copy);
+    add_action(window, "clipboard-cut", MainWindow::handle_clipboard_cut);
+    add_action(window, "clipboard-paste", MainWindow::handle_clipboard_paste);
     add_action(window, "make-directory", MainWindow::handle_make_directory);
     add_action(window, "delete", MainWindow::handle_delete);
     add_action(
@@ -103,6 +106,9 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     app.set_accels_for_action("win.copy", &["F5"]);
     app.set_accels_for_action("win.copy-with-rename", &["<Shift>F5"]);
     app.set_accels_for_action("win.move-files", &["F6"]);
+    app.set_accels_for_action("win.clipboard-copy", &["<Primary>c"]);
+    app.set_accels_for_action("win.clipboard-cut", &["<Primary>x"]);
+    app.set_accels_for_action("win.clipboard-paste", &["<Primary>v"]);
     app.set_accels_for_action("win.make-directory", &["F7"]);
     app.set_accels_for_action("win.delete", &["F8", "Delete"]);
     app.set_accels_for_action("win.delete-permanent", &["<Shift>F8", "<Shift>Delete"]);

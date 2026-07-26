@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 
@@ -7,6 +10,7 @@ pub(crate) struct ModalWindow {
     pub window: gtk::Window,
     pub content: gtk::Box,
     pub actions: gtk::Box,
+    pub(crate) skip_parent_restore: Rc<Cell<bool>>,
 }
 
 pub(crate) struct IndependentWindow {
@@ -58,10 +62,14 @@ pub(crate) fn build_modal_window(
         window.set_application(Some(&app));
     }
 
+    let skip_parent_restore = Rc::new(Cell::new(false));
     {
         let parent = parent.clone();
+        let skip_parent_restore = Rc::clone(&skip_parent_restore);
         window.connect_close_request(move |_| {
-            restore_parent_focus(&parent);
+            if !skip_parent_restore.get() {
+                restore_parent_focus(&parent);
+            }
             glib::Propagation::Proceed
         });
     }
@@ -104,6 +112,7 @@ pub(crate) fn build_modal_window(
         window,
         content,
         actions,
+        skip_parent_restore,
     }
 }
 
@@ -212,7 +221,7 @@ fn install_standard_window_controls(
     minimize_button.add_css_class("window-minimize-button");
     minimize_button.add_css_class("flat");
     minimize_button.set_focus_on_click(false);
-    minimize_button.set_size_request(44, 28);
+    minimize_button.set_size_request(36, 24);
     minimize_button.set_tooltip_text(Some("Minimize"));
     {
         let window = window.clone();
@@ -227,7 +236,7 @@ fn install_standard_window_controls(
     maximize_button.add_css_class("window-maximize-button");
     maximize_button.add_css_class("flat");
     maximize_button.set_focus_on_click(false);
-    maximize_button.set_size_request(44, 28);
+    maximize_button.set_size_request(36, 24);
     maximize_button.set_tooltip_text(Some("Maximize"));
     sync_maximize_button(window, &maximize_button);
     {
@@ -271,7 +280,7 @@ fn close_window_button(window: &gtk::Window) -> gtk::Button {
     close_button.add_css_class("window-close-button");
     close_button.add_css_class("flat");
     close_button.set_focus_on_click(false);
-    close_button.set_size_request(44, 28);
+    close_button.set_size_request(36, 24);
     close_button.set_tooltip_text(Some("Close"));
     {
         let window = window.clone();
@@ -287,6 +296,7 @@ pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, title, 460, 180);
 
     let title_label = gtk::Label::new(Some(title));

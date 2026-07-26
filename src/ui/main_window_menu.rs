@@ -56,6 +56,13 @@ fn commands_menu() -> gio::Menu {
     append_item(&menu, &t!("menu.delete_permanent"), "win.delete-permanent");
     menu.append_section(None, &{
         let section = gio::Menu::new();
+        append_item(&section, &t!("menu.clipboard_cut"), "win.clipboard-cut");
+        append_item(&section, &t!("menu.clipboard_copy"), "win.clipboard-copy");
+        append_item(&section, &t!("menu.clipboard_paste"), "win.clipboard-paste");
+        section
+    });
+    menu.append_section(None, &{
+        let section = gio::Menu::new();
         append_item(&section, &t!("menu.find_files"), "win.find-files");
         section
     });

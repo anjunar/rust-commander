@@ -30,6 +30,7 @@ impl OperationsController {
             receiver,
             &title,
             false,
+            false,
             None::<Box<dyn FnOnce(Result<(), String>)>>,
         );
     }
@@ -37,7 +38,7 @@ impl OperationsController {
     /// Run a remote transfer with progress UI and an optional completion callback.
     ///
     /// When `auto_overwrite` is true, conflicts are resolved as overwrite without a dialog.
-    /// When `on_finished` is set, panel selection refresh is skipped (used for edit download/upload).
+    /// Panel selection refresh is skipped (used for edit download/upload).
     pub fn run_remote_transfer_with_progress<F>(
         &self,
         request: OperationPlan,
@@ -84,16 +85,18 @@ impl OperationsController {
             receiver,
             title,
             auto_overwrite,
+            true,
             Some(Box::new(on_finished)),
         );
     }
 
-    fn poll_transfer_operation_with_hooks(
+    pub(super) fn poll_transfer_operation_with_hooks(
         &self,
         request: OperationPlan,
         receiver: std::sync::mpsc::Receiver<OperationEvent>,
         title: &str,
         auto_overwrite: bool,
+        skip_selection_refresh: bool,
         on_finished: Option<Box<dyn FnOnce(Result<(), String>)>>,
     ) {
         let active_operation = std::rc::Rc::clone(&self.runtime.active_operation);
@@ -105,7 +108,6 @@ impl OperationsController {
 
         let on_finished = std::rc::Rc::new(std::cell::RefCell::new(on_finished));
         let controller = self.clone();
-        let skip_selection_refresh = on_finished.borrow().is_some();
         glib_poll::poll_receiver(
             Duration::from_millis(80),
             receiver,
@@ -218,8 +220,10 @@ impl OperationsController {
                     };
                     controller.host.apply_update(update);
                     if let Some(callback) = on_finished.borrow_mut().take() {
-                        callback(Err(error_detail));
-                    } else {
+                        callback(Err(error_detail.clone()));
+                    }
+                    // Remote-edit transfers (`skip_selection_refresh`) handle errors in the callback.
+                    if !skip_selection_refresh {
                         controller
                             .host
                             .show_error(&t!("error.file_operation_failed"), &error_detail);

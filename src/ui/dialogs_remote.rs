@@ -43,6 +43,7 @@ pub fn prompt_remote_connection<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.remote_title"), 520, 470);
 
     let state = Rc::new(RefCell::new(remote_config));
@@ -473,6 +474,7 @@ pub fn confirm_ssh_host_key<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.ssh_host_key_title"), 520, 220);
 
     let heading = gtk::Label::new(Some(&t!("dialog.ssh_host_key_heading")));

@@ -26,6 +26,7 @@ pub fn show_properties(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.properties_title"), 480, 320);
 
     let grid = gtk::Grid::new();
@@ -112,6 +113,7 @@ pub fn show_remote_properties<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.properties_title"), 520, 420);
 
     let grid = gtk::Grid::new();

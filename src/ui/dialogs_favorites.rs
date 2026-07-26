@@ -28,6 +28,7 @@ pub fn show_favorites<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("dialog.favorites_title"), 560, 420);
 
     let title = gtk::Label::new(Some(&t!("dialog.favorites_title")));
@@ -404,6 +405,7 @@ fn prompt_favorite_entry<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, title, 480, 180);
 
     let title_label = gtk::Label::new(Some(title));

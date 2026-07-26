@@ -28,7 +28,7 @@ pub fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &
     minimize_button.add_css_class("window-minimize-button");
     minimize_button.add_css_class("flat");
     minimize_button.set_focus_on_click(false);
-    minimize_button.set_size_request(44, 28);
+    minimize_button.set_size_request(36, 24);
     minimize_button.set_tooltip_text(Some("Minimize"));
     {
         let window = window.clone();
@@ -43,7 +43,7 @@ pub fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &
     maximize_button.add_css_class("window-maximize-button");
     maximize_button.add_css_class("flat");
     maximize_button.set_focus_on_click(false);
-    maximize_button.set_size_request(44, 28);
+    maximize_button.set_size_request(36, 24);
     maximize_button.set_tooltip_text(Some("Maximize"));
     sync_maximize_button(window, &maximize_button);
     {
@@ -71,7 +71,7 @@ pub fn install_custom_window_controls(window: &gtk::ApplicationWindow, header: &
     close_button.add_css_class("window-close-button");
     close_button.add_css_class("flat");
     close_button.set_focus_on_click(false);
-    close_button.set_size_request(44, 28);
+    close_button.set_size_request(36, 24);
     close_button.set_tooltip_text(Some("Close"));
     {
         let window = window.clone();

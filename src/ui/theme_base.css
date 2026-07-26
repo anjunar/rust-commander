@@ -1,6 +1,28 @@
 .app-title {
     font-weight: 700;
     letter-spacing: 0.06em;
+    font-size: 0.95em;
+}
+
+headerbar {
+    min-height: 30px;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 4px;
+    padding-right: 2px;
+}
+
+headerbar > windowhandle,
+headerbar > windowhandle > box {
+    min-height: 30px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+headerbar button {
+    min-height: 24px;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
 .path-row {
@@ -40,12 +62,42 @@ columnview columnheader button {
     font-style: italic;
 }
 
+/* Compact inline rename so replacing a Label does not stretch the row. */
+.file-table entry.inline-rename-entry,
+columnview entry.inline-rename-entry {
+    min-height: 0;
+    min-width: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.file-table entry.inline-rename-entry > text,
+columnview entry.inline-rename-entry > text {
+    min-height: 0;
+}
+
+.file-panel {
+    /* Let GtkPaned keep the user-set split; content must not force min width. */
+    min-width: 0;
+}
+
 .file-panel-left {
     margin-right: 2px;
 }
 
 .file-panel-right {
     margin-left: 2px;
+}
+
+.panel-tab-bar,
+.panel-scroller,
+.panel-scroller > viewport,
+.path-row {
+    min-width: 0;
 }
 
 paned.horizontal > separator {
@@ -154,21 +206,21 @@ dialog .button {
 }
 
 .window-controls {
-    margin-right: 4px;
-    margin-top: 2px;
-    margin-bottom: 2px;
+    margin-right: 2px;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .window-control-button {
-    min-width: 36px;
-    min-height: 26px;
+    min-width: 32px;
+    min-height: 24px;
     padding-top: 0;
     padding-bottom: 0;
     padding-left: 0;
     padding-right: 0;
     padding: 0;
     margin: 0;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid transparent;
     background: transparent;
     background-color: transparent;
@@ -181,12 +233,13 @@ dialog .button {
 }
 
 .app-menubar {
-    margin-left: 4px;
+    margin-left: 2px;
 }
 
 .app-menubar > menuitem,
 .app-menubar label {
-    padding: 2px 8px;
+    padding: 0 6px;
+    min-height: 24px;
 }
 
 

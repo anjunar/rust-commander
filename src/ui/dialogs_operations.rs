@@ -72,6 +72,7 @@ where
         window,
         content,
         actions,
+        ..
     } = build_modal_window(
         parent,
         &title,
@@ -191,6 +192,7 @@ pub fn show_conflict<F>(
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &title, 520, 240);
 
     let title_label = gtk::Label::new(Some(&title));
@@ -275,6 +277,7 @@ impl ProgressDialog {
             window,
             content,
             actions,
+            ..
         } = build_modal_window(parent, title_text, 460, 160);
 
         let title = gtk::Label::new(Some(title_text));

@@ -4,7 +4,9 @@ use anyhow::Context;
 use gtk::glib;
 use rust_i18n::t;
 
-use crate::ui::{dialogs, editor_dialog, file_viewer_dialog, main_window::MainWindow};
+use crate::ui::{
+    dialogs, editor_dialog, file_viewer_dialog, file_viewer_image, main_window::MainWindow,
+};
 
 impl MainWindow {
     pub fn handle_properties(self: &Rc<Self>) {
@@ -161,10 +163,17 @@ impl MainWindow {
             return;
         };
 
+        let sibling_images =
+            file_viewer_image::sibling_images_from_panel(self.commander.borrow().state().active_panel());
+        let viewer_config = self.app_config_cache.borrow().viewer.clone();
+        let theme = self.app_config_cache.borrow().general.theme;
         if let Err(error) = file_viewer_dialog::open(
             &self.window,
             path,
-            self.app_config_cache.borrow().viewer.clone(),
+            viewer_config,
+            theme,
+            &self.archive_service.borrow(),
+            sibling_images,
         ) {
             dialogs::show_error(
                 &self.window,
@@ -630,6 +639,7 @@ impl MainWindow {
                 return;
             }
 
+            this.suppress_panel_focus.set(true);
             this.refresh_active_panel_revealing(&trimmed, {
                 t!(
                     "status.created_file",
@@ -651,8 +661,12 @@ impl MainWindow {
                     );
                 },
             ) {
+                this.suppress_panel_focus.set(false);
                 this.show_command_failed(error);
+                return;
             }
+
+            this.clear_panel_focus_suppress_after(std::time::Duration::from_millis(500));
         });
     }
 

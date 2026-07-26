@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
@@ -32,7 +34,6 @@ pub use dialogs_settings::show_settings;
 pub use dialogs_unix::{prompt_unix_chmod, prompt_unix_chown};
 
 pub(crate) use dialogs_base::{build_independent_window, build_modal_window};
-use dialogs_base::ModalWindow;
 
 pub fn prompt_new_directory<F>(parent: &gtk::ApplicationWindow, on_confirm: F)
 where
@@ -44,6 +45,7 @@ where
         &t!("dialog.mkdir_prompt"),
         &t!("common.create"),
         None,
+        false,
         false,
         on_confirm,
     );
@@ -60,6 +62,7 @@ where
         &t!("common.create"),
         Some("untitled.txt"),
         true,
+        true,
         on_confirm,
     );
 }
@@ -75,6 +78,7 @@ where
         &t!("common.copy"),
         Some(&current_name),
         true,
+        false,
         on_confirm,
     );
 }
@@ -86,19 +90,16 @@ fn prompt_name<F>(
     confirm_label: &str,
     initial: Option<&str>,
     select_all: bool,
+    skip_parent_restore_on_confirm: bool,
     on_confirm: F,
 ) where
     F: FnOnce(String) + 'static,
 {
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, title, 420, 120);
+    let modal = build_modal_window(parent, title, 420, 120);
 
     let label = gtk::Label::new(Some(prompt));
     label.set_xalign(0.0);
-    content.append(&label);
+    modal.content.append(&label);
 
     let entry = gtk::Entry::new();
     if let Some(initial) = initial {
@@ -106,37 +107,49 @@ fn prompt_name<F>(
     }
     entry.set_hexpand(true);
     entry.set_activates_default(true);
-    content.append(&entry);
+    modal.content.append(&entry);
 
     let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
     let confirm_button = gtk::Button::with_label(confirm_label);
     confirm_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&confirm_button);
-    window.set_default_widget(Some(&confirm_button));
+    modal.actions.append(&cancel_button);
+    modal.actions.append(&confirm_button);
+    modal.window.set_default_widget(Some(&confirm_button));
 
-    let callback = std::rc::Rc::new(std::cell::RefCell::new(Some(on_confirm)));
+    let callback = Rc::new(std::cell::RefCell::new(Some(on_confirm)));
     {
-        let window = window.clone();
+        let window = modal.window.clone();
         cancel_button.connect_clicked(move |_| {
             window.close();
         });
     }
     {
-        let window = window.clone();
+        let window = modal.window.clone();
         let entry = entry.clone();
-        let callback = std::rc::Rc::clone(&callback);
+        let callback = Rc::clone(&callback);
+        let skip_parent_restore = Rc::clone(&modal.skip_parent_restore);
         confirm_button.connect_clicked(move |_| {
             let value = entry.text().to_string();
-            if let Some(on_confirm) = callback.borrow_mut().take() {
+            let on_confirm = callback.borrow_mut().take();
+            if skip_parent_restore_on_confirm {
+                skip_parent_restore.set(true);
+                // Close first, then open the follow-up window on the next idle so the
+                // editor is not fighting the modal/transient parent activation.
+                window.close();
+                if let Some(on_confirm) = on_confirm {
+                    glib::idle_add_local_once(move || on_confirm(value));
+                }
+            } else if let Some(on_confirm) = on_confirm {
                 on_confirm(value);
+                window.close();
+            } else {
+                window.close();
             }
-            window.close();
         });
     }
 
     glib::idle_add_local_once(move || {
-        window.present();
+        modal.window.present();
         entry.grab_focus();
         if select_all {
             entry.select_region(0, -1);

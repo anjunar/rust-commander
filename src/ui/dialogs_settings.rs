@@ -15,6 +15,7 @@ where
         window,
         content,
         actions,
+        ..
     } = build_modal_window(parent, &t!("settings.title"), 620, 520);
 
     let title = gtk::Label::new(Some(&t!("settings.title")));

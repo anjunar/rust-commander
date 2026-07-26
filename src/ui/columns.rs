@@ -113,12 +113,22 @@ where
 
     let original_name = original_name.to_string();
     let is_parent_link = label.has_css_class("parent-link");
+    // Keep the row height/width stable: Entry's defaults are taller and grow with text.
+    let label_height = label.height();
     container.remove(&label);
 
     let entry = gtk::Entry::new();
+    entry.add_css_class("inline-rename-entry");
     entry.set_text(&original_name);
     entry.set_hexpand(true);
-    entry.set_width_chars(12);
+    entry.set_halign(gtk::Align::Fill);
+    entry.set_valign(gtk::Align::Center);
+    // Natural width must not follow the filename; hexpand fills the name cell.
+    entry.set_width_chars(1);
+    entry.set_max_width_chars(1);
+    if label_height > 0 {
+        entry.set_size_request(-1, label_height);
+    }
     container.append(&entry);
 
     let callbacks = Rc::new(RefCell::new(Some((

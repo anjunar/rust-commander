@@ -27,8 +27,10 @@ impl CommanderView {
         root.add_css_class("commander-view");
         root.set_resize_start_child(true);
         root.set_resize_end_child(true);
-        root.set_shrink_start_child(false);
-        root.set_shrink_end_child(false);
+        // Allow panels to shrink below content natural width so folder/tab
+        // changes never move the divider away from the user-set position.
+        root.set_shrink_start_child(true);
+        root.set_shrink_end_child(true);
         root.set_wide_handle(false);
         install_center_snap(&root);
 

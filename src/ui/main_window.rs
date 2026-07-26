@@ -16,13 +16,15 @@ use crate::{
     presentation,
     remote::RemoteService,
     ui::{
-        commander_view::CommanderView, dialogs, shortcuts, terminal_dock::TerminalDock,
-        theme::ThemeController,
+        commander_view::CommanderView, dialogs, file_clipboard::FileClipboard, shortcuts,
+        terminal_dock::TerminalDock, theme::ThemeController,
     },
 };
 
 #[path = "main_window_actions.rs"]
 mod actions;
+#[path = "main_window_actions_clipboard.rs"]
+mod actions_clipboard;
 #[path = "main_window_command_bar.rs"]
 mod command_bar;
 #[path = "main_window_context_menu.rs"]
@@ -95,6 +97,11 @@ pub struct MainWindow {
     platform_port: SharedPlatformPort,
     controllers: RefCell<Option<MainWindowControllers>>,
     theme_controller: Rc<ThemeController>,
+    /// When set, `focus_active_panel` is a no-op (e.g. while opening the editor
+    /// after creating a file — panel refresh must not steal OS focus).
+    suppress_panel_focus: Cell<bool>,
+    /// App-owned file clipboard for Ctrl+C / Ctrl+X / Ctrl+V (cut/copy/paste).
+    file_clipboard: RefCell<FileClipboard>,
 }
 
 impl MainWindow {
@@ -233,6 +240,8 @@ impl MainWindow {
             platform_port,
             controllers: RefCell::new(None),
             theme_controller,
+            suppress_panel_focus: Cell::new(false),
+            file_clipboard: RefCell::new(FileClipboard::default()),
         });
 
         this.initialize_controllers();
@@ -548,8 +557,18 @@ impl MainWindow {
     }
 
     pub(crate) fn focus_active_panel(&self) {
+        if self.suppress_panel_focus.get() {
+            return;
+        }
         let active_panel = self.commander.borrow().state().active_panel;
         self.commander_view.focus_active_panel(active_panel);
+    }
+
+    pub(crate) fn clear_panel_focus_suppress_after(self: &Rc<Self>, duration: std::time::Duration) {
+        let this = Rc::clone(self);
+        glib::timeout_add_local_once(duration, move || {
+            this.suppress_panel_focus.set(false);
+        });
     }
 
     pub(crate) fn refresh_active_panel_revealing(self: &Rc<Self>, name: &str, status: String) {
