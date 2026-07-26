@@ -68,9 +68,16 @@ function Test-GtkSourceViewDataRoot {
     }
 
     $langDir = Join-Path $CandidatePath "language-specs"
-    $langCount = @(Get-ChildItem -Path $langDir -Filter "*.lang" -ErrorAction SilentlyContinue).Count
     $styleDir = Join-Path $CandidatePath "styles"
-    $styleCount = @(Get-ChildItem -Path $styleDir -Filter "*.xml" -ErrorAction SilentlyContinue).Count
+
+    if (-not (Test-Path $langDir) -or -not (Test-Path $styleDir)) {
+        return $false
+    }
+
+    $langCount = (Get-ChildItem -Path $langDir -Filter "*.lang" -ErrorAction SilentlyContinue |
+        Measure-Object).Count
+    $styleCount = (Get-ChildItem -Path $styleDir -Filter "*.xml" -ErrorAction SilentlyContinue |
+        Measure-Object).Count
     return ($langCount -gt 0) -and ($styleCount -gt 0)
 }
 
