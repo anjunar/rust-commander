@@ -13,6 +13,8 @@ pub mod x11_window_icon;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
+#[cfg(target_os = "windows")]
+pub mod windows_file_clipboard;
 
 pub use context_menu::{show_context_menu, ContextMenuRequest};
 pub use icons::{
@@ -29,9 +31,13 @@ pub use windows::apply_runtime_window_icon;
 #[cfg(target_os = "windows")]
 pub use windows::available_roots;
 #[cfg(target_os = "windows")]
+pub use windows::force_foreground_gtk_window;
+#[cfg(target_os = "windows")]
 pub use windows::force_foreground_window;
 #[cfg(target_os = "windows")]
 pub use windows::show_file_properties;
+#[cfg(target_os = "windows")]
+pub use windows_file_clipboard as file_clipboard;
 
 #[cfg(not(target_os = "windows"))]
 pub use unix::available_roots;

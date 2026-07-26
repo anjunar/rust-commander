@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use gtk::glib::object::IsA;
 
 use crate::domain::roots::RootLocation;
 use crate::platform::assets::asset_path;
@@ -120,18 +121,35 @@ pub fn open_console(path: &Path) -> Result<()> {
 /// dialog was open, destroying the dialog often activates that other app, and a
 /// later GTK `present()` cannot steal focus under the foreground lock.
 pub fn force_foreground_window(window_title: &str) {
-    use std::ffi::OsStr;
+    let hwnd = find_hwnd_by_title(window_title);
+    force_foreground_hwnd(hwnd);
+}
 
+/// Activate a GTK window using its native Win32 HWND (preferred over title lookup).
+pub fn force_foreground_gtk_window(window: &impl IsA<gtk::Window>) {
+    use gdk4_win32::Win32Surface;
+    use gtk::prelude::{Cast, NativeExt};
+
+    let window = window.upcast_ref::<gtk::Window>();
+    let Some(surface) = window.surface() else {
+        return;
+    };
+    let Ok(win32) = surface.downcast::<Win32Surface>() else {
+        return;
+    };
+    force_foreground_hwnd(win32.handle().0 as _);
+}
+
+fn force_foreground_hwnd(hwnd: windows_sys::Win32::Foundation::HWND) {
     use windows_sys::Win32::{
         System::Threading::{AttachThreadInput, GetCurrentThreadId},
         UI::WindowsAndMessaging::{
-            BringWindowToTop, FindWindowW, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
-            SetForegroundWindow, ShowWindow, SW_RESTORE,
+            BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+            SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOMOVE, SWP_NOSIZE, SW_RESTORE,
+            HWND_NOTOPMOST, HWND_TOPMOST,
         },
     };
 
-    let title_w = to_wide(OsStr::new(window_title));
-    let hwnd = unsafe { FindWindowW(std::ptr::null(), title_w.as_ptr()) };
     if hwnd.is_null() {
         return;
     }
@@ -157,7 +175,74 @@ pub fn force_foreground_window(window_title: &str) {
             let _ = SetForegroundWindow(hwnd);
             let _ = BringWindowToTop(hwnd);
         }
+
+        // If SetForegroundWindow is blocked, briefly toggle TOPMOST to raise the window.
+        if GetForegroundWindow() != hwnd {
+            let _ = SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetForegroundWindow(hwnd);
+        }
     }
+}
+
+fn find_hwnd_by_title(window_title: &str) -> windows_sys::Win32::Foundation::HWND {
+    use std::ffi::OsStr;
+
+    use windows_sys::Win32::{
+        Foundation::HWND,
+        System::Threading::GetCurrentProcessId,
+        UI::WindowsAndMessaging::{
+            EnumWindows, FindWindowW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+        },
+    };
+
+    let title_w = to_wide(OsStr::new(window_title));
+    let hwnd = unsafe { FindWindowW(std::ptr::null(), title_w.as_ptr()) };
+    if !hwnd.is_null() {
+        return hwnd;
+    }
+
+    struct EnumState {
+        pid: u32,
+        title: String,
+        found: HWND,
+    }
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: isize) -> i32 {
+        let state = &mut *(lparam as *mut EnumState);
+        if IsWindowVisible(hwnd) == 0 {
+            return 1;
+        }
+
+        let mut pid = 0_u32;
+        let _ = GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid != state.pid {
+            return 1;
+        }
+
+        let mut buf = [0_u16; 512];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if len <= 0 {
+            return 1;
+        }
+        let title = String::from_utf16_lossy(&buf[..len as usize]);
+        if title == state.title || title.starts_with(&state.title) || state.title.starts_with(&title)
+        {
+            state.found = hwnd;
+            return 0;
+        }
+        1
+    }
+
+    let mut state = EnumState {
+        pid: unsafe { GetCurrentProcessId() },
+        title: window_title.to_string(),
+        found: std::ptr::null_mut(),
+    };
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc), &mut state as *mut _ as isize);
+    }
+    state.found
 }
 
 pub fn apply_runtime_window_icon(window_title: &str) -> Result<()> {
