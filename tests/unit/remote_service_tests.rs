@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use super::{
-    describe_connect_error, format_fingerprint, known_hosts_candidates, known_hosts_entry_name,
+    util::{
+        describe_connect_error, format_fingerprint, known_hosts_candidates, known_hosts_entry_name,
+    },
     HostKeyAlgorithm,
 };
 
