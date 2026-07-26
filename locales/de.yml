@@ -86,6 +86,9 @@ menu:
   move: Verschieben
   delete: Loeschen
   delete_permanent: Endgueltig loeschen
+  clipboard_cut: Ausschneiden
+  clipboard_copy: In Zwischenablage kopieren
+  clipboard_paste: Einfuegen
   mark_all: Alles markieren
   switch_panel: Panel wechseln
   swap_panels: Panels tauschen
@@ -292,7 +295,21 @@ viewer:
   title: "%{file} anzeigen"
   mode_text: Text
   mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Bild
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Code
+  mode_archive: "Archiv (%{count})"
   status: "%{mode} | %{size} | Zeile %{line} | Spalte %{col} | F2 Modus wechseln | Esc schliessen"
+  status_markdown: "%{mode} | %{size} | Esc schliessen"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → blaettern | Esc schliessen"
+  status_image_loading: "%{mode} | %{index}/%{total} | laden…"
+  image_loading: Laden…
   read_only_text_truncated: "Schreibgeschuetzte Textansicht. Die ersten %{shown} von %{total} werden angezeigt."
   read_only_text_total: "Schreibgeschuetzte Textansicht. Insgesamt %{total}."
   read_only_hex_truncated: "Schreibgeschuetzte Hex-Ansicht fuer binaere Inhalte. Die ersten %{shown} von %{total} werden angezeigt."
@@ -303,6 +320,21 @@ viewer:
   error_with_detail: "Betrachterfehler: %{error}"
   scroll_update_error: "Betrachterfehler: Scroll-Position konnte nicht aktualisiert werden"
   render_error_body: "Dateiansicht konnte nicht gerendert werden.\n\n%{error}"
+  file_too_large: "Datei ist zu gross fuer die Vorschau (%{size}; Limit %{limit})."
+  image_decode_error: Bild konnte nicht dekodiert werden.
+  image_dimensions: "%{width} × %{height} px"
+  structured_parse_error: Strukturierte Datei konnte nicht gelesen werden.
+  csv_parse_error: CSV/TSV-Datei konnte nicht gelesen werden.
+  csv_truncated: "erste %{rows} Zeilen"
+  archive_empty: Archiv ist leer.
+  archive_col_name: Name
+  archive_col_size: Groesse
+  archive_col_type: Typ
+  archive_type_dir: ORDNER
+  archive_type_file: DATEI
+  archive_type_link: LINK
+  archive_type_unknown: "?"
+
 
 progress:
   operation_title: "%{kind}-Vorgang"
@@ -380,6 +412,8 @@ status:
   operation_cancelled: "%{kind} nach %{count} Elementen und %{size} abgebrochen."
   file_operation_failed: "Dateivorgang fehlgeschlagen: %{error}"
   copy_current_path: "Kopiere: %{path}"
+  clipboard_copied: "%{count} Element(e) in die Zwischenablage kopiert"
+  clipboard_cut: "%{count} Element(e) in die Zwischenablage ausgeschnitten"
   archive_extraction_in_progress: Archiv-Extraktion laeuft
   archive_copy_cancelled: Archivkopie abgebrochen.
   archive_copy_failed: "Archivkopie fehlgeschlagen: %{error}"
@@ -422,6 +456,13 @@ error:
   file_operation_running: Dateivorgang laeuft bereits
   cancel_or_finish_current_operation: Bitte den aktuellen Vorgang erst abbrechen oder abschliessen.
   operation_unavailable: Vorgang ist nicht verfuegbar
+  clipboard_unavailable: Zwischenablage nicht verfuegbar
+  clipboard_empty: Die Zwischenablage enthaelt keine Dateien zum Einfuegen.
+  clipboard_sources_missing: Dateien aus der Zwischenablage sind nicht mehr verfuegbar.
+  clipboard_set_failed: Dateien konnten nicht in die System-Zwischenablage gelegt werden.
+  clipboard_filesystem_only: Ausschneiden und Kopieren in die Zwischenablage sind nur im lokalen Dateisystem verfuegbar.
+  clipboard_cut_remote_unsupported: Ausschneiden in einen Remote-Ordner wird nicht unterstuetzt. Bitte Kopieren verwenden.
+  clipboard_paste_archive_unsupported: Einfuegen in ein Archiv wird nicht unterstuetzt.
   favorites_unavailable: Favoriten nicht verfuegbar
   no_favorite_selected: Kein Favorit ausgewaehlt.
   favorite_fields_required: Name und Pfad sind erforderlich.

@@ -86,6 +86,9 @@ menu:
   move: Переместить
   delete: Удалить
   delete_permanent: Удалить безвозвратно
+  clipboard_cut: Вырезать
+  clipboard_copy: Копировать в буфер
+  clipboard_paste: Вставить
   mark_all: Выделить всё
   switch_panel: Сменить панель
   swap_panels: Поменять панели местами
@@ -292,7 +295,21 @@ viewer:
   title: "Просмотр %{file}"
   mode_text: Текст
   mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Изображение
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Код
+  mode_archive: "Архив (%{count})"
   status: "%{mode} | %{size} | стр. %{line} | стлб. %{col} | F2 режим | Esc закрыть"
+  status_markdown: "%{mode} | %{size} | Esc закрыть"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → листать | Esc закрыть"
+  status_image_loading: "%{mode} | %{index}/%{total} | загрузка…"
+  image_loading: Загрузка…
   read_only_text_truncated: "Просмотр текста только для чтения. Показаны первые %{shown} из %{total}."
   read_only_text_total: "Просмотр текста только для чтения. Всего %{total}."
   read_only_hex_truncated: "Просмотр hex только для чтения (двоичные данные). Показаны первые %{shown} из %{total}."
@@ -303,6 +320,21 @@ viewer:
   error_with_detail: "Ошибка просмотрщика: %{error}"
   scroll_update_error: "Ошибка просмотрщика: не удалось обновить позицию прокрутки"
   render_error_body: "Не удалось отобразить файл.\n\n%{error}"
+  file_too_large: "Файл слишком большой для просмотра (%{size}; лимит %{limit})."
+  image_decode_error: Не удалось декодировать изображение.
+  image_dimensions: "%{width} × %{height} пикс."
+  structured_parse_error: Не удалось разобрать структурированный файл.
+  csv_parse_error: Не удалось разобрать CSV/TSV файл.
+  csv_truncated: "показаны первые %{rows} строк"
+  archive_empty: Архив пуст.
+  archive_col_name: Имя
+  archive_col_size: Размер
+  archive_col_type: Тип
+  archive_type_dir: ПАПКА
+  archive_type_file: ФАЙЛ
+  archive_type_link: ССЫЛКА
+  archive_type_unknown: "?"
+
 
 progress:
   operation_title: "Операция: %{kind}"
@@ -380,6 +412,8 @@ status:
   operation_cancelled: "%{kind} отменено после элементов: %{count}, %{size}."
   file_operation_failed: "Ошибка операции с файлом: %{error}"
   copy_current_path: "Копирование: %{path}"
+  clipboard_copied: "В буфер скопировано элементов: %{count}"
+  clipboard_cut: "В буфер вырезано элементов: %{count}"
   archive_extraction_in_progress: Извлечение из архива выполняется
   archive_copy_cancelled: Копирование из архива отменено.
   archive_copy_failed: "Ошибка копирования из архива: %{error}"
@@ -422,6 +456,13 @@ error:
   file_operation_running: Операция с файлами уже выполняется
   cancel_or_finish_current_operation: Сначала отмените или завершите текущую операцию.
   operation_unavailable: Операция недоступна
+  clipboard_unavailable: Буфер обмена недоступен
+  clipboard_empty: В буфере обмена нет файлов для вставки.
+  clipboard_sources_missing: Файлы из буфера обмена больше недоступны.
+  clipboard_set_failed: Не удалось поместить файлы в системный буфер обмена.
+  clipboard_filesystem_only: Вырезание и копирование в буфер доступны только в локальной файловой системе.
+  clipboard_cut_remote_unsupported: Вырезание в удалённую папку не поддерживается. Используйте копирование.
+  clipboard_paste_archive_unsupported: Вставка в архив не поддерживается.
   favorites_unavailable: Избранное недоступно
   no_favorite_selected: Избранное не выбрано.
   favorite_fields_required: Нужны имя и путь.

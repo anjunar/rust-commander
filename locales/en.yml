@@ -86,6 +86,9 @@ menu:
   move: Move
   delete: Delete
   delete_permanent: Delete permanently
+  clipboard_cut: Cut
+  clipboard_copy: Copy to clipboard
+  clipboard_paste: Paste
   mark_all: Mark all
   switch_panel: Switch panel
   swap_panels: Swap panels
@@ -292,7 +295,21 @@ viewer:
   title: "View %{file}"
   mode_text: Text
   mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Image
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Code
+  mode_archive: "Archive (%{count})"
   status: "%{mode} | %{size} | line %{line} | col %{col} | F2 toggle mode | Esc close"
+  status_markdown: "%{mode} | %{size} | Esc close"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → navigate | Esc close"
+  status_image_loading: "%{mode} | %{index}/%{total} | loading…"
+  image_loading: Loading…
   read_only_text_truncated: "Read-only text view. Showing the first %{shown} of %{total}."
   read_only_text_total: "Read-only text view. %{total} total."
   read_only_hex_truncated: "Read-only hex view for binary content. Showing the first %{shown} of %{total}."
@@ -303,6 +320,21 @@ viewer:
   error_with_detail: "Viewer error: %{error}"
   scroll_update_error: "Viewer error: Could not update scroll position"
   render_error_body: "Could not render file view.\n\n%{error}"
+  file_too_large: "File is too large to preview (%{size}; limit %{limit})."
+  image_decode_error: Could not decode the image.
+  image_dimensions: "%{width} × %{height} px"
+  structured_parse_error: Could not parse the structured file.
+  csv_parse_error: Could not parse the CSV/TSV file.
+  csv_truncated: "showing first %{rows} rows"
+  archive_empty: Archive is empty.
+  archive_col_name: Name
+  archive_col_size: Size
+  archive_col_type: Type
+  archive_type_dir: DIR
+  archive_type_file: FILE
+  archive_type_link: LINK
+  archive_type_unknown: "?"
+
 
 progress:
   operation_title: "%{kind} operation"
@@ -380,6 +412,8 @@ status:
   operation_cancelled: "%{kind} cancelled after %{count} items and %{size}."
   file_operation_failed: "File operation failed: %{error}"
   copy_current_path: "Copy: %{path}"
+  clipboard_copied: "Copied %{count} item(s) to the clipboard"
+  clipboard_cut: "Cut %{count} item(s) to the clipboard"
   archive_extraction_in_progress: Archive extraction in progress
   archive_copy_cancelled: Archive copy cancelled.
   archive_copy_failed: "Archive copy failed: %{error}"
@@ -422,6 +456,13 @@ error:
   file_operation_running: File operation already running
   cancel_or_finish_current_operation: Cancel or finish the current operation first.
   operation_unavailable: Operation is not available
+  clipboard_unavailable: Clipboard unavailable
+  clipboard_empty: The clipboard has no files to paste.
+  clipboard_sources_missing: Clipboard files are no longer available.
+  clipboard_set_failed: Could not place files on the system clipboard.
+  clipboard_filesystem_only: Cut and copy to clipboard are only available in the local filesystem.
+  clipboard_cut_remote_unsupported: Cut into a remote folder is not supported. Use Copy instead.
+  clipboard_paste_archive_unsupported: Paste into an archive is not supported.
   favorites_unavailable: Favorites unavailable
   no_favorite_selected: No favorite is selected.
   favorite_fields_required: Name and path are required.

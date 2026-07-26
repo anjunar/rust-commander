@@ -86,6 +86,9 @@ menu:
   move: Deplacer
   delete: Supprimer
   delete_permanent: Supprimer definitivement
+  clipboard_cut: Couper
+  clipboard_copy: Copier dans le presse-papiers
+  clipboard_paste: Coller
   mark_all: Tout selectionner
   switch_panel: Changer de panneau
   swap_panels: Echanger les panneaux
@@ -292,7 +295,21 @@ viewer:
   title: "Voir %{file}"
   mode_text: Texte
   mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Image
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Code
+  mode_archive: "Archive (%{count})"
   status: "%{mode} | %{size} | ligne %{line} | col %{col} | F2 changer de mode | Esc fermer"
+  status_markdown: "%{mode} | %{size} | Esc fermer"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → parcourir | Esc fermer"
+  status_image_loading: "%{mode} | %{index}/%{total} | chargement…"
+  image_loading: Chargement…
   read_only_text_truncated: "Vue texte en lecture seule. Affichage des %{shown} premiers sur %{total}."
   read_only_text_total: "Vue texte en lecture seule. %{total} au total."
   read_only_hex_truncated: "Vue hexadecimale en lecture seule pour du contenu binaire. Affichage des %{shown} premiers sur %{total}."
@@ -303,6 +320,21 @@ viewer:
   error_with_detail: "Erreur de la visionneuse : %{error}"
   scroll_update_error: "Erreur de la visionneuse : impossible de mettre a jour la position de defilement"
   render_error_body: "Impossible d'afficher le contenu du fichier.\n\n%{error}"
+  file_too_large: "Fichier trop volumineux pour l'aperçu (%{size}; limite %{limit})."
+  image_decode_error: Impossible de decoder l'image.
+  image_dimensions: "%{width} × %{height} px"
+  structured_parse_error: Impossible d'analyser le fichier structure.
+  csv_parse_error: Impossible d'analyser le fichier CSV/TSV.
+  csv_truncated: "affichage des %{rows} premieres lignes"
+  archive_empty: L'archive est vide.
+  archive_col_name: Nom
+  archive_col_size: Taille
+  archive_col_type: Type
+  archive_type_dir: DOSSIER
+  archive_type_file: FICHIER
+  archive_type_link: LIEN
+  archive_type_unknown: "?"
+
 
 progress:
   operation_title: "Operation %{kind}"
@@ -380,6 +412,8 @@ status:
   operation_cancelled: "%{kind} annule apres %{count} elements et %{size}."
   file_operation_failed: "Echec de l'operation sur les fichiers : %{error}"
   copy_current_path: "Copie : %{path}"
+  clipboard_copied: "%{count} element(s) copie(s) dans le presse-papiers"
+  clipboard_cut: "%{count} element(s) coupe(s) dans le presse-papiers"
   archive_extraction_in_progress: Extraction d'archive en cours
   archive_copy_cancelled: Copie d'archive annulee.
   archive_copy_failed: "Echec de la copie d'archive : %{error}"
@@ -422,6 +456,13 @@ error:
   file_operation_running: Une operation sur les fichiers est deja en cours
   cancel_or_finish_current_operation: Annulez ou terminez d'abord l'operation en cours.
   operation_unavailable: L'operation n'est pas disponible
+  clipboard_unavailable: Presse-papiers indisponible
+  clipboard_empty: Le presse-papiers ne contient aucun fichier a coller.
+  clipboard_sources_missing: Les fichiers du presse-papiers ne sont plus disponibles.
+  clipboard_set_failed: Impossible de placer les fichiers dans le presse-papiers systeme.
+  clipboard_filesystem_only: Couper et copier vers le presse-papiers sont disponibles uniquement dans le systeme de fichiers local.
+  clipboard_cut_remote_unsupported: Couper vers un dossier distant n'est pas pris en charge. Utilisez Copier.
+  clipboard_paste_archive_unsupported: Coller dans une archive n'est pas pris en charge.
   favorites_unavailable: Favoris indisponibles
   no_favorite_selected: Aucun favori n'est selectionne.
   favorite_fields_required: Le nom et le chemin sont requis.
