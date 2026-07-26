@@ -4,18 +4,159 @@ use anyhow::Result;
 use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 
-use crate::{config::ViewerConfig, ui::dialogs::build_modal_window, viewer::ViewerState};
+use crate::{
+    archive::ArchiveService,
+    config::{ThemePreference, ViewerConfig},
+    ui::{
+        dialogs::build_independent_window,
+        file_viewer_archive,
+        file_viewer_code,
+        file_viewer_common::{
+            append_status, build_viewer_chrome, file_size, install_escape_close,
+            present_with_focus, read_text_file_limited,
+        },
+        file_viewer_csv,
+        file_viewer_html::{html_to_preview_markdown, is_html_path},
+        file_viewer_image,
+        file_viewer_markdown::{is_markdown_path, render_markdown_into_buffer},
+        file_viewer_structured::{self, StructuredKind},
+    },
+    viewer::ViewerState,
+};
 
-pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig) -> Result<()> {
+enum FormattedKind {
+    Markdown,
+    Html,
+}
+
+pub fn open(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    config: ViewerConfig,
+    theme: ThemePreference,
+    archive_service: &ArchiveService,
+    sibling_images: Vec<PathBuf>,
+) -> Result<()> {
+    let max_bytes = config.streaming_threshold_bytes();
+
+    if file_viewer_image::is_image_path(&path) {
+        return file_viewer_image::open(parent, &path, sibling_images);
+    }
+    if archive_service.can_open_path(&path) {
+        return file_viewer_archive::open(parent, &path, archive_service);
+    }
+    if is_markdown_path(&path) {
+        return open_formatted(parent, path, FormattedKind::Markdown, max_bytes);
+    }
+    if is_html_path(&path) {
+        return open_formatted(parent, path, FormattedKind::Html, max_bytes);
+    }
+    if file_viewer_csv::is_csv_path(&path) {
+        return file_viewer_csv::open(parent, &path, max_bytes, theme);
+    }
+    if let Some(kind) = file_viewer_structured::detect_structured_kind(&path) {
+        return open_structured(parent, &path, kind, max_bytes, theme);
+    }
+    if file_viewer_code::can_open_as_code(&path, file_size(&path), max_bytes) {
+        return file_viewer_code::open(
+            parent,
+            &path,
+            max_bytes,
+            theme,
+            &t!("viewer.mode_code").into_owned(),
+        );
+    }
+
+    open_streaming(parent, path, config)
+}
+
+fn open_structured(
+    parent: &gtk::ApplicationWindow,
+    path: &std::path::Path,
+    kind: StructuredKind,
+    max_bytes: u64,
+    theme: ThemePreference,
+) -> Result<()> {
+    match file_viewer_structured::open(parent, path, kind, max_bytes, theme) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            // Fall back to syntax-highlighted raw text when pretty-print fails.
+            if file_size(path) <= max_bytes {
+                file_viewer_code::open(
+                    parent,
+                    path,
+                    max_bytes,
+                    theme,
+                    &t!("viewer.mode_code").into_owned(),
+                )
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn open_formatted(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    kind: FormattedKind,
+    max_bytes: u64,
+) -> Result<()> {
+    let source = read_text_file_limited(&path, max_bytes)?;
+    let preview_markdown = match kind {
+        FormattedKind::Markdown => source,
+        FormattedKind::Html => html_to_preview_markdown(&source)?,
+    };
+    let mode = match kind {
+        FormattedKind::Markdown => t!("viewer.mode_markdown").into_owned(),
+        FormattedKind::Html => t!("viewer.mode_html").into_owned(),
+    };
+
+    let chrome = build_viewer_chrome(parent, &path);
+    let buffer = gtk::TextBuffer::new(None);
+    render_markdown_into_buffer(&buffer, &preview_markdown);
+
+    let view = gtk::TextView::with_buffer(&buffer);
+    view.set_editable(false);
+    view.set_cursor_visible(false);
+    view.set_wrap_mode(gtk::WrapMode::WordChar);
+    view.set_hexpand(true);
+    view.set_vexpand(true);
+    view.add_css_class("editor-view");
+    view.set_left_margin(12);
+    view.set_right_margin(12);
+    view.set_top_margin(10);
+    view.set_bottom_margin(10);
+
+    let scrolled = gtk::ScrolledWindow::builder()
+        .child(&view)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    scrolled.add_css_class("panel-scroller");
+    chrome.content.append(&scrolled);
+
+    append_status(&chrome.content, &mode, file_size(&path));
+    install_escape_close(&chrome.window);
+    present_with_focus(chrome.window, view);
+    Ok(())
+}
+
+fn open_streaming(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    config: ViewerConfig,
+) -> Result<()> {
     let state = Rc::new(RefCell::new(ViewerState::open(&path, &config)?));
     let syncing_adjustments = Rc::new(std::cell::Cell::new(false));
     let vertical_adjustment = gtk::Adjustment::new(0.0, 0.0, 1.0, 1.0, 1.0, 1.0);
     let horizontal_adjustment = gtk::Adjustment::new(0.0, 0.0, 4096.0, 8.0, 64.0, 120.0);
 
-    let modal = build_modal_window(parent, &t!("viewer.window_title"), 980, 720);
-    let dialog = modal.window;
-    let content = modal.content;
-    let actions = modal.actions;
+    let independent = build_independent_window(parent, &t!("viewer.window_title"), 980, 720);
+    let window = independent.window;
+    let title_label = independent.title_label;
+    let content = independent.content;
+    independent.actions.set_visible(false);
 
     let path_label = gtk::Label::new(Some(&path.display().to_string()));
     path_label.set_xalign(0.0);
@@ -47,7 +188,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
         gtk::EventControllerScrollFlags::HORIZONTAL | gtk::EventControllerScrollFlags::DISCRETE,
     );
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -67,7 +209,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
             }
 
             render_into_widgets(
-                &dialog,
+                &window,
+                &title_label,
                 &state,
                 &buffer,
                 &status_label,
@@ -107,19 +250,9 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
     status_label.set_hexpand(true);
     content.append(&status_label);
 
-    let close_button = gtk::Button::with_label(&t!("common.close"));
-    close_button.add_css_class("command-button");
-    {
-        let dialog = dialog.clone();
-        close_button.connect_clicked(move |_| {
-            dialog.close();
-        });
-    }
-    actions.append(&close_button);
-    dialog.set_default_widget(Some(&close_button));
-
     render_into_widgets(
-        &dialog,
+        &window,
+        &title_label,
         &state,
         &buffer,
         &status_label,
@@ -130,7 +263,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
 
     let key_controller = gtk::EventControllerKey::new();
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -142,7 +276,7 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
                 let mut state = state.borrow_mut();
                 match key {
                     gdk::Key::Escape => {
-                        dialog.close();
+                        window.close();
                         return glib::Propagation::Stop;
                     }
                     gdk::Key::Up => state.scroll_line_up(),
@@ -169,7 +303,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
 
             if handled {
                 render_into_widgets(
-                    &dialog,
+                    &window,
+                    &title_label,
                     &state,
                     &buffer,
                     &status_label,
@@ -183,12 +318,13 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
             }
         });
     }
-    dialog.add_controller(key_controller);
+    window.add_controller(key_controller);
 
     let scroll_controller =
         gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -208,7 +344,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
             }
 
             render_into_widgets(
-                &dialog,
+                &window,
+                &title_label,
                 &state,
                 &buffer,
                 &status_label,
@@ -222,7 +359,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
     view.add_controller(scroll_controller);
 
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -250,7 +388,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
 
             if changed {
                 render_into_widgets(
-                    &dialog,
+                    &window,
+                    &title_label,
                     &state,
                     &buffer,
                     &status_label,
@@ -263,7 +402,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
     }
 
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -294,7 +434,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
 
             if changed {
                 render_into_widgets(
-                    &dialog,
+                    &window,
+                    &title_label,
                     &state,
                     &buffer,
                     &status_label,
@@ -307,7 +448,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
     }
 
     {
-        let dialog = dialog.clone();
+        let window = window.clone();
+        let title_label = title_label.clone();
         let state = Rc::clone(&state);
         let buffer = buffer.clone();
         let status_label = status_label.clone();
@@ -319,7 +461,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
             let visible_lines = estimate_visible_lines(&view);
             state.borrow_mut().set_visible_lines(visible_lines);
             render_into_widgets(
-                &dialog,
+                &window,
+                &title_label,
                 &state,
                 &buffer,
                 &status_label,
@@ -331,7 +474,7 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
     }
 
     glib::idle_add_local_once(move || {
-        dialog.present();
+        window.present();
         view.grab_focus();
     });
 
@@ -339,7 +482,8 @@ pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig
 }
 
 fn render_into_widgets(
-    dialog: &gtk::Window,
+    window: &gtk::ApplicationWindow,
+    title_label: &gtk::Label,
     state: &Rc<RefCell<ViewerState>>,
     buffer: &gtk::TextBuffer,
     status_label: &gtk::Label,
@@ -350,7 +494,9 @@ fn render_into_widgets(
     let mut state = state.borrow_mut();
     match state.render() {
         Ok(rendered) => {
-            dialog.set_title(Some(&rendered.title));
+            window.set_title(Some(&rendered.title));
+            title_label.set_label(&rendered.title);
+            title_label.set_tooltip_text(Some(&rendered.title));
             buffer.set_text(&rendered.body);
             status_label.set_label(&rendered.status);
             sync_scrollbars(
@@ -402,3 +548,4 @@ fn sync_scrollbars(
 
     syncing_adjustments.set(false);
 }
+
