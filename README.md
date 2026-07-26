@@ -27,6 +27,7 @@ The project is still evolving quickly. APIs, internal structure, and feature det
 - Progress dialogs and conflict handling (overwrite / skip / rename / cancel)
 - Built-in UTF-8 editor (local and SFTP) with size limit and upload progress on save
 - Nginx config syntax highlighting (`nginx.conf`, `*.nginx`, and likely `.conf` files)
+- Vue SFC syntax highlighting (`*.vue`: template/HTML, script JS/TS, style CSS/SCSS)
 - File viewer for text and binary files
 - Properties: native Windows Explorer sheet for local files; built-in dialog for Linux/macOS and archives; on SFTP, editable Unix mode (octal + checkboxes)
 - Archives: ZIP, 7-Zip (`.7z`), RAR (`unrar`), ISO, and Tar-like formats via libarchive on non-Windows
@@ -63,6 +64,9 @@ The project is still evolving quickly. APIs, internal structure, and feature det
 | `F5` | Copy to opposite panel |
 | `Shift+F5` | Copy with rename |
 | `F6` | Move to opposite panel |
+| `Ctrl+C` | Copy selection to the system clipboard (interop with Explorer) |
+| `Ctrl+X` | Cut selection to the system clipboard |
+| `Ctrl+V` | Paste from the system clipboard into the active panel (no confirmation) |
 | `F7` | Create directory (local and SFTP) |
 | `F8` / `Delete` | Delete (recycle bin when enabled) |
 | `Shift+F8` / `Shift+Delete` | Delete permanently |

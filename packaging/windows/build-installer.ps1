@@ -24,6 +24,42 @@ function Get-PackageVersion {
     return $match.Matches[0].Groups["version"].Value
 }
 
+function Resolve-Wix {
+    $command = Get-Command "wix.exe" -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+        return $command.Source
+    }
+
+    $programFilesRoots = @(
+        ${env:ProgramFiles},
+        ${env:ProgramFiles(x86)}
+    ) | Where-Object { $_ }
+
+    foreach ($root in $programFilesRoots) {
+        $wixRoots = Get-ChildItem -Path $root -Directory -Filter "WiX Toolset*" -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending
+        foreach ($wixRoot in $wixRoots) {
+            $candidate = Join-Path $wixRoot.FullName "bin\wix.exe"
+            if (Test-Path -LiteralPath $candidate) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
+    $fallbacks = @(
+        (Join-Path $env:USERPROFILE ".dotnet\tools\wix.exe"),
+        (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\wix.exe")
+    )
+
+    foreach ($candidate in $fallbacks) {
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "wix.exe not found. Install WiX Toolset (e.g. winget install WiXToolset.WiXCLI) or add wix.exe to PATH."
+}
+
 function New-SafeId {
     param(
         [string]$Prefix,
@@ -219,7 +255,9 @@ Set-Content -Path $generatedWxs -Value $generatedContent -Encoding utf8
 
 Push-Location $repoRoot
 try {
-    wix.exe build `
+    $wixPath = Resolve-Wix
+    Write-Host "Using WiX: $wixPath"
+    & $wixPath build `
         -arch x64 `
         -o $msiPath `
         -d ProductVersion=$version `
