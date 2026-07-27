@@ -320,6 +320,10 @@ fn copy_path(
             }
         }
 
+        if cancelled.load(Ordering::Relaxed) {
+            let _ = cleanup_path(&target);
+        }
+
         return Ok(());
     }
 
@@ -365,6 +369,9 @@ fn copy_file(
         writer
             .write_all(&buffer[..read])
             .with_context(|| format!("Could not write {}", target.display()))?;
+        writer
+            .flush()
+            .with_context(|| format!("Could not flush {}", target.display()))?;
         progress.processed_bytes += read as u64;
         send_progress(tx, kind.clone(), source, plan, progress, started_at);
     }
