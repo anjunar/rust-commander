@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux
+            runner: ubuntu-24.04
+          - label: windows
+            runner: windows-latest
+          - label: macos
+            runner: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.label == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libgtk-4-dev \
+            libgraphene-1.0-dev \
+            libgtksourceview-5-dev \
+            libvte-2.91-gtk4-dev \
+            libarchive-dev \
+            libssh2-1-dev \
+            libssl-dev
+
+      - name: Set up MSYS2
+        if: matrix.label == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-gtksourceview5
+            mingw-w64-x86_64-libssh2
+            mingw-w64-x86_64-openssl
+
+      - name: Install macOS dependencies
+        if: matrix.label == 'macos'
+        run: brew install gtk4 gtksourceview5 libarchive libssh2 openssl pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.0"
+          components: rustfmt, clippy
+          targets: ${{ matrix.label == 'windows' && 'x86_64-pc-windows-gnu' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.label }}
+
+      - name: Configure macOS build environment
+        if: matrix.label == 'macos'
+        run: |
+          {
+            echo "PKG_CONFIG_PATH=$(brew --prefix gtk4)/lib/pkgconfig:$(brew --prefix gtksourceview5)/lib/pkgconfig:$(brew --prefix libarchive)/lib/pkgconfig:$(brew --prefix libssh2)/lib/pkgconfig"
+            echo "OPENSSL_DIR=$(brew --prefix openssl)"
+            echo "OPENSSL_LIB_DIR=$(brew --prefix openssl)/lib"
+            echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl)/include"
+          } >> "$GITHUB_ENV"
+
+      - name: Build
+        if: matrix.label != 'windows'
+        run: cargo build --locked
+
+      - name: Test
+        if: matrix.label != 'windows'
+        run: cargo test --locked
+
+      - name: Build (Windows)
+        if: matrix.label == 'windows'
+        shell: msys2 {0}
+        env:
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+        run: cargo build --locked --target x86_64-pc-windows-gnu
+
+      - name: Test (Windows)
+        if: matrix.label == 'windows'
+        shell: msys2 {0}
+        env:
+          PKG_CONFIG_PATH: /mingw64/lib/pkgconfig
+        run: cargo test --locked --target x86_64-pc-windows-gnu
