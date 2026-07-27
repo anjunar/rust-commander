@@ -297,6 +297,22 @@ impl PanelLocation {
     }
 }
 
+pub(crate) fn join_remote_path(current: &str, child: &str) -> String {
+    if child.is_empty() {
+        return normalize_remote_path(current.to_string());
+    }
+    if child.starts_with('/') {
+        return normalize_remote_path(child.to_string());
+    }
+
+    let current = normalize_remote_path(current.to_string());
+    if current == "/" {
+        normalize_remote_path(format!("/{child}"))
+    } else {
+        normalize_remote_path(format!("{current}/{child}"))
+    }
+}
+
 fn normalize_remote_path(path: String) -> String {
     let mut parts = Vec::new();
     let replaced = path.replace('\\', "/");
@@ -333,9 +349,7 @@ fn remote_parent_path(path: &str) -> Option<String> {
 fn filesystem_volume_root(path: &Path) -> PathBuf {
     let root: PathBuf = path
         .components()
-        .take_while(|component| {
-            matches!(component, Component::Prefix(_) | Component::RootDir)
-        })
+        .take_while(|component| matches!(component, Component::Prefix(_) | Component::RootDir))
         .collect();
     if root.as_os_str().is_empty() {
         path.to_path_buf()

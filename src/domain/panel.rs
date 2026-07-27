@@ -9,7 +9,7 @@ use crate::domain::{
     entry::Entry,
     entry_key::EntryKey,
     folder_sort::normalize_folder_path,
-    panel_location::PanelLocation,
+    panel_location::{join_remote_path, PanelLocation},
     selection::{
         apply_selection, snapshot_selection, SelectionIntent, SelectionModel, SelectionSnapshot,
     },
@@ -238,9 +238,7 @@ impl Panel {
             .entries
             .iter()
             .enumerate()
-            .filter(|(index, entry)| {
-                !entry.is_parent_link && !self.selection.is_marked(*index)
-            })
+            .filter(|(index, entry)| !entry.is_parent_link && !self.selection.is_marked(*index))
             .map(|(index, _)| index)
             .collect::<BTreeSet<_>>();
         self.selection.set_marks(marks, self.entries.len());
@@ -332,9 +330,7 @@ impl Panel {
         } else {
             match &self.location {
                 PanelLocation::Remote(view) => {
-                    let path = crate::remote::RemotePath::new(&view.current_path)
-                        .join(name)
-                        .to_string();
+                    let path = join_remote_path(&view.current_path, name);
                     EntryKey::RemoteEntry(path)
                 }
                 PanelLocation::Archive(view) => {
@@ -356,19 +352,17 @@ impl Panel {
     }
 
     pub fn refresh_selection_intent(&self) -> SelectionIntent {
-        self.pending_selection_intent
-            .clone()
-            .unwrap_or_else(|| {
-                let snapshot = self.selection_snapshot();
-                // Empty panels (startup) have no cursor yet — land on `..` / first row
-                // after the first directory load instead of leaving focus unset while
-                // GTK SingleSelection still highlights a row.
-                if snapshot.cursor_key.is_none() && snapshot.cursor_index.is_none() {
-                    SelectionIntent::for_navigation(None)
-                } else {
-                    SelectionIntent::preserve(snapshot)
-                }
-            })
+        self.pending_selection_intent.clone().unwrap_or_else(|| {
+            let snapshot = self.selection_snapshot();
+            // Empty panels (startup) have no cursor yet — land on `..` / first row
+            // after the first directory load instead of leaving focus unset while
+            // GTK SingleSelection still highlights a row.
+            if snapshot.cursor_key.is_none() && snapshot.cursor_index.is_none() {
+                SelectionIntent::for_navigation(None)
+            } else {
+                SelectionIntent::preserve(snapshot)
+            }
+        })
     }
 
     pub fn queue_delete_selection(&mut self) {
