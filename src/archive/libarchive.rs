@@ -2,7 +2,7 @@
 use std::path::Path;
 
 #[cfg(not(target_os = "windows"))]
-use super::{safe_join_extract_path, ArchiveEntryKind};
+use super::{safe_join_extract_path, ArchiveEntry, ArchiveEntryKind};
 use super::{ArchiveBackend, ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession};
 
 #[derive(Clone, Debug, Default)]
