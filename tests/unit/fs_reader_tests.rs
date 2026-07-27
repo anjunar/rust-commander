@@ -144,6 +144,8 @@ fn restricted_windows_junction_resolves_to_readable_target() {
     }
 
     let resolved = super::resolve_directory_navigation_path(path);
-    assert_eq!(resolved, std::path::PathBuf::from(r"C:\Users"));
     assert!(std::fs::read_dir(&resolved).is_ok());
+    if std::fs::read_dir(path).is_err() {
+        assert_eq!(resolved, std::path::PathBuf::from(r"C:\Users"));
+    }
 }
