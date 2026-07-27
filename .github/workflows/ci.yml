@@ -29,7 +29,7 @@ jobs:
             runner: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: matrix.label == 'linux'
@@ -48,7 +48,7 @@ jobs:
 
       - name: Set up MSYS2
         if: matrix.label == 'windows'
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@v2.32.0
         with:
           msystem: MINGW64
           update: true
@@ -71,7 +71,7 @@ jobs:
           components: rustfmt, clippy
           targets: ${{ matrix.label == 'windows' && 'x86_64-pc-windows-gnu' || '' }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.1
         with:
           key: ${{ matrix.label }}
 
@@ -89,7 +89,7 @@ jobs:
         if: matrix.label == 'windows'
         shell: msys2 {0}
         run: |
-          echo "PATH=${USERPROFILE}/.cargo/bin:/mingw64/bin:${PATH}" >> "${GITHUB_ENV}"
+          echo "PATH=$(cygpath -u "${USERPROFILE}")/.cargo/bin:/mingw64/bin:${PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig" >> "${GITHUB_ENV}"
 
       - name: Build
