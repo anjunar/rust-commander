@@ -151,12 +151,7 @@ pub fn format_system_time(timestamp: SystemTime) -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn format_attributes(
-    metadata: &fs::Metadata,
-    name: &str,
-    is_dir: bool,
-    kind: EntryKind,
-) -> String {
+fn format_attributes(metadata: &fs::Metadata, name: &str, is_dir: bool, kind: EntryKind) -> String {
     let mut flags = Vec::new();
 
     if metadata.permissions().readonly() {

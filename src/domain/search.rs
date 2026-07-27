@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    time::SystemTime,
-};
+use std::{path::PathBuf, time::SystemTime};
 
 use regex::RegexBuilder;
 
@@ -41,10 +38,7 @@ pub struct CompiledSearch {
 #[derive(Clone, Debug)]
 enum Pattern {
     Any,
-    Glob {
-        mask: String,
-        case_sensitive: bool,
-    },
+    Glob { mask: String, case_sensitive: bool },
     Regex(regex::Regex),
 }
 

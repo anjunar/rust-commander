@@ -1,4 +1,3 @@
-
 mod detector;
 mod error;
 mod iso_backend;
@@ -26,10 +25,10 @@ pub use detector::{ArchiveFormat, ArchiveFormatDetector};
 pub use error::ArchiveError;
 pub use iso_backend::IsoBackend;
 pub use libarchive::LibArchiveBackend;
+pub use path::safe_join_extract_path;
 pub(crate) use path::{
     archive_entry_display_name, archive_entry_matches_selection, normalize_archive_entry_path,
 };
-pub use path::safe_join_extract_path;
 pub use plugin::PluginArchiveBackend;
 pub use probe::{ArchiveProbe, ArchiveSupport};
 pub use registry::ArchiveBackendRegistry;
@@ -73,9 +72,7 @@ pub enum ArchiveEntryKind {
 
 #[derive(Clone, Debug)]
 pub enum ArchiveOperation {
-    ExtractEntries {
-        entry_paths: Vec<String>,
-    },
+    ExtractEntries { entry_paths: Vec<String> },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -86,7 +83,6 @@ pub struct ArchiveProgress {
     pub total_entries: Option<u64>,
     pub percent: Option<f64>,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct ArchiveSession {

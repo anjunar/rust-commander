@@ -11,7 +11,9 @@ use crate::{
             append_status, build_viewer_chrome, file_size, install_escape_close,
             present_with_focus, read_text_file_limited,
         },
-        sourceview_lang::{apply_language, apply_language_id, apply_style_scheme, has_guessable_language},
+        sourceview_lang::{
+            apply_language, apply_language_id, apply_style_scheme, has_guessable_language,
+        },
     },
 };
 

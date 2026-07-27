@@ -89,7 +89,8 @@ fn windows1251_byte_score(raw: &[u8]) -> usize {
 }
 
 fn contains_cyrillic(text: &str) -> bool {
-    text.chars().any(|ch| ('\u{0400}'..='\u{04FF}').contains(&ch))
+    text.chars()
+        .any(|ch| ('\u{0400}'..='\u{04FF}').contains(&ch))
 }
 
 #[cfg(test)]
@@ -109,10 +110,7 @@ mod tests {
             "readme.txt"
         );
         let utf8 = "Документ.txt".as_bytes();
-        assert_eq!(
-            decode_zip_entry_name(utf8, b"", "mojibake"),
-            "Документ.txt"
-        );
+        assert_eq!(decode_zip_entry_name(utf8, b"", "mojibake"), "Документ.txt");
     }
 
     #[test]

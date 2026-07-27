@@ -51,9 +51,7 @@ impl ArchiveBackendRegistry {
                 detected_format: Some(detected_format),
                 layout: super::probe::ArchiveLayout::SingleFile,
                 support: ArchiveSupport::NotSupportedYet {
-                    reason: format!(
-                        "Opening {detected_format:?} archives is not supported yet"
-                    ),
+                    reason: format!("Opening {detected_format:?} archives is not supported yet"),
                 },
             })
         }

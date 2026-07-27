@@ -205,11 +205,7 @@ impl OperationsController {
             Ok(started) => started,
             Err(error) => {
                 let detail = error.detail().to_string();
-                dialogs::show_error(
-                    &self.window,
-                    &t!("error.operation_unavailable"),
-                    &detail,
-                );
+                dialogs::show_error(&self.window, &t!("error.operation_unavailable"), &detail);
                 on_finished(Err(detail));
                 return;
             }

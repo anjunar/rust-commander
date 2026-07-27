@@ -107,10 +107,8 @@ impl MainWindow {
             }
         };
         self.apply_update(update);
-        self.navigation_controller().refresh_panels(
-            &[ActivePanel::Left, ActivePanel::Right],
-            status,
-        );
+        self.navigation_controller()
+            .refresh_panels(&[ActivePanel::Left, ActivePanel::Right], status);
     }
 
     pub fn handle_sort_by_name(self: &Rc<Self>) {
@@ -143,7 +141,9 @@ impl MainWindow {
             }
         };
 
-        self.commander_view.panel(panel).apply_sort(column, direction);
+        self.commander_view
+            .panel(panel)
+            .apply_sort(column, direction);
 
         let status = t!(
             "status.sorted_panel",
@@ -432,20 +432,12 @@ impl MainWindow {
             if commander.state().panel(panel).location.history_key() == root.history_key() {
                 let update = if commander.state().panel(panel).entries.is_empty() {
                     commander.set_status(
-                        t!(
-                            "status.opened_location_root",
-                            path = root.display_label()
-                        )
-                        .into_owned(),
+                        t!("status.opened_location_root", path = root.display_label()).into_owned(),
                     )
                 } else {
                     let mut update = commander.select_single(panel, 0);
                     commander.set_status(
-                        t!(
-                            "status.opened_location_root",
-                            path = root.display_label()
-                        )
-                        .into_owned(),
+                        t!("status.opened_location_root", path = root.display_label()).into_owned(),
                     );
                     update.status = true;
                     update
@@ -479,11 +471,8 @@ impl MainWindow {
         let active_panel = self.commander.borrow().state().active_panel;
         let current_directory = self.commander.borrow().panel_directory(active_panel);
         let this = Rc::clone(self);
-        dialogs::show_favorites(
-            &self.window,
-            favorites,
-            current_directory,
-            move |action| match action {
+        dialogs::show_favorites(&self.window, favorites, current_directory, move |action| {
+            match action {
                 dialogs::FavoritesAction::Go(path) => {
                     let request = filesystem_navigation_request(active_panel, path);
                     this.navigation_controller().start_directory_load(request);
@@ -499,8 +488,8 @@ impl MainWindow {
                         );
                     }
                 }
-            },
-        );
+            }
+        });
     }
 
     pub fn handle_find_files(self: &Rc<Self>) {

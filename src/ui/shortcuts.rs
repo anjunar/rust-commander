@@ -10,7 +10,11 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "view", MainWindow::handle_view);
     add_action(window, "properties", MainWindow::handle_properties);
     add_action(window, "rename", MainWindow::handle_rename);
-    add_action(window, "select-root-left", MainWindow::handle_select_root_left);
+    add_action(
+        window,
+        "select-root-left",
+        MainWindow::handle_select_root_left,
+    );
     add_action(
         window,
         "select-root-right",
@@ -32,7 +36,11 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
     add_action(window, "move-files", MainWindow::handle_move);
     add_action(window, "clipboard-copy", MainWindow::handle_clipboard_copy);
     add_action(window, "clipboard-cut", MainWindow::handle_clipboard_cut);
-    add_action(window, "clipboard-paste", MainWindow::handle_clipboard_paste);
+    add_action(
+        window,
+        "clipboard-paste",
+        MainWindow::handle_clipboard_paste,
+    );
     add_action(window, "make-directory", MainWindow::handle_make_directory);
     add_action(window, "delete", MainWindow::handle_delete);
     add_action(
@@ -67,7 +75,11 @@ pub fn install(window: &Rc<MainWindow>, app: &gtk::Application) {
         MainWindow::handle_restart_terminal,
     );
     add_action(window, "sort-name", MainWindow::handle_sort_by_name);
-    add_action(window, "sort-extension", MainWindow::handle_sort_by_extension);
+    add_action(
+        window,
+        "sort-extension",
+        MainWindow::handle_sort_by_extension,
+    );
     add_action(window, "sort-date", MainWindow::handle_sort_by_date);
     add_action(window, "sort-size", MainWindow::handle_sort_by_size);
     add_action(

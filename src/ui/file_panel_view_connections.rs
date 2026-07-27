@@ -4,10 +4,7 @@ use gtk::{gdk, prelude::*};
 
 use crate::domain::sorting::{SortColumn, SortDirection};
 
-use super::{
-    helpers::find_row_position,
-    FilePanelView, RootSelectorChoice,
-};
+use super::{helpers::find_row_position, FilePanelView, RootSelectorChoice};
 
 impl FilePanelView {
     pub fn connect_root_changed<F>(&self, f: F)
@@ -75,9 +72,7 @@ impl FilePanelView {
         let was_ignoring_sort = self.ignore_sort.replace(true);
         self.column_view
             .sort_by_column(Some(&binding.column), sort_type);
-        self.last_sort
-            .borrow_mut()
-            .replace((column, sort_type));
+        self.last_sort.borrow_mut().replace((column, sort_type));
         self.ignore_sort.set(was_ignoring_sort);
     }
 

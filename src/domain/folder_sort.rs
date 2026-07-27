@@ -1,9 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::{
-    config::FolderSortPreference,
-    domain::sorting::SortState,
-};
+use crate::{config::FolderSortPreference, domain::sorting::SortState};
 
 /// Normalize a filesystem directory path for folder-sort lookup.
 ///
@@ -64,11 +61,7 @@ pub fn resolve_folder_sort_for_navigation(
     Some(session_override.unwrap_or(preferred))
 }
 
-pub fn upsert_folder_sort(
-    prefs: &mut Vec<FolderSortPreference>,
-    path: PathBuf,
-    sort: SortState,
-) {
+pub fn upsert_folder_sort(prefs: &mut Vec<FolderSortPreference>, path: PathBuf, sort: SortState) {
     let key = normalize_folder_path(&path);
     if let Some(existing) = prefs
         .iter_mut()

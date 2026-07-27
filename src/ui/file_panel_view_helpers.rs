@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gdk, EventControllerKey, glib, prelude::*};
+use gtk::{gdk, glib, prelude::*, EventControllerKey};
 
 use crate::ui::{
     columns::{begin_inline_rename, ROW_POSITION_DATA_KEY},
@@ -90,27 +90,20 @@ pub(super) fn start_inline_rename_with_retry<F>(
         let Some(on_commit) = on_commit.borrow_mut().take() else {
             return;
         };
-        let cancel = begin_inline_rename(
-            &container,
-            &name,
-            is_dir,
-            is_marked,
-            on_commit,
-            {
-                let active = Rc::clone(&active);
-                let cancel_slot = Rc::clone(&cancel_slot);
-                let im = Rc::clone(&panel_im_context);
-                let keys = Rc::clone(&panel_key_controller);
-                let column_view = column_view.clone();
-                move || {
-                    active.set(false);
-                    let _ = cancel_slot.borrow_mut().take();
-                    // Move focus off the dying cell before list refresh/rebind.
-                    column_view.grab_focus();
-                    restore_panel_key_input(&column_view, &im, &keys);
-                }
-            },
-        );
+        let cancel = begin_inline_rename(&container, &name, is_dir, is_marked, on_commit, {
+            let active = Rc::clone(&active);
+            let cancel_slot = Rc::clone(&cancel_slot);
+            let im = Rc::clone(&panel_im_context);
+            let keys = Rc::clone(&panel_key_controller);
+            let column_view = column_view.clone();
+            move || {
+                active.set(false);
+                let _ = cancel_slot.borrow_mut().take();
+                // Move focus off the dying cell before list refresh/rebind.
+                column_view.grab_focus();
+                restore_panel_key_input(&column_view, &im, &keys);
+            }
+        });
         *cancel_slot.borrow_mut() = Some(cancel);
         return;
     }
@@ -138,7 +131,10 @@ pub(super) fn start_inline_rename_with_retry<F>(
     });
 }
 
-pub(super) fn install_root_selector_escape(dropdown: &gtk::DropDown, column_view: &gtk::ColumnView) {
+pub(super) fn install_root_selector_escape(
+    dropdown: &gtk::DropDown,
+    column_view: &gtk::ColumnView,
+) {
     let restore_panel_focus = {
         let column_view = column_view.clone();
         Rc::new(move || {
@@ -204,11 +200,7 @@ pub(super) fn schedule_column_view_focus(column_view: gtk::ColumnView, index: u3
     schedule_column_view_focus_attempt(column_view, index, 0);
 }
 
-fn schedule_column_view_focus_attempt(
-    column_view: gtk::ColumnView,
-    index: u32,
-    attempt: u32,
-) {
+fn schedule_column_view_focus_attempt(column_view: gtk::ColumnView, index: u32, attempt: u32) {
     const MAX_ATTEMPTS: u32 = 30;
     let run = {
         let column_view = column_view.clone();

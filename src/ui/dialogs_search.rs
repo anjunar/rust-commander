@@ -68,8 +68,10 @@ pub fn show_find_files<F>(
     let name_entry = name_row.1;
     content.append(&name_row.0);
 
-    let exclude_row =
-        labeled_entry_row(&t!("search.exclude_label"), &t!("search.exclude_placeholder"));
+    let exclude_row = labeled_entry_row(
+        &t!("search.exclude_label"),
+        &t!("search.exclude_placeholder"),
+    );
     let exclude_entry = exclude_row.1;
     exclude_entry.set_sensitive(search_allowed);
     content.append(&exclude_row.0);
@@ -231,10 +233,7 @@ pub fn show_find_files<F>(
                 flag.store(true, Ordering::Relaxed);
             }
             set_searching(false);
-            status_label.set_text(&t!(
-                "search.status_cancelled",
-                count = found_count.get()
-            ));
+            status_label.set_text(&t!("search.status_cancelled", count = found_count.get()));
         })
     };
 
@@ -341,10 +340,7 @@ pub fn show_find_files<F>(
                         SearchEvent::Failed { message } => {
                             *cancel_flag.borrow_mut() = None;
                             set_searching(false);
-                            status_label.set_text(&t!(
-                                "search.invalid_pattern",
-                                error = message
-                            ));
+                            status_label.set_text(&t!("search.invalid_pattern", error = message));
                             false
                         }
                         SearchEvent::Finished {
@@ -356,10 +352,8 @@ pub fn show_find_files<F>(
                             *cancel_flag.borrow_mut() = None;
                             set_searching(false);
                             if cancelled {
-                                status_label.set_text(&t!(
-                                    "search.status_cancelled",
-                                    count = found
-                                ));
+                                status_label
+                                    .set_text(&t!("search.status_cancelled", count = found));
                             } else if errors > 0 {
                                 status_label.set_text(&t!(
                                     "search.status_done_with_errors",
@@ -367,10 +361,7 @@ pub fn show_find_files<F>(
                                     errors = errors
                                 ));
                             } else {
-                                status_label.set_text(&t!(
-                                    "search.status_done",
-                                    count = found
-                                ));
+                                status_label.set_text(&t!("search.status_done", count = found));
                             }
                             false
                         }
@@ -485,7 +476,9 @@ fn append_text_column<F>(
         else {
             return;
         };
-        if let Some(label) = list_item.child().and_then(|child| child.downcast::<gtk::Label>().ok())
+        if let Some(label) = list_item
+            .child()
+            .and_then(|child| child.downcast::<gtk::Label>().ok())
         {
             label.set_text(&text(&hit));
         }

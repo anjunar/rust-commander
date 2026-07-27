@@ -159,14 +159,13 @@ impl NavigationController {
             SelectedNavigation::OpenArchive { path } => {
                 let can_open = self.archive_service.borrow().can_open_path(&path);
                 if !can_open {
-                    let unsupported_reason = self
-                        .archive_service
-                        .borrow()
-                        .probe_path(&path)
-                        .and_then(|probe: ArchiveProbe| match probe.support {
-                            ArchiveSupport::NotSupportedYet { reason } => Some(reason),
-                            ArchiveSupport::Supported => None,
-                        });
+                    let unsupported_reason =
+                        self.archive_service.borrow().probe_path(&path).and_then(
+                            |probe: ArchiveProbe| match probe.support {
+                                ArchiveSupport::NotSupportedYet { reason } => Some(reason),
+                                ArchiveSupport::Supported => None,
+                            },
+                        );
                     if let Some(reason) = unsupported_reason {
                         let controller = self.clone();
                         glib::idle_add_local_once(move || {
@@ -199,7 +198,6 @@ impl NavigationController {
             SelectedNavigation::Unsupported { message } => self.show_command_failed(message),
         }
     }
-
 }
 
 fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> String {
@@ -249,21 +247,15 @@ impl NavigationController {
                             .session_store
                             .borrow_mut()
                             .insert_archive(session);
-                        let next_location = crate::domain::PanelLocation::archive(
-                            session_key,
-                            path.clone(),
-                            "",
-                        );
+                        let next_location =
+                            crate::domain::PanelLocation::archive(session_key, path.clone(), "");
                         controller.start_directory_load(NavigationRequest {
                             panel,
                             tab_id: 0,
                             generation: 0,
                             action: LoadAction::Navigate,
-                            status: t!(
-                                "status.opened_archive",
-                                path = path.display().to_string()
-                            )
-                            .into_owned(),
+                            status: t!("status.opened_archive", path = path.display().to_string())
+                                .into_owned(),
                             next_location,
                             selection_intent: None,
                             busy_message: t!("status.opening_archive").into_owned(),
@@ -298,7 +290,7 @@ impl NavigationController {
         let session_key = self.session_store.borrow_mut().insert_remote(session);
         self.start_directory_load(NavigationRequest {
             panel,
-                tab_id: 0,
+            tab_id: 0,
             generation: 0,
             action: LoadAction::Navigate,
             status: t!("status.opened", path = start_directory.as_str()).into_owned(),

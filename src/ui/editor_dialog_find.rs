@@ -52,7 +52,9 @@ pub(super) fn find_next(widgets: &EditorWidgets) {
     if let Some((start, end, _)) = widgets.search_context.forward(&iter) {
         widgets.buffer.select_range(&start, &end);
         let mut start = start;
-        let _ = widgets.view.scroll_to_iter(&mut start, 0.1, false, 0.0, 0.0);
+        let _ = widgets
+            .view
+            .scroll_to_iter(&mut start, 0.1, false, 0.0, 0.0);
         let _ = end;
     }
 }
@@ -70,7 +72,9 @@ pub(super) fn find_previous(widgets: &EditorWidgets) {
     if let Some((start, end, _)) = widgets.search_context.backward(&iter) {
         widgets.buffer.select_range(&start, &end);
         let mut start = start;
-        let _ = widgets.view.scroll_to_iter(&mut start, 0.1, false, 0.0, 0.0);
+        let _ = widgets
+            .view
+            .scroll_to_iter(&mut start, 0.1, false, 0.0, 0.0);
         let _ = end;
     }
 }

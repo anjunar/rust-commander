@@ -25,10 +25,7 @@ pub struct Commander {
 #[derive(Clone, Debug)]
 pub enum CreateDirectoryTarget {
     Filesystem(PathBuf),
-    Remote {
-        session_key: String,
-        path: String,
-    },
+    Remote { session_key: String, path: String },
 }
 
 impl Commander {
@@ -217,7 +214,6 @@ impl Commander {
         ViewUpdate::panel_entries(panel)
     }
 
-
     /// Move the panel cursor without clearing marks.
     /// Does not rebuild panel entries — GTK SingleSelection already owns the visual cursor.
     pub fn set_cursor(&mut self, panel: ActivePanel, index: usize) -> ViewUpdate {
@@ -259,7 +255,10 @@ impl Commander {
         key: crate::domain::EntryKey,
         bytes: u64,
     ) -> (ViewUpdate, Option<usize>) {
-        let index = self.state.panel_mut(panel).set_calculated_dir_size(key, bytes);
+        let index = self
+            .state
+            .panel_mut(panel)
+            .set_calculated_dir_size(key, bytes);
         (ViewUpdate::panel_entries(panel), index)
     }
 
@@ -338,7 +337,11 @@ impl Commander {
         {
             let panel_state = self.state.panel_mut(panel);
             let sort = SortState { column, direction };
-            if let Some(path) = panel_state.location.filesystem_path().map(Path::to_path_buf) {
+            if let Some(path) = panel_state
+                .location
+                .filesystem_path()
+                .map(Path::to_path_buf)
+            {
                 panel_state.note_folder_sort_session_override(&path, sort);
             }
             panel_state.set_sort_state(column, direction);

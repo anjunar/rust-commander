@@ -537,10 +537,8 @@ impl MainWindow {
         let state = commander.state();
         let panel_state = state.panel(panel);
         let panel_view = self.commander_view.panel(panel);
-        panel_view.apply_cursor_and_marks(
-            panel_state.cursor_index(),
-            &panel_state.selection_indices(),
-        );
+        panel_view
+            .apply_cursor_and_marks(panel_state.cursor_index(), &panel_state.selection_indices());
         panel_view.set_footer(&presentation::panel_footer_line(panel_state));
         self.status_label
             .set_label(&presentation::status_line(state));

@@ -154,11 +154,7 @@ impl ArchiveBackend for UnrarBackend {
             }
         }
 
-        Ok(ArchiveSession::new(
-            self.id(),
-            path.to_path_buf(),
-            entries,
-        ))
+        Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
     }
 
     fn extract_entry(

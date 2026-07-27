@@ -6,8 +6,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::remote::RemoteConfig;
 use crate::domain::sorting::{SortColumn, SortDirection};
+use crate::remote::RemoteConfig;
 
 const APP_DIR_NAME: &str = "rust-commander";
 const CONFIG_FILE_NAME: &str = "config.toml";

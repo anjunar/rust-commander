@@ -40,7 +40,10 @@ fn detects_zip_by_signature_without_extension() {
     let path = temp_test_file("archive_signature", "");
     fs::write(&path, b"PK\x03\x04test-payload").unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Zip));
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Zip)
+    );
 
     fs::remove_file(path).unwrap();
 }
@@ -52,7 +55,10 @@ fn extension_wins_over_mismatched_contents_for_known_suffixes() {
     let path = temp_test_file("fake_archive", ".zip");
     fs::write(&path, b"this is definitely not a zip archive").unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Zip));
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Zip)
+    );
 
     fs::remove_file(path).unwrap();
 }
@@ -64,7 +70,10 @@ fn detects_tar_by_ustar_signature() {
     content[257..262].copy_from_slice(b"ustar");
     fs::write(&path, content).unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Tar));
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Tar)
+    );
 
     fs::remove_file(path).unwrap();
 }

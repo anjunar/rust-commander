@@ -137,9 +137,7 @@ where
             move |result| {
                 let parsed = result.ok().and_then(|(stream, _mime)| {
                     use gio::prelude::InputStreamExt;
-                    let bytes = stream
-                        .read_bytes(64 * 1024, gio::Cancellable::NONE)
-                        .ok()?;
+                    let bytes = stream.read_bytes(64 * 1024, gio::Cancellable::NONE).ok()?;
                     parse_gnome_copied_files(std::str::from_utf8(bytes.as_ref()).ok()?)
                 });
                 on_done(parsed);
@@ -208,15 +206,13 @@ pub fn clear_system_file_clipboard() {
     {
         use gtk::gdk::prelude::*;
         if let Some(display) = gtk::gdk::Display::default() {
-            let _ = display.clipboard().set_content(None::<&gtk::gdk::ContentProvider>);
+            let _ = display
+                .clipboard()
+                .set_content(None::<&gtk::gdk::ContentProvider>);
         }
     }
 }
 
 pub fn existing_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
-    paths
-        .iter()
-        .filter(|path| path.exists())
-        .cloned()
-        .collect()
+    paths.iter().filter(|path| path.exists()).cloned().collect()
 }

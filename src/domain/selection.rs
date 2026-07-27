@@ -142,10 +142,7 @@ impl SelectionModel {
 
     /// Replace marks only; cursor is unchanged.
     pub fn set_marks(&mut self, indices: impl IntoIterator<Item = usize>, len: usize) {
-        self.selected_indices = indices
-            .into_iter()
-            .filter(|index| *index < len)
-            .collect();
+        self.selected_indices = indices.into_iter().filter(|index| *index < len).collect();
     }
 
     /// Move the cursor without clearing marks.

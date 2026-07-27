@@ -88,8 +88,7 @@ where
     let icon_style_model = gtk::StringList::new(&icon_style_option_refs);
     let icon_style_dropdown =
         gtk::DropDown::new(Some(icon_style_model.clone()), gtk::Expression::NONE);
-    icon_style_dropdown
-        .set_selected(icon_style_to_index(current_config.general.icon_style) as u32);
+    icon_style_dropdown.set_selected(icon_style_to_index(current_config.general.icon_style) as u32);
     icon_style_row.append(&icon_style_label);
     icon_style_row.append(&icon_style_dropdown);
     content.append(&icon_style_row);

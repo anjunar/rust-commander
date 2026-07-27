@@ -18,7 +18,8 @@ pub(crate) fn render_markdown_into_buffer(buffer: &gtk::TextBuffer, markdown: &s
     buffer.set_text("");
 
     let mut end = buffer.end_iter();
-    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
+    let options =
+        Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
     let parser = Parser::new_ext(markdown, options);
 
     let mut style_stack: Vec<&'static str> = Vec::new();
@@ -41,12 +42,7 @@ pub(crate) fn render_markdown_into_buffer(buffer: &gtk::TextBuffer, markdown: &s
                     style_stack.push("md-code-block");
                     if let CodeBlockKind::Fenced(lang) = kind {
                         if !lang.is_empty() {
-                            insert_styled(
-                                buffer,
-                                &mut end,
-                                &format!("```{lang}\n"),
-                                &style_stack,
-                            );
+                            insert_styled(buffer, &mut end, &format!("```{lang}\n"), &style_stack);
                         }
                     }
                 }
@@ -200,12 +196,7 @@ fn flush_list_prefix(
     pending_list_prefix.clear();
 }
 
-fn insert_styled(
-    buffer: &gtk::TextBuffer,
-    end: &mut gtk::TextIter,
-    text: &str,
-    styles: &[&str],
-) {
+fn insert_styled(buffer: &gtk::TextBuffer, end: &mut gtk::TextIter, text: &str, styles: &[&str]) {
     if text.is_empty() {
         return;
     }

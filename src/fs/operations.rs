@@ -655,14 +655,13 @@ pub fn copy_entry(source: &Path, target: &Path) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("Could not create target folder {}", parent.display()))?;
     }
-    fs::copy(source, target)
-        .with_context(|| {
-            format!(
-                "Could not copy {} to {}",
-                source.display(),
-                target.display()
-            )
-        })?;
+    fs::copy(source, target).with_context(|| {
+        format!(
+            "Could not copy {} to {}",
+            source.display(),
+            target.display()
+        )
+    })?;
     Ok(())
 }
 

@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    path::PathBuf,
-    rc::Rc,
-    sync::mpsc,
-};
+use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::mpsc};
 
 use rust_i18n::t;
 
@@ -151,7 +146,7 @@ pub fn selected_navigation_request(
 
         return SelectedNavigation::Load(Box::new(NavigationRequest {
             panel,
-                tab_id: 0,
+            tab_id: 0,
             generation: 0,
             action: LoadAction::Navigate,
             status: t!("status.opened", path = selected.display_path.as_str()).into_owned(),
@@ -186,7 +181,7 @@ pub fn parent_navigation_request(
     let next_location = commander.state().panel(panel).location.parent()?;
     Some(NavigationRequest {
         panel,
-                tab_id: 0,
+        tab_id: 0,
         generation: 0,
         action: LoadAction::Navigate,
         status: t!("status.up_one_level", path = next_location.display_label()).into_owned(),
@@ -211,7 +206,7 @@ pub fn root_navigation_request(
 
     Some(NavigationRequest {
         panel,
-                tab_id: 0,
+        tab_id: 0,
         generation: 0,
         action: LoadAction::Navigate,
         status: t!(
@@ -234,7 +229,7 @@ pub fn filesystem_navigation_request(
 ) -> NavigationRequest {
     NavigationRequest {
         panel,
-                tab_id: 0,
+        tab_id: 0,
         generation: 0,
         action: LoadAction::Navigate,
         status: t!(
@@ -257,7 +252,7 @@ pub fn location_root_navigation_request(
     let next_location = commander.state().panel(panel).location.root();
     NavigationRequest {
         panel,
-                tab_id: 0,
+        tab_id: 0,
         generation: 0,
         action: LoadAction::Navigate,
         status: t!(
@@ -280,7 +275,7 @@ pub fn refresh_request(
 ) -> NavigationRequest {
     NavigationRequest {
         panel,
-                tab_id: 0,
+        tab_id: 0,
         generation: 0,
         action: LoadAction::Refresh,
         next_location: commander.state().panel(panel).location.clone(),
@@ -312,22 +307,20 @@ pub fn spawn_directory_load(
     );
 
     task_spawner.spawn(move || {
-        let result = loader
-            .load(request.next_location.clone())
-            .map(|loaded| {
-                let mut entries = loaded.entries;
-                sort_entries(&mut entries, request.sort_state, request.folders_first);
-                DirectoryLoadResult {
-                    panel: request.panel,
-                    tab_id: request.tab_id,
-                    generation: request.generation,
-                    action: request.action,
-                    next_location: loaded.location,
-                    entries,
-                    selection_intent: request.selection_intent,
-                    status: request.status,
-                }
-            });
+        let result = loader.load(request.next_location.clone()).map(|loaded| {
+            let mut entries = loaded.entries;
+            sort_entries(&mut entries, request.sort_state, request.folders_first);
+            DirectoryLoadResult {
+                panel: request.panel,
+                tab_id: request.tab_id,
+                generation: request.generation,
+                action: request.action,
+                next_location: loaded.location,
+                entries,
+                selection_intent: request.selection_intent,
+                status: request.status,
+            }
+        });
         let _ = tx.send(result);
     });
 

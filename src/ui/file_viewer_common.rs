@@ -13,10 +13,7 @@ pub(crate) struct ViewerChrome {
     pub content: gtk::Box,
 }
 
-pub(crate) fn build_viewer_chrome(
-    parent: &gtk::ApplicationWindow,
-    path: &Path,
-) -> ViewerChrome {
+pub(crate) fn build_viewer_chrome(parent: &gtk::ApplicationWindow, path: &Path) -> ViewerChrome {
     let independent = build_independent_window(parent, &t!("viewer.window_title"), 980, 720);
     let window = independent.window;
     let title_label = independent.title_label;
@@ -97,8 +94,8 @@ pub(crate) fn present_with_focus(window: gtk::ApplicationWindow, focus: impl IsA
 }
 
 pub(crate) fn read_text_file_limited(path: &Path, max_bytes: u64) -> Result<String> {
-    let meta = fs::metadata(path)
-        .with_context(|| format!("Could not read file {}", path.display()))?;
+    let meta =
+        fs::metadata(path).with_context(|| format!("Could not read file {}", path.display()))?;
     if meta.len() > max_bytes {
         bail!(
             "{}",
@@ -110,7 +107,8 @@ pub(crate) fn read_text_file_limited(path: &Path, max_bytes: u64) -> Result<Stri
         );
     }
 
-    let bytes = fs::read(path).with_context(|| format!("Could not read file {}", path.display()))?;
+    let bytes =
+        fs::read(path).with_context(|| format!("Could not read file {}", path.display()))?;
     if bytes.contains(&0) {
         bail!("{}", t!("viewer.invalid_utf8_for_view"));
     }

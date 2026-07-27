@@ -13,12 +13,12 @@ use ssh2::{HostKeyType, KnownHostKeyFormat, Session, Sftp};
 
 use crate::application::{ConflictResolution, TaskSpawner};
 
+#[path = "service_connect.rs"]
+mod connect;
 #[path = "service_listing.rs"]
 mod listing;
 #[path = "service_transfer.rs"]
 mod transfer;
-#[path = "service_connect.rs"]
-mod connect;
 #[path = "service_util.rs"]
 mod util;
 

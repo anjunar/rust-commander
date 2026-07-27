@@ -17,9 +17,7 @@ pub mod windows;
 pub mod windows_file_clipboard;
 
 pub use context_menu::{show_context_menu, ContextMenuRequest};
-pub use icons::{
-    fallback_icon_name_for_row, icon_for_listing_entry, set_icon_style,
-};
+pub use icons::{fallback_icon_name_for_row, icon_for_listing_entry, set_icon_style};
 pub use open::open_path;
 pub use terminal::open_console;
 pub use window_geometry::current_window_placement;

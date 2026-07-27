@@ -5,9 +5,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ssh2::{
-    CheckResult, KnownHostFileKind, Session,
-};
+use ssh2::{CheckResult, KnownHostFileKind, Session};
 
 use crate::remote::{RemoteAuthConfig, RemoteProfile, RemoteRuntimeSecret, RemoteSession};
 
@@ -17,7 +15,7 @@ use super::{
         find_known_hosts_path, format_fingerprint, known_hosts_entry_name, known_hosts_write_path,
     },
     ConnectedRemote, HostKeyAlgorithm, HostKeyTrustOffer, HostKeyUntrusted, RemoteService,
-    SSH_SESSION_TIMEOUT, SSH_SESSION_TIMEOUT_MS, CONNECT_TIMEOUT,
+    CONNECT_TIMEOUT, SSH_SESSION_TIMEOUT, SSH_SESSION_TIMEOUT_MS,
 };
 
 impl RemoteService {
@@ -203,12 +201,8 @@ pub(super) fn trust_host_key(offer: &HostKeyTrustOffer) -> Result<()> {
     let known_hosts_path = known_hosts_write_path()
         .context("Could not resolve OpenSSH known_hosts path under the user home directory")?;
     if let Some(parent) = known_hosts_path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Could not create SSH directory {}",
-                parent.display()
-            )
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Could not create SSH directory {}", parent.display()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -239,12 +233,7 @@ pub(super) fn trust_host_key(offer: &HostKeyTrustOffer) -> Result<()> {
             "rust-commander",
             offer.key_type.to_known_host_format(),
         )
-        .with_context(|| {
-            format!(
-                "Could not add {}:{} to known_hosts",
-                offer.host, offer.port
-            )
-        })?;
+        .with_context(|| format!("Could not add {}:{} to known_hosts", offer.host, offer.port))?;
     known_hosts
         .write_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
         .with_context(|| {
@@ -291,15 +280,12 @@ fn authenticate_with_key_file(
 ) -> Result<()> {
     ensure_key_files_exist(private_key_path, public_key_path)?;
 
-    let file_error = match session.userauth_pubkey_file(
-        username,
-        public_key_path,
-        private_key_path,
-        passphrase,
-    ) {
-        Ok(()) => return Ok(()),
-        Err(error) => error,
-    };
+    let file_error =
+        match session.userauth_pubkey_file(username, public_key_path, private_key_path, passphrase)
+        {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
 
     // On Windows, libssh2 defaults to WinCNG which cannot load OpenSSH Ed25519 keys
     // (auth fails with "unknown error"). Fall back to the system ssh-agent, which can
@@ -323,9 +309,9 @@ fn authenticate_with_agent(session: &Session, username: &str) -> Result<()> {
     let mut agent = session
         .agent()
         .context("Could not create SSH agent handle")?;
-    agent
-        .connect()
-        .context("Could not connect to SSH agent (is the OpenSSH Authentication Agent service running?)")?;
+    agent.connect().context(
+        "Could not connect to SSH agent (is the OpenSSH Authentication Agent service running?)",
+    )?;
     agent
         .list_identities()
         .context("Could not list identities from SSH agent")?;

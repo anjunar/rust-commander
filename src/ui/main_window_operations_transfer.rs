@@ -49,7 +49,9 @@ impl OperationsController {
         F: FnOnce(Result<(), String>) + 'static,
     {
         if self.runtime.active_operation.borrow().is_some() {
-            on_finished(Err(t!("error.cancel_or_finish_current_operation").into_owned()));
+            on_finished(Err(
+                t!("error.cancel_or_finish_current_operation").into_owned()
+            ));
             return;
         }
 
@@ -240,14 +242,15 @@ impl OperationsController {
     /// `refresh_dirty_panels_if_idle` alone does nothing unless panels were queued.
     fn finish_transfer_panel_refresh(&self, request: &OperationPlan, status: String) {
         invalidate_remote_listing_cache(&self.remote_service, request);
-        self.navigation.refresh_panels(
-            &[ActivePanel::Left, ActivePanel::Right],
-            status,
-        );
+        self.navigation
+            .refresh_panels(&[ActivePanel::Left, ActivePanel::Right], status);
     }
 }
 
-fn invalidate_remote_listing_cache(remote_service: &crate::remote::RemoteService, plan: &OperationPlan) {
+fn invalidate_remote_listing_cache(
+    remote_service: &crate::remote::RemoteService,
+    plan: &OperationPlan,
+) {
     match plan {
         OperationPlan::RemoteUpload(request) => {
             remote_service.invalidate_listing_cache_for_path(&request.target_directory);

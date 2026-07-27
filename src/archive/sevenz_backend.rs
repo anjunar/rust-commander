@@ -36,11 +36,7 @@ impl SevenZipBackend {
             .filter_map(Self::entry_from_sevenz)
             .collect();
 
-        Ok(ArchiveSession::new(
-            self.id(),
-            path.to_path_buf(),
-            entries,
-        ))
+        Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
     }
 
     pub(crate) fn extract_entries_in_process(
@@ -166,11 +162,7 @@ impl ArchiveBackend for SevenZipBackend {
         #[cfg(all(target_os = "windows", not(test)))]
         {
             let entries = super::sevenz_worker::list_via_helper(path)?;
-            Ok(ArchiveSession::new(
-                self.id(),
-                path.to_path_buf(),
-                entries,
-            ))
+            Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
         }
 
         #[cfg(any(not(target_os = "windows"), test))]

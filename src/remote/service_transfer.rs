@@ -241,12 +241,8 @@ impl RemoteService {
             return Ok(());
         }
 
-        let Some(local_target) = resolve_local_target_conflict(
-            remote_path,
-            local_target.to_path_buf(),
-            sftp,
-            runtime,
-        )?
+        let Some(local_target) =
+            resolve_local_target_conflict(remote_path, local_target.to_path_buf(), sftp, runtime)?
         else {
             return Ok(());
         };
@@ -323,12 +319,8 @@ impl RemoteService {
 
         let metadata = fs::metadata(source)
             .with_context(|| format!("Could not read metadata for {}", source.display()))?;
-        let Some(remote_target) = resolve_remote_target_conflict(
-            source,
-            remote_target.clone(),
-            sftp,
-            runtime,
-        )?
+        let Some(remote_target) =
+            resolve_remote_target_conflict(source, remote_target.clone(), sftp, runtime)?
         else {
             return Ok(());
         };
@@ -350,7 +342,12 @@ impl RemoteService {
                 let entry = entry?;
                 let child_source = entry.path();
                 let child_name = entry.file_name().to_string_lossy().into_owned();
-                self.upload_path(sftp, &child_source, &remote_target.join(child_name), runtime)?;
+                self.upload_path(
+                    sftp,
+                    &child_source,
+                    &remote_target.join(child_name),
+                    runtime,
+                )?;
             }
             return Ok(());
         }
@@ -829,15 +826,17 @@ fn send_progress(
     progress: &TransferProgress,
     started_at: Instant,
 ) {
-    let _ = tx.send(OperationEvent::Progress(crate::application::OperationSnapshot {
-        kind,
-        current_item,
-        processed_bytes: progress.processed_bytes,
-        total_bytes: plan.total_bytes,
-        processed_entries: progress.processed_entries,
-        total_entries: plan.total_entries,
-        started_at,
-    }));
+    let _ = tx.send(OperationEvent::Progress(
+        crate::application::OperationSnapshot {
+            kind,
+            current_item,
+            processed_bytes: progress.processed_bytes,
+            total_bytes: plan.total_bytes,
+            processed_entries: progress.processed_entries,
+            total_entries: plan.total_entries,
+            started_at,
+        },
+    ));
 }
 
 fn operation_summary(

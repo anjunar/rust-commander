@@ -4,9 +4,7 @@ use std::rc::Rc;
 use rust_i18n::t;
 
 use crate::{
-    application::{
-        FileOperationKind, LocalOperationRequest, OperationPlan, RemoteUploadRequest,
-    },
+    application::{FileOperationKind, LocalOperationRequest, OperationPlan, RemoteUploadRequest},
     domain::PanelLocation,
     ui::{
         dialogs,

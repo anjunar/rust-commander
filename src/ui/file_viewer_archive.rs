@@ -25,13 +25,11 @@ pub(crate) fn open(
     entries.sort_by(|left, right| {
         let left_dir = matches!(left.kind, ArchiveEntryKind::Directory);
         let right_dir = matches!(right.kind, ArchiveEntryKind::Directory);
-        right_dir
-            .cmp(&left_dir)
-            .then_with(|| {
-                left.archive_path
-                    .to_ascii_lowercase()
-                    .cmp(&right.archive_path.to_ascii_lowercase())
-            })
+        right_dir.cmp(&left_dir).then_with(|| {
+            left.archive_path
+                .to_ascii_lowercase()
+                .cmp(&right.archive_path.to_ascii_lowercase())
+        })
     });
 
     let listing = format_archive_listing(&entries);
@@ -61,11 +59,7 @@ pub(crate) fn open(
 
     append_status(
         &chrome.content,
-        &t!(
-            "viewer.mode_archive",
-            count = entries.len()
-        )
-        .into_owned(),
+        &t!("viewer.mode_archive", count = entries.len()).into_owned(),
         file_size(path),
     );
     install_escape_close(&chrome.window);
@@ -93,10 +87,7 @@ fn format_archive_listing(entries: &[crate::archive::ArchiveEntry]) -> String {
         t!("viewer.archive_col_type").into_owned(),
         width = name_width
     ));
-    out.push_str(&format!(
-        "{}\n",
-        "-".repeat(name_width + 2 + 10 + 2 + 12)
-    ));
+    out.push_str(&format!("{}\n", "-".repeat(name_width + 2 + 10 + 2 + 12)));
 
     for entry in entries {
         let kind = match entry.kind {

@@ -9,8 +9,10 @@ use crate::remote::RemoteConfig;
 
 #[test]
 fn config_roundtrip_preserves_window_state() {
-    let temp_path =
-        std::env::temp_dir().join(format!("rust_commander_config_test_{}.toml", std::process::id()));
+    let temp_path = std::env::temp_dir().join(format!(
+        "rust_commander_config_test_{}.toml",
+        std::process::id()
+    ));
     let config = AppConfig {
         window: WindowConfig {
             width: 1440,
@@ -76,8 +78,14 @@ fn config_roundtrip_preserves_window_state() {
     assert_eq!(loaded.window.position.as_ref().unwrap().x, 120);
     assert_eq!(loaded.window.position.as_ref().unwrap().y, 80);
     assert!(loaded.window.maximized);
-    assert_eq!(loaded.panes.left_directory, Some(PathBuf::from("/tmp/left")));
-    assert_eq!(loaded.panes.right_directory, Some(PathBuf::from("/tmp/right")));
+    assert_eq!(
+        loaded.panes.left_directory,
+        Some(PathBuf::from("/tmp/left"))
+    );
+    assert_eq!(
+        loaded.panes.right_directory,
+        Some(PathBuf::from("/tmp/right"))
+    );
     assert_eq!(loaded.panes.left_cursor.as_deref(), Some("alpha.txt"));
     assert_eq!(loaded.panes.right_cursor.as_deref(), Some(".."));
     assert_eq!(loaded.locale.language.as_deref(), Some("fr"));
@@ -115,8 +123,10 @@ fn config_roundtrip_preserves_window_state() {
 
 #[test]
 fn old_config_without_new_settings_uses_defaults() {
-    let temp_path = std::env::temp_dir()
-        .join(format!("rust_commander_old_config_test_{}.toml", std::process::id()));
+    let temp_path = std::env::temp_dir().join(format!(
+        "rust_commander_old_config_test_{}.toml",
+        std::process::id()
+    ));
     let raw = r#"
 [window]
 width = 1280
@@ -157,8 +167,10 @@ language = "de"
 
 #[test]
 fn invalid_config_returns_defaults_in_load_or_default() {
-    let temp_path = std::env::temp_dir()
-        .join(format!("rust_commander_invalid_config_test_{}.toml", std::process::id()));
+    let temp_path = std::env::temp_dir().join(format!(
+        "rust_commander_invalid_config_test_{}.toml",
+        std::process::id()
+    ));
     std::fs::write(&temp_path, "[window\nwidth = 800").unwrap();
 
     let loaded = load_or_default_from_path(&temp_path);

@@ -4,9 +4,7 @@ use gtk::{gio, glib, prelude::*};
 use rust_i18n::t;
 use sourceview5::{self as sourceview, prelude::*};
 
-use crate::{
-    ui::sourceview_lang::{apply_language, apply_style_scheme},
-};
+use crate::ui::sourceview_lang::{apply_language, apply_style_scheme};
 
 use super::{
     support::{
@@ -50,14 +48,22 @@ pub(super) fn build_editor_menu_bar() -> gtk::PopoverMenuBar {
         edit.append_section(None, &{
             let section = gio::Menu::new();
             append_menu_item(&section, &t!("editor.select_all"), "editor.select-all");
-            append_menu_item(&section, &t!("editor.duplicate_line"), "editor.duplicate-line");
+            append_menu_item(
+                &section,
+                &t!("editor.duplicate_line"),
+                "editor.duplicate-line",
+            );
             section
         });
         edit.append_section(None, &{
             let section = gio::Menu::new();
             append_menu_item(&section, &t!("editor.find"), "editor.find");
             append_menu_item(&section, &t!("editor.find_next"), "editor.find-next");
-            append_menu_item(&section, &t!("editor.find_previous"), "editor.find-previous");
+            append_menu_item(
+                &section,
+                &t!("editor.find_previous"),
+                "editor.find-previous",
+            );
             append_menu_item(&section, &t!("editor.replace"), "editor.replace");
             append_menu_item(&section, &t!("editor.go_to_line"), "editor.go-to-line");
             section
@@ -178,12 +184,14 @@ pub(super) fn install_editor_actions(widgets: &Rc<EditorWidgets>) {
         move |_| super::find::go_to_line(&widgets)
     });
 
-    widgets
-        .window
-        .insert_action_group("editor", Some(&group));
+    widgets.window.insert_action_group("editor", Some(&group));
 }
 
-fn add_action(group: &gio::SimpleActionGroup, name: &str, f: impl Fn(&gio::SimpleAction) + 'static) {
+fn add_action(
+    group: &gio::SimpleActionGroup,
+    name: &str,
+    f: impl Fn(&gio::SimpleAction) + 'static,
+) {
     let action = gio::SimpleAction::new(name, None);
     action.connect_activate(move |action, _| f(action));
     group.add_action(&action);

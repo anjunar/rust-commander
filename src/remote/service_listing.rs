@@ -146,12 +146,7 @@ impl RemoteService {
     }
 
     /// Change remote Unix permission bits (`mode` is masked to `0o7777`).
-    pub fn set_permissions(
-        &self,
-        session: &RemoteSession,
-        path: &str,
-        mode: u32,
-    ) -> Result<()> {
+    pub fn set_permissions(&self, session: &RemoteSession, path: &str, mode: u32) -> Result<()> {
         let connection = self.connect_sftp(session)?;
         let remote_path = RemotePath::new(path);
         let remote_fs_path = to_remote_fs_path(&remote_path);

@@ -102,7 +102,6 @@ mod imp {
     pub fn current_window_placement(_title: &str) -> Option<WindowPlacementState> {
         None
     }
-
 }
 
 pub use imp::current_window_placement;

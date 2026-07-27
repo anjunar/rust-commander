@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gdk, EventControllerKey, glib, prelude::*};
+use gtk::{gdk, glib, prelude::*, EventControllerKey};
 
 use super::{
     helpers::{key_to_search_char, push_quick_search_text},
-    PanelKeyNavigation, FilePanelView,
+    FilePanelView, PanelKeyNavigation,
 };
 
 impl FilePanelView {
@@ -92,11 +92,8 @@ impl FilePanelView {
                                 gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SUPER_MASK,
                             )
                         {
-                            let _ = WidgetExt::activate_action(
-                                &column_view,
-                                "win.properties",
-                                None,
-                            );
+                            let _ =
+                                WidgetExt::activate_action(&column_view, "win.properties", None);
                             return glib::Propagation::Stop;
                         }
                         Some(PanelKeyNavigation::ActivateSelected)

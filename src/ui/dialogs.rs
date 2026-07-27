@@ -25,9 +25,7 @@ pub use dialogs_base::{show_about, show_error};
 pub use dialogs_favorites::{show_favorites, FavoritesAction};
 pub use dialogs_operations::{confirm_operation, show_conflict, ProgressDialog};
 pub use dialogs_properties::{show_properties, show_remote_properties};
-pub use dialogs_remote::{
-    confirm_ssh_host_key, prompt_remote_connection, RemoteDialogAction,
-};
+pub use dialogs_remote::{confirm_ssh_host_key, prompt_remote_connection, RemoteDialogAction};
 pub use dialogs_search::{search_go_to_request, show_find_files, SearchDialogAction};
 pub use dialogs_settings::show_settings;
 #[cfg(not(target_os = "windows"))]

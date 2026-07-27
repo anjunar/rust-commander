@@ -160,7 +160,9 @@ fn command_bar_labels(mode: CommandBarLabelMode) -> Vec<CommandBarLabel> {
         CommandBarLabelMode::Hidden => vec![String::new(); 10],
     };
 
-    raw.into_iter().map(|text| split_command_label(&text)).collect()
+    raw.into_iter()
+        .map(|text| split_command_label(&text))
+        .collect()
 }
 
 fn split_command_label(full: &str) -> CommandBarLabel {

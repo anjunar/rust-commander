@@ -207,10 +207,7 @@ fn install_dialog_window_controls(window: &gtk::Window, title: &str) {
 }
 
 #[cfg(target_os = "windows")]
-fn install_standard_window_controls(
-    window: &gtk::ApplicationWindow,
-    header: &gtk::HeaderBar,
-) {
+fn install_standard_window_controls(window: &gtk::ApplicationWindow, header: &gtk::HeaderBar) {
     header.set_show_title_buttons(false);
 
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);

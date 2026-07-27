@@ -42,7 +42,8 @@ where
             presentation::file_operation_label(&FileOperationKind::Move),
         ),
         FileOperationKind::Delete => {
-            let permanent = matches!(&request, OperationPlan::Local(local) if !local.use_recycle_bin);
+            let permanent =
+                matches!(&request, OperationPlan::Local(local) if !local.use_recycle_bin);
             if permanent {
                 (
                     t!("dialog.delete_permanent_confirmation_title").into_owned(),
@@ -131,11 +132,7 @@ where
             if let Some(entry) = &destination_entry {
                 if let Err(detail) = apply_edited_destination(&mut prepared, &entry.text()) {
                     *request.borrow_mut() = Some(prepared);
-                    show_error(
-                        &parent,
-                        &t!("error.operation_unavailable"),
-                        &detail,
-                    );
+                    show_error(&parent, &t!("error.operation_unavailable"), &detail);
                     return;
                 }
             }
@@ -474,8 +471,7 @@ fn apply_local_destination(
     let has_separator = trimmed.contains('/') || trimmed.contains('\\');
 
     if local.sources.len() == 1 {
-        let treat_as_directory =
-            trimmed.ends_with('/') || trimmed.ends_with('\\') || path.is_dir();
+        let treat_as_directory = trimmed.ends_with('/') || trimmed.ends_with('\\') || path.is_dir();
         if treat_as_directory {
             local.target_directory = Some(path);
             local.target_path = None;

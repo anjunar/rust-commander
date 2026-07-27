@@ -35,12 +35,7 @@ pub fn show_properties(
     grid.set_hexpand(true);
 
     let mut row = 0;
-    append_property_row(
-        &grid,
-        &mut row,
-        &t!("dialog.properties_name"),
-        &entry.name,
-    );
+    append_property_row(&grid, &mut row, &t!("dialog.properties_name"), &entry.name);
     append_property_row(
         &grid,
         &mut row,
@@ -57,19 +52,9 @@ pub fn show_properties(
     let (size_label, modified_label, attributes_label, created_label) =
         property_values(entry, location, calculated_dir_size);
 
-    append_property_row(
-        &grid,
-        &mut row,
-        &t!("dialog.properties_size"),
-        &size_label,
-    );
+    append_property_row(&grid, &mut row, &t!("dialog.properties_size"), &size_label);
     if let Some(created) = created_label {
-        append_property_row(
-            &grid,
-            &mut row,
-            &t!("dialog.properties_created"),
-            &created,
-        );
+        append_property_row(&grid, &mut row, &t!("dialog.properties_created"), &created);
     }
     append_property_row(
         &grid,
@@ -122,12 +107,7 @@ pub fn show_remote_properties<F>(
     grid.set_hexpand(true);
 
     let mut row = 0;
-    append_property_row(
-        &grid,
-        &mut row,
-        &t!("dialog.properties_name"),
-        &entry.name,
-    );
+    append_property_row(&grid, &mut row, &t!("dialog.properties_name"), &entry.name);
     append_property_row(
         &grid,
         &mut row,
@@ -141,14 +121,8 @@ pub fn show_remote_properties<F>(
         &presentation::entry_type_label(entry),
     );
 
-    let (size_label, modified_label, _, _) =
-        property_values(entry, location, calculated_dir_size);
-    append_property_row(
-        &grid,
-        &mut row,
-        &t!("dialog.properties_size"),
-        &size_label,
-    );
+    let (size_label, modified_label, _, _) = property_values(entry, location, calculated_dir_size);
+    append_property_row(&grid, &mut row, &t!("dialog.properties_size"), &size_label);
     append_property_row(
         &grid,
         &mut row,

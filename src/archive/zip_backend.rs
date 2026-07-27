@@ -9,10 +9,8 @@ use zip::ZipArchive;
 
 use super::{
     archive_entry_display_name, archive_entry_matches_selection, normalize_archive_entry_path,
-    safe_join_extract_path,
-    zip_name::decode_zip_entry_name,
-    ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveFormat,
-    ArchiveFormatDetector, ArchiveSession,
+    safe_join_extract_path, zip_name::decode_zip_entry_name, ArchiveBackend, ArchiveEntry,
+    ArchiveEntryKind, ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -164,11 +162,7 @@ impl ArchiveBackend for ZipBackend {
             }
         }
 
-        Ok(ArchiveSession::new(
-            self.id(),
-            path.to_path_buf(),
-            entries,
-        ))
+        Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
     }
 
     fn extract_entry(

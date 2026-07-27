@@ -12,7 +12,12 @@ use crate::domain::{
 fn replace_entries_restores_focus_and_selection_by_key() {
     let mut panel = Panel::new(
         PanelLocation::filesystem(std::path::PathBuf::from("/tmp")),
-        vec![entry("alpha"), entry("beta"), entry("gamma"), entry("delta")],
+        vec![
+            entry("alpha"),
+            entry("beta"),
+            entry("gamma"),
+            entry("delta"),
+        ],
         true,
     );
 
@@ -35,7 +40,10 @@ fn replace_entries_restores_focus_and_selection_by_key() {
     assert_eq!(selected, vec!["beta".to_string(), "delta".to_string()]);
     assert_eq!(panel.selected_entry().unwrap().name, "delta");
     assert_eq!(panel.selection.focus_index(), Some(2));
-    assert_eq!(panel.selection.anchor_index(), panel.selection.focus_index());
+    assert_eq!(
+        panel.selection.anchor_index(),
+        panel.selection.focus_index()
+    );
 }
 
 #[test]

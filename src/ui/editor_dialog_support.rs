@@ -11,10 +11,7 @@ use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 use sourceview5 as sourceview;
 
-use crate::{
-    application::ConfigStore,
-    config::ThemePreference,
-};
+use crate::{application::ConfigStore, config::ThemePreference};
 
 use super::{RemoteEditBinding, RemoteUploadHook};
 
@@ -61,9 +58,12 @@ pub(super) fn schedule_editor_focus(widgets: &Rc<EditorWidgets>) {
             #[cfg(target_os = "windows")]
             for delay_ms in [50_u64, 150, 350] {
                 let widgets = Rc::clone(&widgets);
-                glib::timeout_add_local_once(std::time::Duration::from_millis(delay_ms), move || {
-                    present_editor_window(&widgets);
-                });
+                glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(delay_ms),
+                    move || {
+                        present_editor_window(&widgets);
+                    },
+                );
             }
         }
     });
@@ -115,7 +115,10 @@ pub(super) fn update_title(widgets: &EditorWidgets) {
     widgets.title_label.set_tooltip_text(Some(&title));
 }
 
-pub(super) fn install_quiet_cursor_boundary_keys(view: &sourceview::View, buffer: &sourceview::Buffer) {
+pub(super) fn install_quiet_cursor_boundary_keys(
+    view: &sourceview::View,
+    buffer: &sourceview::Buffer,
+) {
     let controller = gtk::EventControllerKey::new();
     controller.set_propagation_phase(gtk::PropagationPhase::Capture);
     let buffer = buffer.clone();
@@ -253,7 +256,10 @@ async fn confirm_discard(parent: &impl IsA<gtk::Window>) -> bool {
     matches!(dialog.choose_future(Some(parent)).await, Ok(1))
 }
 
-pub(super) fn install_editor_geometry_tracking(window: &gtk::ApplicationWindow, config_store: &ConfigStore) {
+pub(super) fn install_editor_geometry_tracking(
+    window: &gtk::ApplicationWindow,
+    config_store: &ConfigStore,
+) {
     {
         let config_store = config_store.clone();
         window.connect_maximized_notify(move |window| {

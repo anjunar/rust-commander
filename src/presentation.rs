@@ -99,9 +99,10 @@ pub fn panel_footer_line(panel: &crate::domain::Panel) -> String {
         .filter(|entry| !entry.is_parent_link)
         .collect();
     if marks.is_empty() {
-        let total = panel.entries.len().saturating_sub(
-            panel.entries.iter().filter(|e| e.is_parent_link).count(),
-        );
+        let total = panel
+            .entries
+            .len()
+            .saturating_sub(panel.entries.iter().filter(|e| e.is_parent_link).count());
         return t!("panel.footer_ready", count = total).into_owned();
     }
 

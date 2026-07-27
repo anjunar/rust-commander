@@ -3,9 +3,7 @@ use std::path::Path;
 
 #[cfg(not(target_os = "windows"))]
 use super::{safe_join_extract_path, ArchiveEntryKind};
-use super::{
-    ArchiveBackend, ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
-};
+use super::{ArchiveBackend, ArchiveError, ArchiveFormat, ArchiveFormatDetector, ArchiveSession};
 
 #[derive(Clone, Debug, Default)]
 pub struct LibArchiveBackend;
@@ -248,11 +246,7 @@ mod native {
             }
 
             let entries = self.list_archive_entries(path)?;
-            Ok(ArchiveSession::new(
-                self.id(),
-                path.to_path_buf(),
-                entries,
-            ))
+            Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
         }
 
         fn extract_entry(

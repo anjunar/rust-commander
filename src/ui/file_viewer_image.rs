@@ -237,8 +237,9 @@ fn jump_to(state: &Rc<RefCell<ImageViewerState>>, index: usize) {
         let _ = sender.send((gen, result));
     });
 
-    glib::timeout_add_local(std::time::Duration::from_millis(16), move || {
-        match receiver.try_recv() {
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(16),
+        move || match receiver.try_recv() {
             Ok((result_gen, result)) => {
                 match result {
                     Ok(pixels) => match texture_from_pixels(pixels) {
@@ -251,8 +252,8 @@ fn jump_to(state: &Rc<RefCell<ImageViewerState>>, index: usize) {
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
-        }
-    });
+        },
+    );
 }
 
 fn apply_loaded(state: &Rc<RefCell<ImageViewerState>>, gen: u64, loaded: LoadedImage) {
@@ -273,10 +274,9 @@ fn show_load_error(state: &Rc<RefCell<ImageViewerState>>, gen: u64, error: &str)
         return;
     }
     borrowed.stack.set_visible_child_name("image");
-    borrowed.status_label.set_label(&t!(
-        "viewer.error_with_detail",
-        error = error
-    ));
+    borrowed
+        .status_label
+        .set_label(&t!("viewer.error_with_detail", error = error));
     borrowed.dims_label.set_label("");
 }
 
@@ -301,8 +301,8 @@ fn load_image_pixels(path: &Path) -> Result<DecodedPixels> {
         return load_svg_pixels(path);
     }
 
-    let decoded = image::open(path)
-        .with_context(|| format!("Could not decode image {}", path.display()))?;
+    let decoded =
+        image::open(path).with_context(|| format!("Could not decode image {}", path.display()))?;
     let rgba = decoded.to_rgba8();
     let (width, height) = decoded.dimensions();
     Ok(DecodedPixels {
@@ -313,8 +313,8 @@ fn load_image_pixels(path: &Path) -> Result<DecodedPixels> {
 }
 
 fn load_svg_pixels(path: &Path) -> Result<DecodedPixels> {
-    let svg_data = std::fs::read(path)
-        .with_context(|| format!("Could not read SVG {}", path.display()))?;
+    let svg_data =
+        std::fs::read(path).with_context(|| format!("Could not read SVG {}", path.display()))?;
 
     // Fast path: SVG that is only a wrapper around an embedded PNG/JPEG.
     if let Some(pixels) = try_decode_embedded_raster(&svg_data) {

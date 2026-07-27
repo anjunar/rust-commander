@@ -24,11 +24,7 @@ pub struct FileColumnBinding {
 
 /// Refresh visible cell widgets for a row after in-place data changes (mark/size).
 /// Avoids ListStore remove/insert, which resets SingleSelection to 0.
-pub fn refresh_row_visuals(
-    root: &impl IsA<gtk::Widget>,
-    position: usize,
-    row: &FileRowObject,
-) {
+pub fn refresh_row_visuals(root: &impl IsA<gtk::Widget>, position: usize, row: &FileRowObject) {
     refresh_widget_tree(root.as_ref(), position, row);
 }
 

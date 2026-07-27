@@ -9,8 +9,7 @@ use crate::{
     config::{ThemePreference, ViewerConfig},
     ui::{
         dialogs::build_independent_window,
-        file_viewer_archive,
-        file_viewer_code,
+        file_viewer_archive, file_viewer_code,
         file_viewer_common::{
             append_status, build_viewer_chrome, file_size, install_escape_close,
             present_with_focus, read_text_file_limited,
@@ -548,4 +547,3 @@ fn sync_scrollbars(
 
     syncing_adjustments.set(false);
 }
-

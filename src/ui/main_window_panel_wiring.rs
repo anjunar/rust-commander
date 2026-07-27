@@ -170,8 +170,11 @@ impl PanelWiring {
                             let context_menu_handler = Rc::clone(&context_menu_handler);
                             let commander_for_menu = Rc::clone(&commander_for_menu);
                             glib::idle_add_local_once(move || {
-                                let index =
-                                    commander_for_menu.borrow().state().panel(panel).cursor_index();
+                                let index = commander_for_menu
+                                    .borrow()
+                                    .state()
+                                    .panel(panel)
+                                    .cursor_index();
                                 context_menu_handler(panel, index, 32.0, 48.0);
                             });
                         }
@@ -218,14 +221,12 @@ impl PanelWiring {
                 panel_view.connect_root_changed(move |choice| {
                     let navigation = navigation.clone();
                     let remote_connect_handler = Rc::clone(&remote_connect_handler);
-                    glib::idle_add_local_once(move || {
-                        match choice {
-                            RootSelectorChoice::Drive(index) => {
-                                navigation.start_root_navigation(panel, index);
-                            }
-                            RootSelectorChoice::Sftp => {
-                                remote_connect_handler(panel);
-                            }
+                    glib::idle_add_local_once(move || match choice {
+                        RootSelectorChoice::Drive(index) => {
+                            navigation.start_root_navigation(panel, index);
+                        }
+                        RootSelectorChoice::Sftp => {
+                            remote_connect_handler(panel);
                         }
                     });
                 });

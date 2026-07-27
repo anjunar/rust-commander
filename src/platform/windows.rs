@@ -54,12 +54,7 @@ pub fn open_path(path: &Path) -> Result<()> {
         .stderr(std::process::Stdio::null())
         .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
-        .with_context(|| {
-            format!(
-                "Could not launch the default action for {}",
-                path.display()
-            )
-        })?;
+        .with_context(|| format!("Could not launch the default action for {}", path.display()))?;
 
     Ok(())
 }
@@ -145,8 +140,8 @@ fn force_foreground_hwnd(hwnd: windows_sys::Win32::Foundation::HWND) {
         System::Threading::{AttachThreadInput, GetCurrentThreadId},
         UI::WindowsAndMessaging::{
             BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
-            SetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOMOVE, SWP_NOSIZE, SW_RESTORE,
-            HWND_NOTOPMOST, HWND_TOPMOST,
+            SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST,
+            SWP_NOMOVE, SWP_NOSIZE, SW_RESTORE,
         },
     };
 
@@ -226,7 +221,9 @@ fn find_hwnd_by_title(window_title: &str) -> windows_sys::Win32::Foundation::HWN
             return 1;
         }
         let title = String::from_utf16_lossy(&buf[..len as usize]);
-        if title == state.title || title.starts_with(&state.title) || state.title.starts_with(&title)
+        if title == state.title
+            || title.starts_with(&state.title)
+            || state.title.starts_with(&title)
         {
             state.found = hwnd;
             return 0;

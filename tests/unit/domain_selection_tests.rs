@@ -69,7 +69,10 @@ fn preserve_intent_restores_archive_cursor_by_archive_path() {
     );
 
     let restored = apply_selection(
-        &[archive_entry("folder/file.txt"), archive_entry("folder/other.txt")],
+        &[
+            archive_entry("folder/file.txt"),
+            archive_entry("folder/other.txt"),
+        ],
         &SelectionIntent::preserve(snapshot),
     );
 
@@ -119,7 +122,11 @@ fn entry(name: &str) -> Entry {
 }
 
 fn archive_entry(path: &str) -> Entry {
-    let name = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+    let name = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path);
     Entry {
         name: name.into(),
         archive_path: Some(path.into()),

@@ -31,7 +31,8 @@ impl OperationsController {
                     });
                     let update = {
                         let mut commander = controller.commander.borrow_mut();
-                        commander.set_status(t!("status.copy_current_path", path = path).into_owned())
+                        commander
+                            .set_status(t!("status.copy_current_path", path = path).into_owned())
                     };
                     controller.host.apply_update(update);
                     true

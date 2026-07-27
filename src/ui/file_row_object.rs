@@ -63,7 +63,12 @@ impl FileRowObject {
         self.update_with_size_label(location, entry, &presentation::entry_size_label(entry));
     }
 
-    pub fn update_with_size_label(&self, location: &PanelLocation, entry: &Entry, size_label: &str) {
+    pub fn update_with_size_label(
+        &self,
+        location: &PanelLocation,
+        entry: &Entry,
+        size_label: &str,
+    ) {
         self.imp()
             .data
             .replace(Self::build_data(location, entry, size_label));

@@ -12,10 +12,7 @@ use rust_i18n::t;
 
 use crate::{
     application::ActivePanel,
-    domain::{
-        sorting::SortColumn,
-        Entry, PanelLocation, RootLocation,
-    },
+    domain::{sorting::SortColumn, Entry, PanelLocation, RootLocation},
     ui::{
         columns::{append_file_columns, FileColumnBinding},
         file_row_object::FileRowObject,
@@ -359,7 +356,6 @@ impl FilePanelView {
         *self.tab_activate_handler.borrow_mut() = Some(Rc::new(on_activate));
         *self.tab_new_handler.borrow_mut() = Some(Rc::new(on_new));
     }
-
 
     pub fn set_entries(
         &self,

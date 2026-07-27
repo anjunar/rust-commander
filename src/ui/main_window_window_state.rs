@@ -274,5 +274,7 @@ fn auxiliary_windows_open(main: &gtk::ApplicationWindow) -> bool {
         return false;
     };
     let main_window = main.clone().upcast::<gtk::Window>();
-    app.windows().into_iter().any(|window| window != main_window)
+    app.windows()
+        .into_iter()
+        .any(|window| window != main_window)
 }

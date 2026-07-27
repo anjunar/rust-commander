@@ -163,8 +163,9 @@ impl MainWindow {
             return;
         };
 
-        let sibling_images =
-            file_viewer_image::sibling_images_from_panel(self.commander.borrow().state().active_panel());
+        let sibling_images = file_viewer_image::sibling_images_from_panel(
+            self.commander.borrow().state().active_panel(),
+        );
         let viewer_config = self.app_config_cache.borrow().viewer.clone();
         let theme = self.app_config_cache.borrow().general.theme;
         if let Err(error) = file_viewer_dialog::open(
@@ -232,11 +233,9 @@ impl MainWindow {
         let this = Rc::clone(self);
         let display_name = selected.display_name.clone();
         let is_dir = selected.is_dir;
-        self.commander_view.panel(panel).begin_inline_rename(
-            index,
-            &display_name,
-            is_dir,
-            {
+        self.commander_view
+            .panel(panel)
+            .begin_inline_rename(index, &display_name, is_dir, {
                 let display_name = display_name.clone();
                 move |new_name| {
                     let new_name = new_name.trim().to_string();
@@ -264,8 +263,7 @@ impl MainWindow {
                         return;
                     }
 
-                    let status =
-                        t!("status.renamed", path = renamed_path.as_str()).into_owned();
+                    let status = t!("status.renamed", path = renamed_path.as_str()).into_owned();
                     // Keep model in sync, but refresh the panel on the next idle — immediate
                     // set_entries after tearing down the rename Entry aborts on Windows.
                     let _ = this
@@ -277,8 +275,7 @@ impl MainWindow {
                         this.refresh_active_panel_revealing(&new_name, status);
                     });
                 }
-            },
-        );
+            });
     }
 
     pub fn handle_open_console(self: &Rc<Self>) {
@@ -373,11 +370,7 @@ impl MainWindow {
             return;
         }
 
-        let max_bytes = self
-            .app_config_cache
-            .borrow()
-            .editor
-            .max_edit_size_bytes();
+        let max_bytes = self.app_config_cache.borrow().editor.max_edit_size_bytes();
         if size_bytes > max_bytes {
             dialogs::show_error(
                 &self.window,
@@ -482,86 +475,83 @@ impl MainWindow {
         let window = self.window.clone();
         let remote_path_for_status = remote_path.clone();
 
-        self.operations_controller().run_remote_transfer_with_progress(
-            download,
-            &t!("progress.remote_edit_download"),
-            true,
-            move |result| {
-                if let Err(error) = result {
-                    crate::fs::temp::remove_temp_dir(&temp_dir);
-                    dialogs::show_error(
-                        &window,
-                        &t!("error.could_not_open_editor"),
-                        &error,
-                    );
-                    return;
-                }
+        self.operations_controller()
+            .run_remote_transfer_with_progress(
+                download,
+                &t!("progress.remote_edit_download"),
+                true,
+                move |result| {
+                    if let Err(error) = result {
+                        crate::fs::temp::remove_temp_dir(&temp_dir);
+                        dialogs::show_error(&window, &t!("error.could_not_open_editor"), &error);
+                        return;
+                    }
 
-                if !local_path.is_file() {
-                    crate::fs::temp::remove_temp_dir(&temp_dir);
-                    dialogs::show_error(
-                        &window,
-                        &t!("error.could_not_open_editor"),
-                        &t!("error.remote_edit_download_missing"),
-                    );
-                    return;
-                }
-
-                let binding = editor_dialog::RemoteEditBinding {
-                    session: session.clone(),
-                    remote_path: remote_path.clone(),
-                    temp_dir: temp_dir.clone(),
-                };
-                let remote_parent = remote_parent.clone();
-                let upload_hook: editor_dialog::RemoteUploadHook = {
-                    let this = Rc::clone(&this);
-                    Rc::new(move |local_path, binding, done| {
-                        let upload = crate::application::OperationPlan::RemoteUpload(
-                            crate::application::RemoteUploadRequest {
-                                sources: vec![local_path],
-                                session: binding.session.clone(),
-                                target_directory: remote_parent.clone(),
-                                force_overwrite: true,
-                            },
+                    if !local_path.is_file() {
+                        crate::fs::temp::remove_temp_dir(&temp_dir);
+                        dialogs::show_error(
+                            &window,
+                            &t!("error.could_not_open_editor"),
+                            &t!("error.remote_edit_download_missing"),
                         );
-                        this.operations_controller()
-                            .run_remote_transfer_with_progress(
-                                upload,
-                                &t!("progress.remote_edit_upload"),
-                                true,
-                                move |result| done(result),
+                        return;
+                    }
+
+                    let binding = editor_dialog::RemoteEditBinding {
+                        session: session.clone(),
+                        remote_path: remote_path.clone(),
+                        temp_dir: temp_dir.clone(),
+                    };
+                    let remote_parent = remote_parent.clone();
+                    let upload_hook: editor_dialog::RemoteUploadHook = {
+                        let this = Rc::clone(&this);
+                        Rc::new(move |local_path, binding, done| {
+                            let upload = crate::application::OperationPlan::RemoteUpload(
+                                crate::application::RemoteUploadRequest {
+                                    sources: vec![local_path],
+                                    session: binding.session.clone(),
+                                    target_directory: remote_parent.clone(),
+                                    force_overwrite: true,
+                                },
                             );
-                    })
-                };
+                            this.operations_controller()
+                                .run_remote_transfer_with_progress(
+                                    upload,
+                                    &t!("progress.remote_edit_upload"),
+                                    true,
+                                    move |result| done(result),
+                                );
+                        })
+                    };
 
-                let this = Rc::clone(&this);
-                let remote_path_for_status = remote_path_for_status.clone();
-                if let Err(error) = editor_dialog::edit_remote_file(
-                    &window,
-                    local_path,
-                    binding,
-                    upload_hook,
-                    theme_preference,
-                    config_store.clone(),
-                    move |_| {
-                        this.set_status_message(
-                            t!(
-                                "status.remote_saved",
-                                path = remote_path_for_status.as_str()
-                            )
-                            .into_owned(),
-                        );
-                    },
-                ) {
-                    crate::fs::temp::remove_temp_dir(&temp_dir);
-                    dialogs::show_error(
+                    let this = Rc::clone(&this);
+                    let remote_path_for_status = remote_path_for_status.clone();
+                    if let Err(error) = editor_dialog::edit_remote_file(
                         &window,
-                        &t!("error.could_not_open_editor"),
-                        &error.to_string(),
-                    );
-                }
-            },
-        );
+                        local_path,
+                        binding,
+                        upload_hook,
+                        theme_preference,
+                        config_store.clone(),
+                        move |_| {
+                            this.set_status_message(
+                                t!(
+                                    "status.remote_saved",
+                                    path = remote_path_for_status.as_str()
+                                )
+                                .into_owned(),
+                            );
+                        },
+                    ) {
+                        crate::fs::temp::remove_temp_dir(&temp_dir);
+                        dialogs::show_error(
+                            &window,
+                            &t!("error.could_not_open_editor"),
+                            &error.to_string(),
+                        );
+                    }
+                },
+            );
     }
 
     pub fn handle_make_directory(self: &Rc<Self>) {
@@ -589,10 +579,7 @@ impl MainWindow {
                     }
                     path.display().to_string()
                 }
-                crate::application::CreateDirectoryTarget::Remote {
-                    session_key,
-                    path,
-                } => {
+                crate::application::CreateDirectoryTarget::Remote { session_key, path } => {
                     let session = match this.session_store.borrow().remote(session_key) {
                         Some(session) => session,
                         None => {
@@ -641,11 +628,7 @@ impl MainWindow {
 
             this.suppress_panel_focus.set(true);
             this.refresh_active_panel_revealing(&trimmed, {
-                t!(
-                    "status.created_file",
-                    path = target.display().to_string()
-                )
-                .into_owned()
+                t!("status.created_file", path = target.display().to_string()).into_owned()
             });
 
             let theme_preference = this.app_config_cache.borrow().general.theme;

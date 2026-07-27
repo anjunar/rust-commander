@@ -6,9 +6,7 @@ use serde_json::Value as JsonValue;
 
 use crate::{
     config::ThemePreference,
-    ui::{
-        file_viewer_code::open_highlighted_text, file_viewer_common::read_text_file_limited,
-    },
+    ui::{file_viewer_code::open_highlighted_text, file_viewer_common::read_text_file_limited},
 };
 
 #[derive(Clone, Copy)]

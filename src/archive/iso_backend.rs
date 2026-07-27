@@ -216,11 +216,7 @@ impl ArchiveBackend for IsoBackend {
 
     fn open(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
         let entries = self.list_iso_entries(path)?;
-        Ok(ArchiveSession::new(
-            self.id(),
-            path.to_path_buf(),
-            entries,
-        ))
+        Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
     }
 
     fn extract_entry(
