@@ -52,6 +52,7 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          path-type: inherit
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
@@ -89,7 +90,6 @@ jobs:
         if: matrix.label == 'windows'
         shell: msys2 {0}
         run: |
-          echo "PATH=$(cygpath -u "${USERPROFILE}")/.cargo/bin:/mingw64/bin:${PATH}" >> "${GITHUB_ENV}"
           echo "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig" >> "${GITHUB_ENV}"
 
       - name: Build
@@ -103,9 +103,13 @@ jobs:
       - name: Build (Windows)
         if: matrix.label == 'windows'
         shell: msys2 {0}
-        run: cargo build --locked --target x86_64-pc-windows-gnu
+        run: |
+          export PATH="$(cygpath -u "${CARGO_HOME}")/bin:/mingw64/bin:${PATH}"
+          cargo build --locked --target x86_64-pc-windows-gnu
 
       - name: Test (Windows)
         if: matrix.label == 'windows'
         shell: msys2 {0}
-        run: cargo test --locked --target x86_64-pc-windows-gnu
+        run: |
+          export PATH="$(cygpath -u "${CARGO_HOME}")/bin:/mingw64/bin:${PATH}"
+          cargo test --locked --target x86_64-pc-windows-gnu
