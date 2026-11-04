@@ -34,8 +34,7 @@ impl NavigationHost for MainWindow {
     }
 
     fn apply_panel_root(&self, panel: ActivePanel) {
-        self.commander_view
-            .apply_root(self.commander.borrow().state(), panel);
+        self.apply_root(self.commander.borrow().state(), panel);
     }
 
     fn notify_initial_panel_loaded(&self, panel: ActivePanel) {

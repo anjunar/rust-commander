@@ -1,6 +1,7 @@
 mod columns;
-mod commander_view;
+mod commands;
 mod dialogs;
+mod dsl;
 mod editor_dialog;
 mod file_panel_view;
 mod file_row_object;
@@ -8,7 +9,7 @@ mod file_viewer_dialog;
 mod glib_poll;
 pub mod gtk_app;
 mod main_window;
-mod shortcuts;
+mod shell;
 mod terminal_controller;
 mod terminal_dock;
 mod terminal_state;

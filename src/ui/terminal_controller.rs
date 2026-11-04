@@ -1,14 +1,14 @@
 use std::{
-    cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
 };
 
-use gtk::{gdk, glib, prelude::*};
-use rust_i18n::t;
+use gtk::prelude::*;
 
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-use gtk::{gio, pango};
+use gtk::{gdk, gio, glib, pango};
+#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+use rust_i18n::t;
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 use vte4::prelude::*;
 
@@ -32,13 +32,13 @@ pub enum TerminalAction {
 }
 
 pub struct TerminalController {
-    state: Rc<RefCell<TerminalState>>,
+    state: Rc<TerminalState>,
     backend: TerminalBackend,
 }
 
 impl TerminalController {
     pub fn new(initial_dir: PathBuf) -> Self {
-        let state = Rc::new(RefCell::new(TerminalState::new(initial_dir)));
+        let state = Rc::new(TerminalState::new(initial_dir));
         let backend = TerminalBackend::new(Rc::clone(&state));
         Self { state, backend }
     }
@@ -47,12 +47,8 @@ impl TerminalController {
         self.backend.widget()
     }
 
-    pub fn state(&self) -> Rc<RefCell<TerminalState>> {
+    pub fn state(&self) -> Rc<TerminalState> {
         Rc::clone(&self.state)
-    }
-
-    pub fn current_working_dir(&self) -> PathBuf {
-        self.state.borrow().working_dir.clone()
     }
 
     pub fn is_supported(&self) -> bool {
@@ -60,35 +56,34 @@ impl TerminalController {
     }
 
     pub fn has_focus(&self) -> bool {
-        self.backend.has_focus()
+        self.backend.widget().has_focus()
     }
 
     pub fn set_panel_dir(&self, path: &Path) {
-        self.state.borrow_mut().last_panel_dir = path.to_path_buf();
+        self.state.last_panel_dir.set(path.to_path_buf());
     }
 
     pub fn run(&self, command: TerminalCommand) -> TerminalAction {
         match command {
             TerminalCommand::ToggleVisibility => {
-                let visible = self.state.borrow().visible;
-                if visible {
+                if self.state.visible.get() {
                     self.run(TerminalCommand::Hide)
                 } else {
                     self.run(TerminalCommand::Show)
                 }
             }
             TerminalCommand::Show => {
-                if !self.state.borrow().has_spawned {
-                    let panel_dir = self.state.borrow().last_panel_dir.clone();
+                if !self.state.has_spawned.get() {
+                    let panel_dir = self.state.last_panel_dir.get();
                     if let Err(error) = self.backend.spawn(&panel_dir) {
                         return TerminalAction::ShowError(error);
                     }
                 }
-                self.state.borrow_mut().visible = true;
+                self.state.visible.set(true);
                 TerminalAction::None
             }
             TerminalCommand::Hide => {
-                self.state.borrow_mut().visible = false;
+                self.state.visible.set(false);
                 TerminalAction::None
             }
             TerminalCommand::Focus => {
@@ -96,16 +91,16 @@ impl TerminalController {
                 if matches!(action, TerminalAction::ShowError(_)) {
                     return action;
                 }
-                self.backend.grab_focus();
+                self.backend.widget().grab_focus();
                 TerminalAction::None
             }
             TerminalCommand::RestartInPanelDir => {
-                let panel_dir = self.state.borrow().last_panel_dir.clone();
+                let panel_dir = self.state.last_panel_dir.get();
                 if let Err(error) = self.backend.spawn(&panel_dir) {
                     return TerminalAction::ShowError(error);
                 }
-                self.state.borrow_mut().visible = true;
-                self.backend.grab_focus();
+                self.state.visible.set(true);
+                self.backend.widget().grab_focus();
                 TerminalAction::None
             }
             TerminalCommand::Clear => {
@@ -113,13 +108,6 @@ impl TerminalController {
                 TerminalAction::None
             }
         }
-    }
-
-    pub fn connect_escape_to_focus_panels<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        self.backend.connect_escape(f);
     }
 }
 
@@ -131,7 +119,7 @@ enum TerminalBackend {
 }
 
 impl TerminalBackend {
-    fn new(state: Rc<RefCell<TerminalState>>) -> Self {
+    fn new(state: Rc<TerminalState>) -> Self {
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
         {
             Self::Vte(LinuxTerminalBackend::new(state))
@@ -175,37 +163,7 @@ impl TerminalBackend {
             #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             Self::Vte(backend) => backend.clear(),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
-            Self::Unsupported(backend) => backend.clear(),
-        }
-    }
-
-    fn grab_focus(&self) {
-        match self {
-            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-            Self::Vte(backend) => backend.grab_focus(),
-            #[cfg(any(target_os = "windows", target_os = "macos"))]
-            Self::Unsupported(backend) => backend.grab_focus(),
-        }
-    }
-
-    fn connect_escape<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        match self {
-            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-            Self::Vte(backend) => backend.connect_escape(f),
-            #[cfg(any(target_os = "windows", target_os = "macos"))]
-            Self::Unsupported(backend) => backend.connect_escape(f),
-        }
-    }
-
-    fn has_focus(&self) -> bool {
-        match self {
-            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-            Self::Vte(backend) => backend.has_focus(),
-            #[cfg(any(target_os = "windows", target_os = "macos"))]
-            Self::Unsupported(backend) => backend.has_focus(),
+            Self::Unsupported(_) => {}
         }
     }
 }
@@ -213,12 +171,12 @@ impl TerminalBackend {
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 struct LinuxTerminalBackend {
     widget: vte4::Terminal,
-    state: Rc<RefCell<TerminalState>>,
+    state: Rc<TerminalState>,
 }
 
 #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
 impl LinuxTerminalBackend {
-    fn new(state: Rc<RefCell<TerminalState>>) -> Self {
+    fn new(state: Rc<TerminalState>) -> Self {
         let widget = vte4::Terminal::new();
         widget.set_hexpand(true);
         widget.set_vexpand(true);
@@ -274,7 +232,7 @@ impl LinuxTerminalBackend {
             let Some(path) = file.path() else {
                 return;
             };
-            state_for_notify.borrow_mut().working_dir = path;
+            state_for_notify.working_dir.set(path);
         });
 
         Self { widget, state }
@@ -305,14 +263,10 @@ impl LinuxTerminalBackend {
             -1,
             None::<&gio::Cancellable>,
             move |result| {
-                if let Ok(pid) = result {
-                    state.borrow_mut().has_spawned = true;
-                    state.borrow_mut().working_dir = working_directory_path.clone();
-                    state.borrow_mut().last_panel_dir = working_directory_path.clone();
-                    #[allow(deprecated)]
-                    {
-                        let _ = pid;
-                    }
+                if result.is_ok() {
+                    state.has_spawned.set(true);
+                    state.working_dir.set(working_directory_path.clone());
+                    state.last_panel_dir.set(working_directory_path.clone());
                 }
             },
         );
@@ -323,63 +277,40 @@ impl LinuxTerminalBackend {
     fn clear(&self) {
         self.widget.reset(false, true);
     }
-
-    fn grab_focus(&self) {
-        self.widget.grab_focus();
-    }
-
-    fn has_focus(&self) -> bool {
-        self.widget.has_focus()
-    }
-
-    fn connect_escape<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        let controller = gtk::EventControllerKey::new();
-        controller.connect_key_pressed(move |_, key, _, _| {
-            if key == gdk::Key::Escape {
-                f();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        self.widget.add_controller(controller);
-    }
 }
 
+/// The dock content where no embedded terminal backend exists yet.
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 struct UnsupportedTerminalBackend {
     widget: gtk::Box,
-    description: gtk::Label,
-    state: Rc<RefCell<TerminalState>>,
+    description: crate::ui::dsl::Property<String>,
+    state: Rc<TerminalState>,
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 impl UnsupportedTerminalBackend {
-    fn new(state: Rc<RefCell<TerminalState>>) -> Self {
+    fn new(state: Rc<TerminalState>) -> Self {
+        use crate::ui::dsl::{render, text, tr, Property};
+
+        let description = Property::new(String::new());
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        widget.set_hexpand(true);
-        widget.set_vexpand(true);
-        widget.set_margin_top(12);
-        widget.set_margin_bottom(12);
-        widget.set_margin_start(12);
-        widget.set_margin_end(12);
-        widget.add_css_class("terminal-placeholder");
-        widget.set_focusable(true);
+        render(&widget, || {
+            let placeholder = crate::ui::dsl::adopt(&widget);
+            placeholder.set_hexpand(true);
+            placeholder.set_vexpand(true);
+            placeholder.margin(12);
+            placeholder.css("terminal-placeholder");
+            placeholder.set_focusable(true);
 
-        let title = gtk::Label::new(Some(&t!("terminal.windows_placeholder_title")));
-        title.set_wrap(true);
-        title.set_xalign(0.0);
-        title.add_css_class("terminal-placeholder-title");
-        widget.append(&title);
-
-        let description = gtk::Label::new(Some(""));
-        description.set_wrap(true);
-        description.set_xalign(0.0);
-        description.add_css_class("terminal-placeholder-copy");
-        widget.append(&description);
+            text(tr!("terminal.windows_placeholder_title"), |title| {
+                title.set_wrap(true);
+                title.css("terminal-placeholder-title");
+            });
+            text(&description, |copy| {
+                copy.set_wrap(true);
+                copy.css("terminal-placeholder-copy");
+            });
+        });
 
         Self {
             widget,
@@ -389,43 +320,16 @@ impl UnsupportedTerminalBackend {
     }
 
     fn spawn(&self, working_dir: &Path) -> Result<(), String> {
-        {
-            let mut state = self.state.borrow_mut();
-            state.has_spawned = true;
-            state.working_dir = working_dir.to_path_buf();
-            state.last_panel_dir = working_dir.to_path_buf();
-        }
-
-        self.description.set_label(&t!(
-            "terminal.windows_placeholder_body",
-            path = working_dir.display().to_string()
-        ));
+        self.state.has_spawned.set(true);
+        self.state.working_dir.set(working_dir.to_path_buf());
+        self.state.last_panel_dir.set(working_dir.to_path_buf());
+        self.description.set(
+            rust_i18n::t!(
+                "terminal.windows_placeholder_body",
+                path = working_dir.display().to_string()
+            )
+            .into_owned(),
+        );
         Ok(())
-    }
-
-    fn clear(&self) {}
-
-    fn grab_focus(&self) {
-        self.widget.grab_focus();
-    }
-
-    fn has_focus(&self) -> bool {
-        self.widget.has_focus()
-    }
-
-    fn connect_escape<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        let controller = gtk::EventControllerKey::new();
-        controller.connect_key_pressed(move |_, key, _, _| {
-            if key == gdk::Key::Escape {
-                f();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        self.widget.add_controller(controller);
     }
 }

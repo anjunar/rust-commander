@@ -1,11 +1,13 @@
+use std::path::PathBuf;
 
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
-
-use gtk::{glib, prelude::*};
+use gtk::prelude::*;
 use rust_i18n::t;
 
+use crate::ui::dsl::{button, text, Property};
+
 use super::{
-    build_modal_window, dialogs_base::ModalWindow, dialogs_operations::selected_paths_summary,
+    dialogs_base::{field, hint, modal, present_and_focus, switch_row, Once},
+    dialogs_operations::selected_paths_summary,
 };
 
 pub fn prompt_unix_chmod<F>(
@@ -15,66 +17,14 @@ pub fn prompt_unix_chmod<F>(
 ) where
     F: FnOnce(String, bool) + 'static,
 {
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, &t!("dialog.chmod_title"), 460, 180);
-
-    let label = gtk::Label::new(Some(&t!("dialog.chmod_prompt")));
-    label.set_xalign(0.0);
-    content.append(&label);
-
-    let summary = gtk::Label::new(Some(&selected_paths_summary(&selected_paths)));
-    summary.set_xalign(0.0);
-    summary.set_wrap(true);
-    summary.add_css_class("dim-label");
-    content.append(&summary);
-
-    let mode_entry = gtk::Entry::new();
-    mode_entry.set_hexpand(true);
-    mode_entry.set_placeholder_text(Some(&t!("dialog.chmod_placeholder")));
-    content.append(&mode_entry);
-
-    let recursive_switch = gtk::Switch::new();
-    content.append(&switch_row(
-        &t!("dialog.recursive_apply"),
-        &recursive_switch,
-    ));
-
-    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
-    let confirm_button = gtk::Button::with_label(&t!("common.apply"));
-    confirm_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&confirm_button);
-    window.set_default_widget(Some(&confirm_button));
-
-    let callback = Rc::new(RefCell::new(Some(on_confirm)));
-    {
-        let window = window.clone();
-        cancel_button.connect_clicked(move |_| {
-            window.close();
-        });
-    }
-    {
-        let window = window.clone();
-        let mode_entry = mode_entry.clone();
-        let recursive_switch = recursive_switch.clone();
-        let callback = Rc::clone(&callback);
-        confirm_button.connect_clicked(move |_| {
-            let mode = mode_entry.text().to_string();
-            let recursive = recursive_switch.is_active();
-            if let Some(on_confirm) = callback.borrow_mut().take() {
-                on_confirm(mode, recursive);
-            }
-            window.close();
-        });
-    }
-
-    glib::idle_add_local_once(move || {
-        window.present();
-        mode_entry.grab_focus();
-    });
+    prompt_unix_value(
+        parent,
+        &t!("dialog.chmod_title"),
+        &t!("dialog.chmod_prompt"),
+        &t!("dialog.chmod_placeholder"),
+        selected_paths,
+        on_confirm,
+    );
 }
 
 pub fn prompt_unix_chown<F>(
@@ -84,82 +34,55 @@ pub fn prompt_unix_chown<F>(
 ) where
     F: FnOnce(String, bool) + 'static,
 {
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, &t!("dialog.chown_title"), 460, 180);
+    prompt_unix_value(
+        parent,
+        &t!("dialog.chown_title"),
+        &t!("dialog.chown_prompt"),
+        &t!("dialog.chown_placeholder"),
+        selected_paths,
+        on_confirm,
+    );
+}
 
-    let label = gtk::Label::new(Some(&t!("dialog.chown_prompt")));
-    label.set_xalign(0.0);
-    content.append(&label);
+/// One value (a mode or an owner) plus a recursive switch, applied to the selection.
+fn prompt_unix_value<F>(
+    parent: &gtk::ApplicationWindow,
+    title: &str,
+    prompt: &str,
+    placeholder: &str,
+    selected_paths: Vec<PathBuf>,
+    on_confirm: F,
+) where
+    F: FnOnce(String, bool) + 'static,
+{
+    let value = Property::new(String::new());
+    let recursive = Property::new(false);
+    let on_confirm = Once::new(move |(value, recursive)| on_confirm(value, recursive));
 
-    let summary = gtk::Label::new(Some(&selected_paths_summary(&selected_paths)));
-    summary.set_xalign(0.0);
-    summary.set_wrap(true);
-    summary.add_css_class("dim-label");
-    content.append(&summary);
-
-    let owner_entry = gtk::Entry::new();
-    owner_entry.set_hexpand(true);
-    owner_entry.set_placeholder_text(Some(&t!("dialog.chown_placeholder")));
-    content.append(&owner_entry);
-
-    let recursive_switch = gtk::Switch::new();
-    content.append(&switch_row(
-        &t!("dialog.recursive_apply"),
-        &recursive_switch,
-    ));
-
-    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
-    let confirm_button = gtk::Button::with_label(&t!("common.apply"));
-    confirm_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&confirm_button);
-    window.set_default_widget(Some(&confirm_button));
-
-    let callback = Rc::new(RefCell::new(Some(on_confirm)));
-    {
-        let window = window.clone();
-        cancel_button.connect_clicked(move |_| {
-            window.close();
+    let (window, (value_entry, apply)) = modal(parent, title, (460, 180), |dialog| {
+        let value_entry = dialog.content(|| {
+            text(prompt, |_| {});
+            hint(selected_paths_summary(&selected_paths));
+            let value_entry = field(placeholder, &value);
+            switch_row(t!("dialog.recursive_apply"), &recursive);
+            value_entry
         });
-    }
-    {
-        let window = window.clone();
-        let owner_entry = owner_entry.clone();
-        let recursive_switch = recursive_switch.clone();
-        let callback = Rc::clone(&callback);
-        confirm_button.connect_clicked(move |_| {
-            let owner = owner_entry.text().to_string();
-            let recursive = recursive_switch.is_active();
-            if let Some(on_confirm) = callback.borrow_mut().take() {
-                on_confirm(owner, recursive);
-            }
-            window.close();
+        let apply = dialog.actions(|| {
+            dialog.close_button(t!("common.cancel"));
+            button(t!("common.apply"), |button| {
+                button.css("suggested-action");
+                let value = value.clone();
+                let recursive = recursive.clone();
+                let window = dialog.window().widget().clone();
+                let on_confirm = on_confirm.clone();
+                button.on_click(move || {
+                    on_confirm.call((value.get(), recursive.get()));
+                    window.close();
+                });
+            })
         });
-    }
-
-    glib::idle_add_local_once(move || {
-        window.present();
-        owner_entry.grab_focus();
+        (value_entry, apply)
     });
-}
-
-fn settings_row() -> gtk::Box {
-    gtk::Box::new(gtk::Orientation::Horizontal, 8)
-}
-
-fn row_label(text: &str) -> gtk::Label {
-    let label = gtk::Label::new(Some(text));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    label
-}
-
-fn switch_row(text: &str, switch: &gtk::Switch) -> gtk::Box {
-    let row = settings_row();
-    row.append(&row_label(text));
-    row.append(switch);
-    row
+    window.set_default_widget(Some(apply.widget()));
+    present_and_focus(&window, value_entry.widget());
 }

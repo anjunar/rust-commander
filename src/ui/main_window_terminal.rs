@@ -10,6 +10,8 @@ use super::hosts::TerminalHost;
 const MIN_TERMINAL_HEIGHT: i32 = 180;
 const MIN_PANELS_HEIGHT: i32 = 220;
 
+/// Turns what a terminal command decided into window behaviour: room for the
+/// dock when it opens, focus back to the panels, or an error dialog.
 #[derive(Clone)]
 pub struct TerminalController {
     host: Rc<dyn TerminalHost>,
@@ -30,29 +32,10 @@ impl TerminalController {
         }
     }
 
-    pub fn connect_terminal_dock(&self) {
-        {
-            let host = Rc::clone(&self.host);
-            self.terminal_dock.connect_focus_return(move || {
-                host.focus_active_panel();
-            });
-        }
-
-        {
-            let controller = self.clone();
-            self.terminal_dock.connect_buttons(move |action| {
-                controller.handle_terminal_action(action);
-            });
-        }
-    }
-
     pub fn handle_terminal_action(&self, action: TerminalAction) {
         match action {
             TerminalAction::None => {
-                self.terminal_dock.sync_visibility();
-                if self.terminal_dock.state().borrow().visible
-                    && self.content_paned.position() < 320
-                {
+                if self.terminal_dock.is_visible() && self.content_paned.position() < 320 {
                     let available_height = self.content_paned.height();
                     if available_height > 0 {
                         let max_position = (available_height - MIN_TERMINAL_HEIGHT).max(0);

@@ -1,15 +1,19 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::path::PathBuf;
 
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
 use crate::{
     application::{ConflictResolution, FileOperationKind, OperationConflict, OperationPlan},
-    fs::{operations::progress_percent, reader::format_bytes},
+    fs::{
+        operations::{format_eta, progress_percent},
+        reader::format_bytes,
+    },
     presentation,
+    ui::dsl::{button, progress, text, Property},
 };
 
-use super::dialogs_base::{build_modal_window, ModalWindow};
+use super::dialogs_base::{heading, modal, paragraph, Once};
 
 pub fn confirm_operation<F>(parent: &gtk::ApplicationWindow, request: OperationPlan, on_confirm: F)
 where
@@ -50,54 +54,30 @@ where
         ),
     };
 
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, &title, 480, 160);
+    // The operation starts on the next main-loop turn, once the dialog is gone.
+    let on_confirm = Once::new(move |()| {
+        glib::idle_add_local_once(move || on_confirm(request));
+    });
 
-    let title_label = gtk::Label::new(Some(&title));
-    title_label.set_xalign(0.0);
-    title_label.set_wrap(true);
-    title_label.add_css_class("dialog-title");
-    content.append(&title_label);
-
-    let detail_label = gtk::Label::new(Some(&detail));
-    detail_label.set_xalign(0.0);
-    detail_label.set_wrap(true);
-    content.append(&detail_label);
-
-    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
-    let confirm_button = gtk::Button::with_label(&confirm_label);
-    confirm_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&confirm_button);
-    window.set_default_widget(Some(&confirm_button));
-
-    {
-        let window = window.clone();
-        cancel_button.connect_clicked(move |_| {
-            window.close();
+    let (window, confirm) = modal(parent, &title, (480, 160), |dialog| {
+        dialog.content(|| {
+            heading(title.as_str());
+            paragraph(detail);
         });
-    }
-
-    let callback = Rc::new(RefCell::new(Some(on_confirm)));
-    let request = Rc::new(RefCell::new(Some(request)));
-    {
-        let window = window.clone();
-        let callback = Rc::clone(&callback);
-        let request = Rc::clone(&request);
-        confirm_button.connect_clicked(move |_| {
-            window.close();
-            if let (Some(on_confirm), Some(request)) =
-                (callback.borrow_mut().take(), request.borrow_mut().take())
-            {
-                glib::idle_add_local_once(move || {
-                    on_confirm(request);
+        dialog.actions(|| {
+            dialog.close_button(t!("common.cancel"));
+            button(confirm_label, |button| {
+                button.css("suggested-action");
+                let window = dialog.window().widget().clone();
+                let on_confirm = on_confirm.clone();
+                button.on_click(move || {
+                    window.close();
+                    on_confirm.call(());
                 });
-            }
-        });
-    }
+            })
+        })
+    });
+    window.set_default_widget(Some(confirm.widget()));
 
     window.present();
 }
@@ -109,97 +89,66 @@ pub fn show_conflict<F>(
 ) where
     F: FnOnce(ConflictResolution) + 'static,
 {
-    let detail = format!(
-        "{}",
-        t!(
-            "dialog.conflict_detail",
-            source = conflict.source.display().to_string(),
-            target = conflict.target.display().to_string()
-        )
-    );
+    let detail = t!(
+        "dialog.conflict_detail",
+        source = conflict.source.display().to_string(),
+        target = conflict.target.display().to_string()
+    )
+    .into_owned();
     let title = t!(
         "dialog.conflict_title",
         kind = presentation::file_operation_label(&conflict.kind)
     )
     .into_owned();
+    let on_resolution = Once::new(on_resolution);
 
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, &title, 520, 240);
+    let (window, skip) = modal(parent, &title, (520, 240), |dialog| {
+        let resolve = |resolution: ConflictResolution| {
+            let on_resolution = on_resolution.clone();
+            let window = dialog.window().widget().clone();
+            move || {
+                on_resolution.call(resolution.clone());
+                window.close();
+            }
+        };
 
-    let title_label = gtk::Label::new(Some(&title));
-    title_label.set_xalign(0.0);
-    title_label.set_wrap(true);
-    title_label.add_css_class("dialog-title");
-    content.append(&title_label);
-
-    let detail_label = gtk::Label::new(Some(&detail));
-    detail_label.set_xalign(0.0);
-    detail_label.set_wrap(true);
-    content.append(&detail_label);
-
-    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
-    let skip_button = gtk::Button::with_label(&t!("common.skip"));
-    let rename_button = gtk::Button::with_label(&t!("common.rename"));
-    let overwrite_button = gtk::Button::with_label(&t!("common.overwrite"));
-    overwrite_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&skip_button);
-    actions.append(&rename_button);
-    actions.append(&overwrite_button);
-    window.set_default_widget(Some(&skip_button));
-
-    let callback = Rc::new(RefCell::new(Some(on_resolution)));
-    let resolve = |resolution: ConflictResolution,
-                   window: &gtk::Window,
-                   callback: &Rc<RefCell<Option<F>>>| {
-        if let Some(on_resolution) = callback.borrow_mut().take() {
-            on_resolution(resolution);
-        }
-        window.close();
-    };
-
-    {
-        let window = window.clone();
-        let callback = Rc::clone(&callback);
-        cancel_button.connect_clicked(move |_| {
-            resolve(ConflictResolution::Cancel, &window, &callback);
+        dialog.content(|| {
+            heading(title.as_str());
+            paragraph(detail);
         });
-    }
-    {
-        let window = window.clone();
-        let callback = Rc::clone(&callback);
-        skip_button.connect_clicked(move |_| {
-            resolve(ConflictResolution::Skip, &window, &callback);
-        });
-    }
-    {
-        let window = window.clone();
-        let callback = Rc::clone(&callback);
-        rename_button.connect_clicked(move |_| {
-            resolve(ConflictResolution::Rename, &window, &callback);
-        });
-    }
-    {
-        let window = window.clone();
-        let callback = Rc::clone(&callback);
-        overwrite_button.connect_clicked(move |_| {
-            resolve(ConflictResolution::Overwrite, &window, &callback);
-        });
-    }
+        dialog.actions(|| {
+            button(t!("common.cancel"), |button| {
+                button.on_click(resolve(ConflictResolution::Cancel));
+            });
+            let skip = button(t!("common.skip"), |button| {
+                button.on_click(resolve(ConflictResolution::Skip));
+            });
+            button(t!("common.rename"), |button| {
+                button.on_click(resolve(ConflictResolution::Rename));
+            });
+            button(t!("common.overwrite"), |button| {
+                button.css("suggested-action");
+                button.on_click(resolve(ConflictResolution::Overwrite));
+            });
+            skip
+        })
+    });
+    window.set_default_widget(Some(skip.widget()));
 
     window.present();
 }
 
+/// A modal progress window. The text and the bar follow the properties; the
+/// bar itself is kept only for `pulse`, which is an action and not state.
 #[derive(Clone)]
 pub struct ProgressDialog {
     window: gtk::Window,
-    title: gtk::Label,
-    detail: gtk::Label,
-    eta: gtk::Label,
-    progress: gtk::ProgressBar,
+    bar: gtk::ProgressBar,
+    title: Property<String>,
+    detail: Property<String>,
+    eta: Property<String>,
+    fraction: Property<f64>,
+    progress_text: Property<String>,
 }
 
 impl ProgressDialog {
@@ -207,74 +156,71 @@ impl ProgressDialog {
     where
         F: Fn() + 'static,
     {
-        let ModalWindow {
-            window,
-            content,
-            actions,
-        } = build_modal_window(parent, title_text, 460, 160);
+        let title = Property::new(title_text.to_string());
+        let detail = Property::new(t!("progress.preparing_file_operation").into_owned());
+        let eta = Property::new(t!("progress.eta_unknown").into_owned());
+        let fraction = Property::new(0.0);
+        let progress_text = Property::new(percent_text(0.0));
 
-        let title = gtk::Label::new(Some(title_text));
-        title.set_xalign(0.0);
-        title.add_css_class("dialog-title");
-        content.append(&title);
-
-        let detail = gtk::Label::new(Some(&t!("progress.preparing_file_operation")));
-        detail.set_xalign(0.0);
-        detail.set_wrap(true);
-        content.append(&detail);
-
-        let progress = gtk::ProgressBar::new();
-        progress.set_show_text(true);
-        content.append(&progress);
-
-        let eta = gtk::Label::new(Some(&t!("progress.eta_unknown")));
-        eta.set_xalign(0.0);
-        content.append(&eta);
-
-        let cancel_button = gtk::Button::with_label(&t!("progress.cancel_operation"));
-        actions.append(&cancel_button);
-
-        let window_for_cancel = window.clone();
-        cancel_button.connect_clicked(move |_| {
-            on_cancel();
-            window_for_cancel.set_sensitive(false);
+        let (window, bar) = modal(parent, title_text, (460, 160), |dialog| {
+            let bar = dialog.content(|| {
+                heading(&title);
+                paragraph(&detail);
+                let bar = progress(&fraction, |bar| bar.bind_progress_text(&progress_text));
+                text(&eta, |_| {});
+                bar
+            });
+            dialog.actions(|| {
+                button(t!("progress.cancel_operation"), |button| {
+                    let window = dialog.window().widget().clone();
+                    button.on_click(move || {
+                        on_cancel();
+                        window.set_sensitive(false);
+                    });
+                });
+            });
+            bar
         });
 
         window.present();
 
         Self {
             window,
+            bar: bar.widget().clone(),
             title,
             detail,
             eta,
-            progress,
+            fraction,
+            progress_text,
         }
     }
 
     pub fn update_progress(&self, snapshot: &crate::application::OperationSnapshot) {
-        let fraction = progress_percent(snapshot);
-        self.title.set_label(&t!(
-            "progress.in_progress",
-            kind = presentation::file_operation_label(&snapshot.kind)
-        ));
-        self.detail.set_label(&t!(
-            "progress.file_operation_detail",
-            processed = format_bytes(snapshot.processed_bytes),
-            total = format_bytes(snapshot.total_bytes),
-            processed_entries = snapshot.processed_entries,
-            total_entries = snapshot.total_entries,
-            item = snapshot.current_item.as_str()
-        ));
-        self.progress.set_fraction(fraction);
-        self.progress
-            .set_text(Some(&format!("{:.0}%", fraction * 100.0)));
-        self.eta
-            .set_label(&crate::fs::operations::format_eta(snapshot));
+        self.title.set(
+            t!(
+                "progress.in_progress",
+                kind = presentation::file_operation_label(&snapshot.kind)
+            )
+            .into_owned(),
+        );
+        self.detail.set(
+            t!(
+                "progress.file_operation_detail",
+                processed = format_bytes(snapshot.processed_bytes),
+                total = format_bytes(snapshot.total_bytes),
+                processed_entries = snapshot.processed_entries,
+                total_entries = snapshot.total_entries,
+                item = snapshot.current_item.as_str()
+            )
+            .into_owned(),
+        );
+        self.set_fraction(progress_percent(snapshot));
+        self.eta.set(format_eta(snapshot));
     }
 
     pub fn update_archive_progress(&self, progress: &crate::archive::ArchiveProgress) {
         self.title
-            .set_label(&t!("progress.archive_copy_in_progress"));
+            .set(t!("progress.archive_copy_in_progress").into_owned());
 
         let detail = progress.current_path.clone().unwrap_or_else(|| {
             progress
@@ -288,36 +234,45 @@ impl ProgressDialog {
                 })
                 .unwrap_or_else(|| t!("progress.preparing_archive_operation").into_owned())
         });
-        self.detail.set_label(&detail);
+        self.detail.set(detail);
 
         if let Some(percent) = progress.percent {
-            let clamped = percent.clamp(0.0, 1.0);
-            self.progress.set_fraction(clamped);
-            self.progress
-                .set_text(Some(&format!("{:.0}%", clamped * 100.0)));
+            self.set_fraction(percent.clamp(0.0, 1.0));
         } else {
-            self.progress.pulse();
-            self.progress.set_text(Some(&t!("progress.working")));
+            self.bar.pulse();
+            self.progress_text.set(t!("progress.working").into_owned());
         }
 
         let processed_entries = progress.processed_entries.unwrap_or(0);
         let total_entries = progress.total_entries.unwrap_or(0);
-        self.eta.set_label(&t!(
-            "progress.items_count",
-            processed = processed_entries,
-            total = total_entries
-        ));
+        self.eta.set(
+            t!(
+                "progress.items_count",
+                processed = processed_entries,
+                total = total_entries
+            )
+            .into_owned(),
+        );
     }
 
     pub fn set_waiting_for_conflict(&self) {
         self.detail
-            .set_label(&t!("progress.waiting_for_conflict_resolution"));
-        self.progress.pulse();
+            .set(t!("progress.waiting_for_conflict_resolution").into_owned());
+        self.bar.pulse();
     }
 
     pub fn close(&self) {
         self.window.close();
     }
+
+    fn set_fraction(&self, fraction: f64) {
+        self.fraction.set(fraction);
+        self.progress_text.set(percent_text(fraction));
+    }
+}
+
+fn percent_text(fraction: f64) -> String {
+    format!("{:.0}%", fraction * 100.0)
 }
 
 fn source_label(request: &OperationPlan) -> String {

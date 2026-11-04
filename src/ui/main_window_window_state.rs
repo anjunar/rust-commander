@@ -9,13 +9,18 @@ use crate::{
     application::{ActivePanel, Commander, ConfigStore},
     config::{WindowConfig, WindowPosition},
     platform::current_window_placement,
+    ui::dsl::Ctx,
 };
 
 use super::APP_WINDOW_TITLE;
 
+/// Restores and persists the window geometry and the split positions.
+///
+/// The close handler and the geometry timer belong to the window's scope,
+/// so they end with the window.
 #[derive(Clone)]
 pub struct WindowStateController {
-    window: gtk::ApplicationWindow,
+    root: Ctx<gtk::ApplicationWindow>,
     horizontal_paned: gtk::Paned,
     vertical_paned: gtk::Paned,
     commander: Rc<RefCell<Commander>>,
@@ -24,14 +29,14 @@ pub struct WindowStateController {
 
 impl WindowStateController {
     pub fn new(
-        window: gtk::ApplicationWindow,
+        root: Ctx<gtk::ApplicationWindow>,
         horizontal_paned: gtk::Paned,
         vertical_paned: gtk::Paned,
         commander: Rc<RefCell<Commander>>,
         config_store: ConfigStore,
     ) -> Self {
         Self {
-            window,
+            root,
             horizontal_paned,
             vertical_paned,
             commander,
@@ -41,9 +46,9 @@ impl WindowStateController {
 
     pub fn install_window_state_persistence(&self) {
         let commander = Rc::clone(&self.commander);
-        let window = self.window.clone();
+        let window = self.root.widget().clone();
         let config_store = self.config_store.clone();
-        self.window.connect_close_request(move |_| {
+        self.root.on_close_request(move || {
             if let Err(error) = config_store.update(|app_config| {
                 let commander = commander.borrow();
                 app_config.window.maximized = window.is_maximized();
@@ -56,14 +61,14 @@ impl WindowStateController {
             }) {
                 eprintln!("Could not save config: {error}");
             }
-            glib::Propagation::Proceed
+            false
         });
     }
 
     pub fn install_window_geometry_tracking(&self) {
-        let window = self.window.clone();
+        let window = self.root.widget().clone();
         let app_config_cache = self.config_store.cache();
-        glib::timeout_add_local(Duration::from_millis(250), move || {
+        self.root.every(Duration::from_millis(250), move || {
             let mut app_config = app_config_cache.borrow_mut();
             let config = &mut app_config.window;
             config.maximized = window.is_maximized();
@@ -79,17 +84,15 @@ impl WindowStateController {
                 config.width = window.width().max(1);
                 config.height = window.height().max(1);
             }
-            glib::ControlFlow::Continue
         });
     }
 
     pub fn restore_window_geometry(&self, window_config: WindowConfig) {
         #[cfg(not(target_os = "windows"))]
         {
-            self.window
-                .set_default_size(window_config.width.max(1), window_config.height.max(1));
+            let window = self.root.widget().clone();
+            window.set_default_size(window_config.width.max(1), window_config.height.max(1));
             if window_config.maximized {
-                let window = self.window.clone();
                 glib::idle_add_local_once(move || {
                     window.maximize();
                 });
@@ -104,11 +107,10 @@ impl WindowStateController {
             let width = window_config.width.max(1);
             let height = window_config.height.max(1);
             let maximized = window_config.maximized;
-            let window = self.window.clone();
 
             glib::idle_add_local_once({
                 let position = position.clone();
-                let window = window.clone();
+                let window = self.root.widget().clone();
                 move || {
                     restore_window_placement(
                         APP_WINDOW_TITLE,
@@ -124,13 +126,11 @@ impl WindowStateController {
                 }
             });
 
-            if maximized {
-                let window = self.window.clone();
-                glib::timeout_add_local_once(Duration::from_millis(150), move || {
+            let window = self.root.widget().clone();
+            self.root.after(Duration::from_millis(150), move || {
+                if maximized {
                     window.maximize();
-                });
-            } else {
-                glib::timeout_add_local_once(Duration::from_millis(150), move || {
+                } else {
                     restore_window_placement(
                         APP_WINDOW_TITLE,
                         position.x,
@@ -139,15 +139,15 @@ impl WindowStateController {
                         height,
                         false,
                     );
-                });
-            }
+                }
+            });
         }
     }
 
     pub fn initialize_split_positions(&self) {
         let horizontal = self.horizontal_paned.clone();
         let vertical = self.vertical_paned.clone();
-        glib::timeout_add_local_once(Duration::from_millis(30), move || {
+        self.root.after(Duration::from_millis(30), move || {
             let horizontal_width = horizontal.width();
             if horizontal_width > 0 {
                 horizontal.set_position(horizontal_width / 2);

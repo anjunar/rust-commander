@@ -60,8 +60,8 @@ fn compare_entries(a: &Entry, b: &Entry, sort_state: SortState, folders_first: b
             .cmp(&b.size_bytes)
             .then_with(|| compare_text(&a.name, &b.name)),
         SortColumn::Type => a
-            .kind
-            .cmp(&b.kind)
+            .type_sort_key()
+            .cmp(&b.type_sort_key())
             .then_with(|| compare_text(&a.name, &b.name)),
         SortColumn::Modified => a
             .modified_at

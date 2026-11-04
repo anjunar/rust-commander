@@ -1,229 +1,123 @@
-use std::cmp::Ordering as StdOrdering;
-
 use gtk::prelude::*;
 use rust_i18n::t;
 
-use crate::{domain::sorting::SortColumn, ui::file_row_object::FileRowObject};
+use crate::{
+    domain::sorting::SortColumn,
+    ui::{
+        dsl::{hbox, localized, mount, sorter_by, text, ReadOnly, Table},
+        file_row_object::FileRowObject,
+    },
+};
 
-pub const ROW_POSITION_DATA_KEY: &str = "rcommander-row-position";
-
-#[derive(Clone)]
-pub struct FileColumnBinding {
-    pub column: gtk::ColumnViewColumn,
-    pub sort_column: SortColumn,
-}
-
-pub fn append_file_columns(view: &gtk::ColumnView) -> Vec<FileColumnBinding> {
+/// Declares the file columns on `table` and returns which column sorts by what.
+pub(crate) fn file_columns(table: &Table) -> Vec<(gtk::ColumnViewColumn, SortColumn)> {
     let attributes_width = if cfg!(target_os = "windows") { 96 } else { 128 };
-    let specs = [
-        (column_title(SortColumn::Name), SortColumn::Name, 320, true),
-        (column_title(SortColumn::Size), SortColumn::Size, 96, false),
-        (column_title(SortColumn::Type), SortColumn::Type, 92, false),
-        (
-            column_title(SortColumn::Modified),
-            SortColumn::Modified,
-            150,
-            false,
-        ),
-        (
-            column_title(SortColumn::Attributes),
-            SortColumn::Attributes,
-            attributes_width,
-            false,
-        ),
-    ];
+    let name = name_column(table);
+    configure(&name, SortColumn::Name, 320, true);
 
-    specs
-        .into_iter()
-        .map(|(title, sort_column, width, expands)| {
-            let factory = match sort_column {
-                SortColumn::Name => name_factory().upcast::<gtk::ListItemFactory>(),
-                _ => text_factory(sort_column).upcast::<gtk::ListItemFactory>(),
-            };
-            let column = gtk::ColumnViewColumn::new(Some(&title), Some(factory));
-            column.set_resizable(true);
-            column.set_fixed_width(width);
-            column.set_expand(expands);
-            column.set_sorter(Some(&sorter_for(sort_column)));
-            view.append_column(&column);
-
-            FileColumnBinding {
-                column,
-                sort_column,
-            }
-        })
-        .collect()
+    let mut columns = vec![(name, SortColumn::Name)];
+    for (sort_column, width) in [
+        (SortColumn::Size, 96),
+        (SortColumn::Type, 92),
+        (SortColumn::Modified, 150),
+        (SortColumn::Attributes, attributes_width),
+    ] {
+        let column = text_column(table, sort_column);
+        configure(&column, sort_column, width, false);
+        columns.push((column, sort_column));
+    }
+    columns
 }
 
-pub fn column_title(column: SortColumn) -> String {
-    match column {
+/// The column header text, following the locale.
+pub(crate) fn column_title(column: SortColumn) -> ReadOnly<String> {
+    localized(move || match column {
         SortColumn::Name => t!("column.name").into_owned(),
         SortColumn::Size => t!("column.size").into_owned(),
         SortColumn::Type => t!("column.type").into_owned(),
         SortColumn::Modified => t!("column.modified").into_owned(),
         SortColumn::Attributes => t!("column.attributes").into_owned(),
-    }
+    })
 }
 
-fn name_factory() -> gtk::SignalListItemFactory {
-    let factory = gtk::SignalListItemFactory::new();
+fn configure(column: &gtk::ColumnViewColumn, sort: SortColumn, width: i32, expand: bool) {
+    column.set_resizable(true);
+    column.set_fixed_width(width);
+    column.set_expand(expand);
+    column.set_sorter(Some(&sorter_by(move |a: &FileRowObject, b| match sort {
+        SortColumn::Name => a.name().to_lowercase().cmp(&b.name().to_lowercase()),
+        SortColumn::Size => a.size_bytes().cmp(&b.size_bytes()),
+        SortColumn::Type => a
+            .type_sort_key()
+            .cmp(&b.type_sort_key())
+            .then_with(|| a.name().to_lowercase().cmp(&b.name().to_lowercase())),
+        SortColumn::Modified => a.modified().cmp(&b.modified()),
+        SortColumn::Attributes => a.attributes().cmp(&b.attributes()),
+    })));
+}
 
-    factory.connect_setup(|_, object| {
-        let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.set_margin_start(6);
-        row.set_margin_end(6);
-        row.set_margin_top(4);
-        row.set_margin_bottom(4);
-
-        let image = gtk::Image::new();
-        image.set_pixel_size(16);
-        row.append(&image);
-
-        let label = gtk::Label::new(None);
-        label.set_xalign(0.0);
-        label.set_hexpand(true);
-        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        row.append(&label);
-
-        list_item.set_child(Some(&row));
-    });
-
-    factory.connect_bind(|_, object| {
-        let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let Some(row_object) = row_object(list_item) else {
-            return;
-        };
-        let Some(container) = list_item
-            .child()
-            .and_then(|child| child.downcast::<gtk::Box>().ok())
-        else {
-            return;
-        };
-
-        if let Some(image) = container
-            .first_child()
-            .and_then(|child| child.downcast::<gtk::Image>().ok())
-        {
-            if let Some(paintable) = row_object.icon_paintable() {
+/// Icon and name; the parent link is set apart.
+fn name_column(table: &Table) -> gtk::ColumnViewColumn {
+    table.column(
+        column_title(SortColumn::Name),
+        || {
+            let mut cell = None;
+            hbox(8, |row| {
+                row.set_margin_start(6);
+                row.set_margin_end(6);
+                row.set_margin_top(4);
+                row.set_margin_bottom(4);
+                let image = mount(gtk::Image::new(), |image| image.set_pixel_size(16));
+                let label = text("", |label| {
+                    label.set_hexpand(true);
+                    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                });
+                cell = Some((image.widget().clone(), label.widget().clone()));
+            });
+            cell.expect("name cell composed")
+        },
+        |(image, label): &(gtk::Image, gtk::Label), row: &FileRowObject| {
+            if let Some(paintable) = row.icon_paintable() {
                 image.set_icon_name(None);
                 image.set_paintable(Some(&paintable));
             } else {
                 image.set_paintable(Option::<&gtk::gdk::Paintable>::None);
-                image.set_icon_name(Some(&row_object.icon_name()));
+                image.set_icon_name(Some(&row.icon_name()));
             }
-        }
-
-        if let Some(label) = container
-            .last_child()
-            .and_then(|child| child.downcast::<gtk::Label>().ok())
-        {
-            label.set_label(&row_object.name());
-            if row_object.is_parent_link() {
+            label.set_label(&row.name());
+            if row.is_parent_link() {
                 label.add_css_class("parent-link");
             } else {
                 label.remove_css_class("parent-link");
             }
-        }
-
-        bind_row_position(&container, list_item.position() as usize);
-    });
-
-    factory
+        },
+    )
 }
 
-fn text_factory(column: SortColumn) -> gtk::SignalListItemFactory {
-    let factory = gtk::SignalListItemFactory::new();
-
-    factory.connect_setup(move |_, object| {
-        let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let label = gtk::Label::new(None);
-        label.set_margin_start(6);
-        label.set_margin_end(6);
-        label.set_margin_top(6);
-        label.set_margin_bottom(6);
-        label.set_xalign(match column {
-            SortColumn::Size => 1.0,
-            _ => 0.5,
-        });
-        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        list_item.set_child(Some(&label));
-    });
-
-    factory.connect_bind(move |_, object| {
-        let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let Some(row_object) = row_object(list_item) else {
-            return;
-        };
-        let Some(label) = list_item
-            .child()
-            .and_then(|child| child.downcast::<gtk::Label>().ok())
-        else {
-            return;
-        };
-
-        label.set_label(&text_for_column(&row_object, column));
-        bind_row_position(&label, list_item.position() as usize);
-    });
-
-    factory
-}
-
-fn bind_row_position(widget: &impl IsA<gtk::Widget>, position: usize) {
-    unsafe {
-        widget.as_ref().set_data(ROW_POSITION_DATA_KEY, position);
-    }
-}
-
-fn row_object(list_item: &gtk::ListItem) -> Option<FileRowObject> {
-    list_item
-        .item()
-        .and_then(|item| item.downcast::<FileRowObject>().ok())
-}
-
-fn text_for_column(row: &FileRowObject, column: SortColumn) -> String {
-    match column {
-        SortColumn::Name => row.name(),
-        SortColumn::Size => row.size(),
-        SortColumn::Type => row.type_label(),
-        SortColumn::Modified => row.modified(),
-        SortColumn::Attributes => row.attributes(),
-    }
-}
-
-fn sorter_for(column: SortColumn) -> gtk::CustomSorter {
-    gtk::CustomSorter::new(move |a, b| {
-        let Some(a) = a.downcast_ref::<FileRowObject>() else {
-            return gtk::Ordering::Equal;
-        };
-        let Some(b) = b.downcast_ref::<FileRowObject>() else {
-            return gtk::Ordering::Equal;
-        };
-
-        let ordering = match column {
-            SortColumn::Name => a.name().to_lowercase().cmp(&b.name().to_lowercase()),
-            SortColumn::Size => a.size_bytes().cmp(&b.size_bytes()),
-            SortColumn::Type => a.type_label().cmp(&b.type_label()),
-            SortColumn::Modified => a.modified().cmp(&b.modified()),
-            SortColumn::Attributes => a.attributes().cmp(&b.attributes()),
-        };
-
-        gtk_ordering(ordering)
-    })
-}
-
-fn gtk_ordering(ordering: StdOrdering) -> gtk::Ordering {
-    match ordering {
-        StdOrdering::Less => gtk::Ordering::Smaller,
-        StdOrdering::Equal => gtk::Ordering::Equal,
-        StdOrdering::Greater => gtk::Ordering::Larger,
-    }
+/// One text value per row; sizes are right-aligned, the rest centred.
+fn text_column(table: &Table, column: SortColumn) -> gtk::ColumnViewColumn {
+    table.column(
+        column_title(column),
+        move || {
+            text("", |label| {
+                label.margin(6);
+                label.set_xalign(match column {
+                    SortColumn::Size => 1.0,
+                    _ => 0.5,
+                });
+                label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            })
+            .widget()
+            .clone()
+        },
+        move |label: &gtk::Label, row: &FileRowObject| {
+            label.set_label(&match column {
+                SortColumn::Name => row.name(),
+                SortColumn::Size => row.size(),
+                SortColumn::Type => row.type_label(),
+                SortColumn::Modified => row.modified(),
+                SortColumn::Attributes => row.attributes(),
+            });
+        },
+    )
 }

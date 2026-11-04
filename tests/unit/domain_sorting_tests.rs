@@ -52,3 +52,50 @@ fn disabling_folders_first_uses_plain_sort_order() {
     assert_eq!(entries[0].name, "alpha.txt");
     assert_eq!(entries[1].name, "zeta");
 }
+
+#[test]
+fn sorting_by_type_groups_files_by_extension() {
+    let mut entries = vec![
+        file("notes.txt", false),
+        file("zeta.EXE", false),
+        file("docs", true),
+        file("Makefile", false),
+        file("app.exe", false),
+    ];
+
+    sort_entries(
+        &mut entries,
+        SortState {
+            column: SortColumn::Type,
+            direction: SortDirection::Ascending,
+        },
+        false,
+    );
+
+    let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["docs", "Makefile", "app.exe", "zeta.EXE", "notes.txt"]
+    );
+}
+
+#[test]
+fn sorting_by_type_descending_keeps_folders_first_when_asked() {
+    let mut entries = vec![
+        file("app.exe", false),
+        file("docs", true),
+        file("notes.txt", false),
+    ];
+
+    sort_entries(
+        &mut entries,
+        SortState {
+            column: SortColumn::Type,
+            direction: SortDirection::Descending,
+        },
+        true,
+    );
+
+    let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+    assert_eq!(names, vec!["docs", "notes.txt", "app.exe"]);
+}

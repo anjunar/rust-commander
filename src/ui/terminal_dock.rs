@@ -1,86 +1,135 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{path::PathBuf, rc::Rc};
 
-use gtk::prelude::*;
-use rust_i18n::t;
+use gtk::{gdk, prelude::*};
 
 use crate::ui::{
+    dsl::{button, hbox, localized_with, mount, text, tr, vbox, IntoText, ReadOnly},
+    shell::ShellEvents,
     terminal_controller::{TerminalAction, TerminalCommand, TerminalController},
-    terminal_state::TerminalState,
 };
 
+/// The terminal dock under the panels: a toolbar and the terminal backend.
+///
+/// Visibility, title and working directory are bound to the terminal state,
+/// so commands only change that state and the dock follows.
 #[derive(Clone)]
 pub struct TerminalDock {
-    pub root: gtk::Box,
-    title_label: gtk::Label,
-    cwd_label: gtk::Label,
-    restart_button: gtk::Button,
-    clear_button: gtk::Button,
-    close_button: gtk::Button,
     controller: Rc<TerminalController>,
 }
 
+/// Composes the dock. `events` receives what the toolbar buttons decide.
+pub(crate) fn terminal_dock(
+    controller: Rc<TerminalController>,
+    events: Rc<dyn ShellEvents>,
+) -> TerminalDock {
+    let state = controller.state();
+    let supported = controller.is_supported();
+
+    vbox(0, |dock| {
+        dock.css("terminal-dock");
+        dock.set_hexpand(true);
+        dock.set_vexpand(true);
+        dock.bind_visible(&state.visible);
+
+        hbox(8, |toolbar| {
+            toolbar.css("terminal-toolbar");
+            toolbar.set_margin_top(8);
+            toolbar.set_margin_bottom(8);
+            toolbar.set_margin_start(10);
+            toolbar.set_margin_end(10);
+
+            text(terminal_title(supported), |title| {
+                title.css("terminal-title")
+            });
+            text(working_directory_text(&controller, supported), |cwd| {
+                cwd.set_hexpand(true);
+                cwd.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+                cwd.css("terminal-cwd");
+            });
+
+            toolbar_button(tr!("terminal.restart"), {
+                let controller = Rc::clone(&controller);
+                let events = Rc::clone(&events);
+                move || events.terminal_action(controller.run(TerminalCommand::RestartInPanelDir))
+            });
+            toolbar_button(tr!("common.clear"), {
+                let controller = Rc::clone(&controller);
+                move || {
+                    controller.run(TerminalCommand::Clear);
+                }
+            })
+            .set_sensitive(supported);
+            toolbar_button(tr!("common.close"), {
+                let controller = Rc::clone(&controller);
+                let events = Rc::clone(&events);
+                move || {
+                    controller.run(TerminalCommand::Hide);
+                    events.terminal_action(TerminalAction::FocusPanels);
+                }
+            });
+        });
+
+        // Escape leaves the terminal and hands the keyboard back to the panels.
+        mount(controller.widget(), |terminal| {
+            let events = Rc::clone(&events);
+            terminal.on_key_pressed(move |key, _| {
+                if key == gdk::Key::Escape {
+                    events.focus_panels();
+                    true
+                } else {
+                    false
+                }
+            });
+        });
+    });
+
+    TerminalDock { controller }
+}
+
+fn toolbar_button(
+    label: impl IntoText,
+    run: impl Fn() + 'static,
+) -> crate::ui::dsl::Ctx<gtk::Button> {
+    button(label, |button| {
+        button.css("terminal-button");
+        button.on_click(run);
+    })
+}
+
+fn terminal_title(supported: bool) -> ReadOnly<String> {
+    if supported {
+        return tr!("terminal.title");
+    }
+    #[cfg(target_os = "macos")]
+    {
+        tr!("terminal.title_unsupported")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        tr!("terminal.title_windows_pending")
+    }
+}
+
+/// The shell's directory where a terminal runs; otherwise the panel directory
+/// it would start in.
+fn working_directory_text(controller: &TerminalController, supported: bool) -> ReadOnly<String> {
+    let state = controller.state();
+    if supported {
+        state.working_dir.map(|path| path.display().to_string())
+    } else {
+        localized_with(&state.last_panel_dir, |path| {
+            rust_i18n::t!("terminal.panel_path", path = path.display().to_string()).into_owned()
+        })
+    }
+}
+
 impl TerminalDock {
-    pub fn new(initial_dir: PathBuf) -> Self {
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        root.set_hexpand(true);
-        root.set_vexpand(true);
-        root.add_css_class("terminal-dock");
-        root.set_visible(false);
-
-        let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        toolbar.add_css_class("terminal-toolbar");
-        toolbar.set_margin_top(8);
-        toolbar.set_margin_bottom(8);
-        toolbar.set_margin_start(10);
-        toolbar.set_margin_end(10);
-
-        let title_label = gtk::Label::new(Some(&t!("terminal.title")));
-        title_label.set_xalign(0.0);
-        title_label.add_css_class("terminal-title");
-        toolbar.append(&title_label);
-
-        let cwd_label = gtk::Label::new(None);
-        cwd_label.set_xalign(0.0);
-        cwd_label.set_hexpand(true);
-        cwd_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        cwd_label.add_css_class("terminal-cwd");
-        toolbar.append(&cwd_label);
-
-        let restart_button = gtk::Button::with_label(&t!("terminal.restart"));
-        let clear_button = gtk::Button::with_label(&t!("common.clear"));
-        let close_button = gtk::Button::with_label(&t!("common.close"));
-        restart_button.add_css_class("terminal-button");
-        clear_button.add_css_class("terminal-button");
-        close_button.add_css_class("terminal-button");
-        toolbar.append(&restart_button);
-        toolbar.append(&clear_button);
-        toolbar.append(&close_button);
-
-        root.append(&toolbar);
-
-        let controller = Rc::new(TerminalController::new(initial_dir));
-        root.append(&controller.widget());
-
-        let dock = Self {
-            root,
-            title_label,
-            cwd_label,
-            restart_button,
-            clear_button,
-            close_button,
-            controller,
-        };
-
-        dock.refresh_toolbar();
-        dock
-    }
-
-    pub fn state(&self) -> Rc<RefCell<TerminalState>> {
-        self.controller.state()
-    }
-
     pub fn is_supported(&self) -> bool {
         self.controller.is_supported()
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.controller.state().visible.get()
     }
 
     pub fn has_focus(&self) -> bool {
@@ -89,105 +138,17 @@ impl TerminalDock {
 
     pub fn set_panel_dir(&self, path: PathBuf) {
         self.controller.set_panel_dir(&path);
-        let state = self.state();
-        let mut state = state.borrow_mut();
-        state.last_panel_dir = path;
-        drop(state);
-        self.refresh_toolbar();
     }
 
     pub fn toggle(&self) -> TerminalAction {
-        let action = self.controller.run(TerminalCommand::ToggleVisibility);
-        self.sync_visibility();
-        self.refresh_toolbar();
-        action
+        self.controller.run(TerminalCommand::ToggleVisibility)
     }
 
     pub fn focus_terminal(&self) -> TerminalAction {
-        let action = self.controller.run(TerminalCommand::Focus);
-        self.sync_visibility();
-        self.refresh_toolbar();
-        action
+        self.controller.run(TerminalCommand::Focus)
     }
 
     pub fn restart_in_panel_dir(&self) -> TerminalAction {
-        let action = self.controller.run(TerminalCommand::RestartInPanelDir);
-        self.sync_visibility();
-        self.refresh_toolbar();
-        action
-    }
-
-    pub fn clear(&self) {
-        let _ = self.controller.run(TerminalCommand::Clear);
-    }
-
-    pub fn close(&self) -> TerminalAction {
-        let _ = self.controller.run(TerminalCommand::Hide);
-        self.sync_visibility();
-        self.refresh_toolbar();
-        TerminalAction::FocusPanels
-    }
-
-    pub fn connect_focus_return<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        self.controller.connect_escape_to_focus_panels(f);
-    }
-
-    pub fn connect_buttons<F>(&self, on_action: F)
-    where
-        F: Fn(TerminalAction) + Clone + 'static,
-    {
-        {
-            let dock = self.clone();
-            let on_action = on_action.clone();
-            self.restart_button.connect_clicked(move |_| {
-                on_action(dock.restart_in_panel_dir());
-            });
-        }
-
-        {
-            let dock = self.clone();
-            self.clear_button.connect_clicked(move |_| {
-                dock.clear();
-            });
-        }
-
-        {
-            let dock = self.clone();
-            let on_action = on_action.clone();
-            self.close_button.connect_clicked(move |_| {
-                on_action(dock.close());
-            });
-        }
-    }
-
-    pub fn sync_visibility(&self) {
-        let visible = self.state().borrow().visible;
-        self.root.set_visible(visible);
-        self.clear_button
-            .set_sensitive(self.controller.is_supported());
-    }
-
-    pub fn refresh_toolbar(&self) {
-        self.restart_button.set_label(&t!("terminal.restart"));
-        self.clear_button.set_label(&t!("common.clear"));
-        self.close_button.set_label(&t!("common.close"));
-        if self.controller.is_supported() {
-            self.title_label.set_label(&t!("terminal.title"));
-            let cwd = self.controller.current_working_dir();
-            self.cwd_label.set_label(&cwd.display().to_string());
-        } else {
-            #[cfg(target_os = "windows")]
-            self.title_label
-                .set_label(&t!("terminal.title_windows_pending"));
-            #[cfg(target_os = "macos")]
-            self.title_label
-                .set_label(&t!("terminal.title_unsupported"));
-            let cwd = self.state().borrow().last_panel_dir.clone();
-            self.cwd_label
-                .set_label(&t!("terminal.panel_path", path = cwd.display().to_string()));
-        }
+        self.controller.run(TerminalCommand::RestartInPanelDir)
     }
 }

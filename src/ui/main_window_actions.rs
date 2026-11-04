@@ -33,7 +33,7 @@ impl MainWindow {
     }
 
     pub fn handle_open_active(self: &Rc<Self>) {
-        if self.terminal_dock.has_focus() {
+        if self.view.terminal.has_focus() {
             return;
         }
         let active_panel = self.commander.borrow().state().active_panel;

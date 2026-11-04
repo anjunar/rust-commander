@@ -4,11 +4,12 @@ use std::{
 };
 
 use gtk::{glib, prelude::*};
+use rust_i18n::t;
 
 use crate::{
     application::{
-        ActivePanel, Commander, ConfigStore, SessionStore, SharedPlatformPort, TaskSpawner,
-        ViewUpdate,
+        ActivePanel, AppState, Commander, ConfigStore, SessionStore, SharedPlatformPort,
+        TaskSpawner, ViewUpdate,
     },
     archive::ArchiveService,
     config::{AppConfig, WindowConfig},
@@ -16,19 +17,21 @@ use crate::{
     presentation,
     remote::RemoteService,
     ui::{
-        commander_view::CommanderView, dialogs, shortcuts, terminal_dock::TerminalDock,
+        dialogs,
+        shell::{build_shell, default_local_directory, ShellEvents, ShellModel, ShellView},
+        terminal_controller::TerminalController as TerminalBackend,
         theme::ThemeController,
     },
 };
 
 #[path = "main_window_actions.rs"]
 mod actions;
-#[path = "main_window_command_bar.rs"]
-mod command_bar;
 #[path = "main_window_context_menu.rs"]
 mod context_menu;
 #[path = "main_window_controllers.rs"]
 mod controllers;
+#[path = "main_window_events.rs"]
+mod events;
 #[path = "main_window_hosts.rs"]
 mod hosts;
 #[path = "main_window_hosts_impl.rs"]
@@ -37,45 +40,31 @@ mod hosts_impl;
 mod navigation_controller;
 #[path = "main_window_operations.rs"]
 mod operations_controller;
-#[path = "main_window_panel_wiring.rs"]
-mod panel_wiring;
 #[path = "main_window_runtime.rs"]
 mod runtime;
 #[path = "main_window_startup.rs"]
 mod startup;
 #[path = "main_window_terminal.rs"]
 mod terminal_wiring;
-#[path = "main_window_window_chrome.rs"]
-mod window_chrome;
 #[path = "main_window_window_state.rs"]
 mod window_state_controller;
 
-const APP_WINDOW_TITLE: &str = "RCommander";
+use crate::ui::shell::APP_WINDOW_TITLE;
 
-use command_bar::build_command_bar;
-use context_menu::ContextMenuRuntime;
+use context_menu::ContextMenuController;
 use controllers::MainWindowControllers;
+use events::WindowEvents;
 use navigation_controller::{NavigationController, NavigationRuntime};
 use operations_controller::{OperationRuntime, OperationsController};
-use panel_wiring::PanelWiring;
 pub(crate) use runtime::MainWindowRuntime;
 use startup::StartupLoadState;
 use terminal_wiring::TerminalController;
-#[cfg(target_os = "windows")]
-use window_chrome::install_custom_window_controls;
-use window_chrome::WindowChromeController;
 use window_state_controller::WindowStateController;
 
 pub struct MainWindow {
     pub window: gtk::ApplicationWindow,
-    commander_view: CommanderView,
-    terminal_dock: TerminalDock,
-    content_paned: gtk::Paned,
-    navigation_overlay: gtk::Box,
-    navigation_overlay_spinner: gtk::Spinner,
-    navigation_overlay_label: gtk::Label,
-    busy_spinner: gtk::Spinner,
-    status_label: gtk::Label,
+    view: ShellView,
+    shell: ShellModel,
     commander: Rc<RefCell<Commander>>,
     archive_service: Rc<RefCell<ArchiveService>>,
     remote_service: RemoteService,
@@ -83,7 +72,6 @@ pub struct MainWindow {
     task_spawner: TaskSpawner,
     operation_runtime: OperationRuntime,
     navigation_runtime: NavigationRuntime,
-    context_menu_runtime: ContextMenuRuntime,
     startup_load_state: Rc<RefCell<StartupLoadState>>,
     initial_window_config: WindowConfig,
     window_state_initialized: Cell<bool>,
@@ -91,7 +79,6 @@ pub struct MainWindow {
     app_config_cache: Rc<RefCell<AppConfig>>,
     platform_port: SharedPlatformPort,
     controllers: RefCell<Option<MainWindowControllers>>,
-    theme_controller: Rc<ThemeController>,
 }
 
 impl MainWindow {
@@ -105,8 +92,6 @@ impl MainWindow {
         present_immediately: bool,
     ) -> Rc<Self> {
         let app_config = runtime.app_config_cache.borrow().clone();
-        let theme_controller = Rc::new(ThemeController::new());
-        theme_controller.apply(app_config.general.theme);
         let window_config = app_config.window.clone();
 
         let window = gtk::ApplicationWindow::builder()
@@ -125,24 +110,6 @@ impl MainWindow {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
-        {
-            let header = gtk::HeaderBar::new();
-            let title = gtk::Label::new(Some(APP_WINDOW_TITLE));
-            title.add_css_class("app-title");
-            header.set_title_widget(Some(&title));
-            #[cfg(target_os = "windows")]
-            install_custom_window_controls(&window, &header);
-            window.set_titlebar(Some(&header));
-        }
-
-        let shell = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        shell.set_margin_top(8);
-        shell.set_margin_bottom(8);
-        shell.set_margin_start(8);
-        shell.set_margin_end(8);
-
-        let commander_view = CommanderView::new();
         let initial_dir = runtime
             .commander
             .borrow()
@@ -151,64 +118,9 @@ impl MainWindow {
             .location
             .host_directory()
             .unwrap_or_else(default_local_directory);
-        let terminal_dock = TerminalDock::new(initial_dir);
+        let terminal = Rc::new(TerminalBackend::new(initial_dir));
+        let shell = ShellModel::new(app_config.general.theme);
 
-        let content_paned = gtk::Paned::new(gtk::Orientation::Vertical);
-        content_paned.set_hexpand(true);
-        content_paned.set_vexpand(true);
-        content_paned.set_resize_start_child(true);
-        content_paned.set_resize_end_child(false);
-        content_paned.set_shrink_start_child(false);
-        content_paned.set_shrink_end_child(false);
-        content_paned.set_start_child(Some(&commander_view.root));
-        content_paned.set_end_child(Some(&terminal_dock.root));
-
-        let content_overlay = gtk::Overlay::new();
-        content_overlay.set_hexpand(true);
-        content_overlay.set_vexpand(true);
-        content_overlay.set_child(Some(&content_paned));
-
-        let navigation_overlay = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        navigation_overlay.set_halign(gtk::Align::Center);
-        navigation_overlay.set_valign(gtk::Align::Center);
-        navigation_overlay.add_css_class("navigation-overlay");
-        navigation_overlay.set_opacity(0.0);
-        navigation_overlay.set_can_target(false);
-        navigation_overlay.set_sensitive(false);
-
-        let navigation_overlay_spinner = gtk::Spinner::new();
-        navigation_overlay_spinner.stop();
-        navigation_overlay_spinner.set_visible(true);
-        navigation_overlay_spinner.add_css_class("navigation-overlay-spinner");
-        navigation_overlay.append(&navigation_overlay_spinner);
-
-        let navigation_overlay_label = gtk::Label::new(Some(""));
-        navigation_overlay_label.add_css_class("navigation-overlay-label");
-        navigation_overlay.append(&navigation_overlay_label);
-
-        content_overlay.add_overlay(&navigation_overlay);
-        shell.append(&content_overlay);
-
-        let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let busy_spinner = gtk::Spinner::new();
-        busy_spinner.set_spinning(false);
-        busy_spinner.set_visible(false);
-        busy_spinner.add_css_class("busy-spinner");
-        status_row.append(&busy_spinner);
-
-        let status_label = gtk::Label::new(None);
-        status_label.set_xalign(0.0);
-        status_label.set_hexpand(true);
-        status_label.add_css_class("status-line");
-        status_row.append(&status_label);
-        shell.append(&status_row);
-
-        let command_bar = build_command_bar();
-        shell.append(&command_bar);
-
-        window.set_child(Some(&shell));
-
-        let startup_load_state = Rc::new(RefCell::new(StartupLoadState::new(!present_immediately)));
         let MainWindowRuntime {
             commander,
             archive_service,
@@ -217,57 +129,55 @@ impl MainWindow {
             task_spawner,
             operation_runtime,
             navigation_runtime,
-            context_menu_runtime,
             config_store,
             app_config_cache,
             platform_port,
             watch_event_rx,
         } = runtime;
 
-        let this = Rc::new(Self {
-            window,
-            commander_view,
-            terminal_dock,
-            content_paned,
-            navigation_overlay,
-            navigation_overlay_spinner,
-            navigation_overlay_label,
-            busy_spinner,
-            status_label,
-            commander,
-            archive_service,
-            remote_service,
-            session_store,
-            task_spawner,
-            operation_runtime,
-            navigation_runtime,
-            context_menu_runtime,
-            startup_load_state,
-            initial_window_config: window_config.clone(),
-            window_state_initialized: Cell::new(present_immediately),
-            config_store,
-            app_config_cache,
-            platform_port,
-            controllers: RefCell::new(None),
-            theme_controller,
+        // The shell reports to the window through a weak reference: the
+        // widgets never keep the window alive, and events arriving before
+        // the controllers exist are dropped.
+        let this = Rc::new_cyclic(|weak| {
+            let events: Rc<dyn ShellEvents> = Rc::new(WindowEvents::new(weak.clone()));
+            let view = build_shell(
+                &window,
+                &shell,
+                terminal,
+                Rc::new(ThemeController::new()),
+                events,
+            );
+            Self {
+                window: window.clone(),
+                view,
+                shell,
+                commander,
+                archive_service,
+                remote_service,
+                session_store,
+                task_spawner,
+                operation_runtime,
+                navigation_runtime,
+                startup_load_state: Rc::new(RefCell::new(StartupLoadState::new(
+                    !present_immediately,
+                ))),
+                initial_window_config: window_config.clone(),
+                window_state_initialized: Cell::new(present_immediately),
+                config_store,
+                app_config_cache,
+                platform_port,
+                controllers: RefCell::new(None),
+            }
         });
 
         this.initialize_controllers();
 
         this.apply_update(ViewUpdate::all());
-        this.window_chrome().apply_theme();
-        this.window_chrome()
-            .refresh_localized_labels(&this.commander_view, &this.terminal_dock);
         this.navigation_controller().sync_watched_paths();
-        this.panel_wiring().connect_panels(&this.commander_view);
-        this.connect_command_bar(&command_bar);
-        this.terminal_controller().connect_terminal_dock();
         this.navigation_controller()
             .install_watcher_poll(watch_event_rx);
         this.window_state_controller()
             .install_window_state_persistence();
-        this.window_chrome().install_system_theme_tracking();
-        shortcuts::install(&this, app);
 
         // Initialize Windows tray icon (no-op on other platforms)
         #[cfg(target_os = "windows")]
@@ -334,64 +244,58 @@ impl MainWindow {
         }
     }
 
-    fn connect_command_bar(self: &Rc<Self>, command_bar: &gtk::Box) {
-        let callbacks: [fn(&Rc<Self>); 10] = [
-            Self::handle_help,
-            Self::handle_rename,
-            Self::handle_view,
-            Self::handle_edit,
-            Self::handle_copy,
-            Self::handle_move,
-            Self::handle_make_directory,
-            Self::handle_delete,
-            Self::handle_toggle_terminal,
-            Self::handle_quit,
-        ];
-
-        let mut callback_index = 0usize;
-        let mut child = command_bar.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if let Ok(button) = widget.downcast::<gtk::Button>() {
-                if let Some(callback) = callbacks.get(callback_index) {
-                    let this = Rc::clone(self);
-                    let callback = *callback;
-                    button.connect_clicked(move |_| callback(&this));
-                }
-                callback_index += 1;
-            }
-        }
-    }
-
+    /// Pushes the parts of the commander state named by `update` into the view.
     fn apply_update(&self, update: ViewUpdate) {
         let commander = self.commander.borrow();
         let state = commander.state();
 
         if update.roots {
-            self.commander_view.apply_roots(state);
+            self.apply_root(state, ActivePanel::Left);
+            self.apply_root(state, ActivePanel::Right);
         }
         if update.left_entries {
-            self.commander_view.apply_entries(state, ActivePanel::Left);
+            self.apply_entries(state, ActivePanel::Left);
         }
         if update.right_entries {
-            self.commander_view.apply_entries(state, ActivePanel::Right);
+            self.apply_entries(state, ActivePanel::Right);
         }
         if update.active_panel {
-            self.commander_view.apply_active_panel(state.active_panel);
+            self.view
+                .left
+                .set_active(state.active_panel == ActivePanel::Left);
+            self.view
+                .right
+                .set_active(state.active_panel == ActivePanel::Right);
+            self.view.panel(state.active_panel).grab_focus();
         }
         if update.status || update.selection || update.active_panel {
-            self.status_label
-                .set_label(&presentation::status_line(state));
+            self.shell.status.set(presentation::status_line(state));
         }
 
-        self.terminal_dock.set_panel_dir(
+        self.view.terminal.set_panel_dir(
             state
                 .active_panel()
                 .location
                 .host_directory()
                 .unwrap_or_else(default_local_directory),
         );
-        self.terminal_dock.refresh_toolbar();
+    }
+
+    fn apply_entries(&self, state: &AppState, panel: ActivePanel) {
+        let panel_state = state.panel(panel);
+        let view = self.view.panel(panel);
+        view.set_path(&panel_state.location.display_label());
+        view.set_entries(
+            &panel_state.location,
+            &panel_state.entries,
+            panel_state.selection_indices(),
+        );
+    }
+
+    fn apply_root(&self, state: &AppState, panel: ActivePanel) {
+        self.view
+            .panel(panel)
+            .set_roots(&state.roots, state.selected_root_index(panel));
     }
 
     fn active_panel_path(&self) -> std::path::PathBuf {
@@ -406,7 +310,7 @@ impl MainWindow {
 
     fn focus_active_panel(&self) {
         let active_panel = self.commander.borrow().state().active_panel;
-        self.commander_view.focus_active_panel(active_panel);
+        self.view.panel(active_panel).grab_focus();
     }
 
     fn set_status_message(&self, status: String) {
@@ -423,28 +327,17 @@ impl MainWindow {
         dialogs::show_error(&self.window, &t!("error.command_failed"), &error);
     }
 
+    /// While a directory loads, the panels are disabled and the overlay shows `message`.
     fn set_navigation_busy(&self, busy: bool, message: &str) {
         self.navigation_runtime.navigation_busy.set(busy);
-        self.busy_spinner.set_visible(busy);
-        self.busy_spinner.set_spinning(busy);
-        self.navigation_overlay
-            .set_opacity(if busy { 1.0 } else { 0.0 });
-        self.navigation_overlay.set_sensitive(busy);
-        if busy {
-            self.navigation_overlay_spinner.start();
+        self.shell.busy_message.set(message.to_owned());
+        self.shell.busy.set(busy);
+        let status = if busy {
+            message.to_owned()
         } else {
-            self.navigation_overlay_spinner.stop();
-        }
-        self.navigation_overlay_label.set_label(message);
-        self.commander_view.set_interaction_enabled(!busy);
-        self.content_paned.set_sensitive(!busy);
-
-        if busy {
-            self.status_label.set_label(message);
-        } else {
-            self.status_label
-                .set_label(&presentation::status_line(self.commander.borrow().state()));
-        }
+            presentation::status_line(self.commander.borrow().state())
+        };
+        self.shell.status.set(status);
     }
 
     fn navigation_controller(self: &Rc<Self>) -> NavigationController {
@@ -453,28 +346,22 @@ impl MainWindow {
             .navigation
     }
 
-    fn panel_wiring(self: &Rc<Self>) -> PanelWiring {
-        self.controllers()
-            .expect("controllers initialized")
-            .panel_wiring
-    }
-
     fn operations_controller(self: &Rc<Self>) -> OperationsController {
         self.controllers()
             .expect("controllers initialized")
             .operations
     }
 
+    fn context_menu_controller(&self) -> ContextMenuController {
+        self.controllers()
+            .expect("controllers initialized")
+            .context_menu
+    }
+
     fn terminal_controller(self: &Rc<Self>) -> TerminalController {
         self.controllers()
             .expect("controllers initialized")
             .terminal
-    }
-
-    fn window_chrome(&self) -> WindowChromeController {
-        self.controllers()
-            .expect("controllers initialized")
-            .window_chrome
     }
 
     fn window_state_controller(&self) -> WindowStateController {
@@ -498,8 +385,4 @@ impl MainWindow {
     fn controllers(&self) -> Option<MainWindowControllers> {
         self.controllers.borrow().as_ref().cloned()
     }
-}
-
-fn default_local_directory() -> std::path::PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
 }

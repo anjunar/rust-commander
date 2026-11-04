@@ -11,24 +11,11 @@ use super::hosts::ViewHost;
 #[path = "main_window_context_menu_unix.rs"]
 mod unix;
 
+/// What the in-app context menu can do. Windows shows the native shell menu
+/// instead, so there it is never built.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 #[derive(Clone)]
-pub struct ContextMenuRuntime {
-    #[cfg(not(target_os = "windows"))]
-    pub unix_context_menu: Rc<RefCell<Option<gtk::Popover>>>,
-}
-
-impl ContextMenuRuntime {
-    pub fn new() -> Self {
-        Self {
-            #[cfg(not(target_os = "windows"))]
-            unix_context_menu: Rc::new(RefCell::new(None)),
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-#[derive(Clone)]
-pub struct UnixContextMenuActions {
+pub struct ContextMenuActions {
     pub open: Rc<dyn Fn()>,
     pub rename: Rc<dyn Fn()>,
     pub copy: Rc<dyn Fn()>,
@@ -43,51 +30,41 @@ pub struct UnixContextMenuActions {
 pub struct ContextMenuController {
     host: Rc<dyn ViewHost>,
     _window: gtk::ApplicationWindow,
-    #[cfg(not(target_os = "windows"))]
-    left_panel_root: gtk::Box,
-    #[cfg(not(target_os = "windows"))]
-    right_panel_root: gtk::Box,
     commander: Rc<RefCell<Commander>>,
-_platform_port: SharedPlatformPort,
+    _platform_port: SharedPlatformPort,
     #[cfg(not(target_os = "windows"))]
-    runtime: ContextMenuRuntime,
-    #[cfg(not(target_os = "windows"))]
-    actions: UnixContextMenuActions,
+    actions: ContextMenuActions,
 }
 
 impl ContextMenuController {
     pub fn new(
         host: Rc<dyn ViewHost>,
         window: gtk::ApplicationWindow,
-        #[cfg(not(target_os = "windows"))] left_panel_root: gtk::Box,
-        #[cfg(not(target_os = "windows"))] right_panel_root: gtk::Box,
         commander: Rc<RefCell<Commander>>,
         platform_port: SharedPlatformPort,
-        _runtime: ContextMenuRuntime,
-        #[cfg(not(target_os = "windows"))] actions: UnixContextMenuActions,
+        #[cfg(not(target_os = "windows"))] actions: ContextMenuActions,
     ) -> Self {
         Self {
             host,
             _window: window,
-            #[cfg(not(target_os = "windows"))]
-            left_panel_root,
-            #[cfg(not(target_os = "windows"))]
-            right_panel_root,
             commander,
             _platform_port: platform_port,
-            #[cfg(not(target_os = "windows"))]
-            runtime: _runtime,
             #[cfg(not(target_os = "windows"))]
             actions,
         }
     }
 
+    /// Opens the context menu for a right click at `(x, y)` on `anchor`.
+    ///
+    /// A click on an unselected row selects it first; a click inside the
+    /// selection keeps the selection, so a menu can act on several entries.
     pub fn handle_panel_context_menu(
         &self,
         panel: ActivePanel,
         clicked_index: Option<usize>,
-        _x: f64,
-        _y: f64,
+        anchor: &gtk::Widget,
+        x: f64,
+        y: f64,
     ) {
         let ((directory, selected_paths), update) = {
             let mut commander = self.commander.borrow_mut();
@@ -122,11 +99,10 @@ impl ContextMenuController {
         };
 
         self.host.apply_update(update);
-        #[cfg(not(target_os = "windows"))]
-        let _ = &directory;
 
         #[cfg(target_os = "windows")]
         {
+            let _ = (anchor, x, y);
             if let Err(error) = self
                 ._platform_port
                 .show_context_menu(directory, selected_paths)
@@ -137,7 +113,10 @@ impl ContextMenuController {
 
         #[cfg(not(target_os = "windows"))]
         {
-            self.show_unix_context_menu(panel, selected_paths, _x, _y);
+            let _ = &directory;
+            crate::ui::dsl::popup_menu(anchor, x, y, |menu| {
+                unix::compose(menu, &self.actions, &selected_paths)
+            });
         }
     }
 

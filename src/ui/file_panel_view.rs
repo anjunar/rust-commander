@@ -5,125 +5,249 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, EventControllerKey};
-use gtk::{gio, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::{
     application::ActivePanel,
-    domain::{sorting::SortColumn, Entry, PanelLocation, RootLocation},
+    domain::{
+        sorting::{SortColumn, SortDirection},
+        Entry, PanelLocation, RootLocation,
+    },
     ui::{
-        columns::{append_file_columns, FileColumnBinding, ROW_POSITION_DATA_KEY},
+        columns::file_columns,
+        dsl::{
+            button, column_view, dropdown_list, hbox, scrolled, text, vbox, ListProperty, Property,
+            Table,
+        },
         file_row_object::FileRowObject,
+        shell::ShellEvents,
     },
 };
 
-pub struct FilePanelView {
-    pub root: gtk::Box,
-    pub root_model: gtk::StringList,
-    pub root_dropdown: gtk::DropDown,
-    pub remote_connect_button: gtk::Button,
-    pub path_label: gtk::Label,
-    pub store: gio::ListStore,
-    pub selection: gtk::MultiSelection,
-    pub column_view: gtk::ColumnView,
-    pub columns: Vec<FileColumnBinding>,
-    ignore_selection: Rc<Cell<bool>>,
-    ignore_roots: Rc<Cell<bool>>,
-    ignore_sort: Rc<Cell<bool>>,
-    last_sort: Rc<RefCell<Option<(SortColumn, gtk::SortType)>>>,
+/// One commander panel: drive picker, path, and the file table.
+///
+/// The header is bound to properties; the rows live in a `gio::ListStore`
+/// that GTK virtualises. The panel reports what the user does to
+/// [`ShellEvents`] and never decides anything itself.
+#[derive(Clone)]
+pub struct FilePanel {
+    table: Table,
+    store: gio::ListStore,
+    selection: gtk::MultiSelection,
+    path: Property<String>,
+    roots: ListProperty<String>,
+    selected_root: Property<u32>,
+    active: Property<bool>,
+    /// Set while the panel applies state, so the widgets' change signals are
+    /// not mistaken for user input.
+    applying: Rc<Applying>,
     current_entries_path: Rc<RefCell<Option<PathBuf>>>,
 }
 
-impl FilePanelView {
-    pub fn new(panel: ActivePanel) -> Self {
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+#[derive(Default)]
+struct Applying {
+    roots: Cell<bool>,
+    selection: Cell<bool>,
+    sort: Cell<bool>,
+}
+
+/// Composes a panel into the current parent.
+pub(crate) fn file_panel(panel: ActivePanel, events: Rc<dyn ShellEvents>) -> FilePanel {
+    let store = gio::ListStore::new::<FileRowObject>();
+    let selection = gtk::MultiSelection::new(Some(store.clone()));
+    let path = Property::new(String::new());
+    let roots = ListProperty::default();
+    let selected_root = Property::new(gtk::INVALID_LIST_POSITION);
+    let active = Property::new(false);
+    let applying = Rc::new(Applying::default());
+
+    let mut table = None;
+    vbox(6, |root| {
+        root.css("file-panel");
+        root.css(match panel {
+            ActivePanel::Left => "file-panel-left",
+            ActivePanel::Right => "file-panel-right",
+        });
         root.set_hexpand(true);
         root.set_vexpand(true);
-        root.add_css_class("file-panel");
-        match panel {
-            ActivePanel::Left => root.add_css_class("file-panel-left"),
-            ActivePanel::Right => root.add_css_class("file-panel-right"),
+        root.css_if("active-panel", &active);
+
+        hbox(8, |header| {
+            header.css("path-row");
+            dropdown_list(&roots, &selected_root, |picker| {
+                picker.set_width_request(110);
+                picker.set_enable_search(true);
+                picker.css("root-selector");
+                let events = Rc::clone(&events);
+                picker.on_focus_change(move |focused| {
+                    if focused {
+                        events.panel_focused(panel);
+                    }
+                });
+            });
+            button("Connect", |connect| {
+                connect.css("flat");
+                let events = Rc::clone(&events);
+                connect.on_click(move || events.connect_remote(panel));
+            });
+            text(&path, |label| {
+                label.set_hexpand(true);
+                label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+                label.css("path-label");
+            });
+        });
+
+        scrolled(|scroller| {
+            scroller.set_hexpand(true);
+            scroller.set_vexpand(true);
+            scroller.css("panel-scroller");
+            table = Some(file_table(panel, &selection, &applying, &events));
+        });
+
+        // The user picked a drive or a remote root.
+        {
+            let applying = Rc::clone(&applying);
+            let events = Rc::clone(&events);
+            root.add_disposable(selected_root.observe_without_initial(move |index| {
+                if !applying.roots.get() && *index != gtk::INVALID_LIST_POSITION {
+                    events.root_selected(panel, *index as usize);
+                }
+            }));
         }
 
-        let path_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        path_row.add_css_class("path-row");
-
-        let root_model = gtk::StringList::new(&[]);
-        let root_dropdown = gtk::DropDown::new(Some(root_model.clone()), gtk::Expression::NONE);
-        root_dropdown.set_width_request(110);
-        root_dropdown.set_enable_search(true);
-        root_dropdown.add_css_class("root-selector");
-        path_row.append(&root_dropdown);
-
-        let remote_connect_button = gtk::Button::with_label("Connect");
-        remote_connect_button.add_css_class("flat");
-        path_row.append(&remote_connect_button);
-
-        let path_label = gtk::Label::new(None);
-        path_label.set_xalign(0.0);
-        path_label.set_hexpand(true);
-        path_label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        path_label.add_css_class("path-label");
-        path_row.append(&path_label);
-        root.append(&path_row);
-
-        let store = gio::ListStore::new::<FileRowObject>();
-        let selection = gtk::MultiSelection::new(Some(store.clone()));
-        let column_view = gtk::ColumnView::new(Some(selection.clone()));
-        column_view.set_hexpand(true);
-        column_view.set_vexpand(true);
-        column_view.set_show_row_separators(false);
-        column_view.set_show_column_separators(false);
-        column_view.set_single_click_activate(false);
-        column_view.set_enable_rubberband(true);
-        column_view.add_css_class("file-table");
-
-        let columns = append_file_columns(&column_view);
-
-        let scrolled = gtk::ScrolledWindow::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .child(&column_view)
-            .build();
-        scrolled.add_css_class("panel-scroller");
-        root.append(&scrolled);
-
-        Self {
-            root,
-            root_model,
-            root_dropdown,
-            remote_connect_button,
-            path_label,
-            store,
-            selection,
-            column_view,
-            columns,
-            ignore_selection: Rc::new(Cell::new(false)),
-            ignore_roots: Rc::new(Cell::new(false)),
-            ignore_sort: Rc::new(Cell::new(false)),
-            last_sort: Rc::new(RefCell::new(None)),
-            current_entries_path: Rc::new(RefCell::new(None)),
+        // The user changed the selection.
+        {
+            let applying = Rc::clone(&applying);
+            let events = Rc::clone(&events);
+            let handler = selection.connect_selection_changed(move |selection, _, _| {
+                if applying.selection.get() {
+                    return;
+                }
+                let indices = (0..selection.n_items())
+                    .filter(|index| selection.is_selected(*index))
+                    .map(|index| index as usize)
+                    .collect();
+                events.selection_changed(panel, indices);
+            });
+            root.own_object_signal(&selection, handler);
         }
+    });
+
+    FilePanel {
+        table: table.expect("file table composed"),
+        store,
+        selection,
+        path,
+        roots,
+        selected_root,
+        active,
+        applying,
+        current_entries_path: Rc::new(RefCell::new(None)),
     }
+}
 
+/// The file table and everything the user can do with it.
+fn file_table(
+    panel: ActivePanel,
+    selection: &gtk::MultiSelection,
+    applying: &Rc<Applying>,
+    events: &Rc<dyn ShellEvents>,
+) -> Table {
+    column_view(selection, |table| {
+        table.set_hexpand(true);
+        table.set_vexpand(true);
+        table.set_show_row_separators(false);
+        table.set_show_column_separators(false);
+        table.set_single_click_activate(false);
+        table.set_enable_rubberband(true);
+        table.css("file-table");
+
+        let columns = file_columns(table);
+
+        {
+            let events = Rc::clone(events);
+            table.on_row_activated(move |position| events.row_activated(panel, position as usize));
+        }
+        {
+            let events = Rc::clone(events);
+            table.on_key_pressed(move |key, _| {
+                if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
+                    events.open_requested(panel);
+                    true
+                } else {
+                    false
+                }
+            });
+        }
+        {
+            let events = Rc::clone(events);
+            table.on_pressed(gdk::BUTTON_PRIMARY, move |_, _| events.panel_focused(panel));
+        }
+        {
+            let events = Rc::clone(events);
+            table.on_focus_change(move |focused| {
+                if focused {
+                    events.panel_focused(panel);
+                }
+            });
+        }
+        {
+            let events = Rc::clone(events);
+            let anchor = table.clone();
+            table.on_pressed(gdk::BUTTON_SECONDARY, move |x, y| {
+                let row = anchor.row_at(x, y).map(|row| row as usize);
+                let widget = anchor.widget().clone().upcast::<gtk::Widget>();
+                events.context_menu(panel, row, widget, x, y);
+            });
+        }
+        {
+            let events = Rc::clone(events);
+            let applying = Rc::clone(applying);
+            let last_sort: RefCell<Option<(SortColumn, gtk::SortType)>> = RefCell::new(None);
+            table.on_sort_changed(move |column, order| {
+                if applying.sort.get() {
+                    return;
+                }
+                let Some((_, sort_column)) = columns.iter().find(|(known, _)| known == column)
+                else {
+                    return;
+                };
+                let next = (*sort_column, order);
+                if last_sort.borrow().as_ref() == Some(&next) {
+                    return;
+                }
+                last_sort.replace(Some(next));
+                let direction = match order {
+                    gtk::SortType::Descending => SortDirection::Descending,
+                    _ => SortDirection::Ascending,
+                };
+                events.sort_changed(panel, *sort_column, direction);
+            });
+        }
+    })
+}
+
+impl FilePanel {
     pub fn set_active(&self, active: bool) {
-        if active {
-            self.root.add_css_class("active-panel");
-        } else {
-            self.root.remove_css_class("active-panel");
-        }
-    }
-
-    pub fn refresh_labels(&self) {
-        for binding in &self.columns {
-            binding
-                .column
-                .set_title(Some(&crate::ui::columns::column_title(binding.sort_column)));
-        }
+        self.active.set(active);
     }
 
     pub fn set_path(&self, label: &str) {
-        self.path_label.set_label(label);
+        self.path.set(label.to_owned());
+    }
+
+    pub fn grab_focus(&self) {
+        self.table.grab_focus();
+    }
+
+    pub fn set_roots(&self, roots: &[RootLocation], selected_index: Option<usize>) {
+        self.applying.roots.set(true);
+        self.roots
+            .replace_all(roots.iter().map(|root| root.label.clone()).collect());
+        if let Some(index) = selected_index {
+            self.selected_root.set_always(index as u32);
+        }
+        self.applying.roots.set(false);
     }
 
     pub fn set_entries(
@@ -132,8 +256,8 @@ impl FilePanelView {
         entries: &[Entry],
         selected: BTreeSet<usize>,
     ) {
-        let was_ignoring_sort = self.ignore_sort.replace(true);
-        self.ignore_selection.set(true);
+        let was_applying_sort = self.applying.sort.replace(true);
+        self.applying.selection.set(true);
         let primary_selected = selected.iter().next().copied();
         self.sync_store(location, entries);
 
@@ -143,13 +267,13 @@ impl FilePanelView {
                 self.selection.select_item(index as u32, false);
             }
         }
-        self.ignore_selection.set(false);
-        self.ignore_sort.set(was_ignoring_sort);
+        self.applying.selection.set(false);
+        self.applying.sort.set(was_applying_sort);
 
         if let Some(index) = primary_selected {
-            let column_view = self.column_view.clone();
+            let view = self.table.widget().clone();
             glib::idle_add_local_once(move || {
-                column_view.scroll_to(
+                view.scroll_to(
                     index as u32,
                     None,
                     gtk::ListScrollFlags::SELECT | gtk::ListScrollFlags::FOCUS,
@@ -159,6 +283,7 @@ impl FilePanelView {
         }
     }
 
+    /// Brings the store in line with `entries`, touching only the rows that changed.
     fn sync_store(&self, location: &PanelLocation, entries: &[Entry]) {
         let mut current_entries_path = self.current_entries_path.borrow_mut();
         let location_label = location.display_label();
@@ -172,7 +297,6 @@ impl FilePanelView {
         }
 
         let mut index = 0usize;
-
         while index < entries.len() {
             let entry = &entries[index];
             let Some(row) = self.row_at(index) else {
@@ -223,199 +347,4 @@ impl FilePanelView {
                 .unwrap_or(false)
         })
     }
-
-    pub fn set_roots(&self, roots: &[RootLocation], selected_index: Option<usize>) {
-        self.ignore_roots.set(true);
-        let labels = roots
-            .iter()
-            .map(|root| root.label.as_str())
-            .collect::<Vec<_>>();
-        self.root_model
-            .splice(0, self.root_model.n_items(), labels.as_slice());
-        if let Some(index) = selected_index {
-            self.root_dropdown.set_selected(index as u32);
-        }
-        self.ignore_roots.set(false);
-    }
-
-    pub fn grab_focus(&self) {
-        self.column_view.grab_focus();
-    }
-
-    pub fn set_interaction_enabled(&self, enabled: bool) {
-        self.root_dropdown.set_sensitive(enabled);
-        self.remote_connect_button.set_sensitive(enabled);
-        self.column_view.set_sensitive(enabled);
-    }
-
-    pub fn connect_selection_changed<F>(&self, f: F)
-    where
-        F: Fn(Vec<usize>) + 'static,
-    {
-        let ignore_selection = Rc::clone(&self.ignore_selection);
-        let selection = self.selection.clone();
-        self.selection.connect_selection_changed(move |_, _, _| {
-            if ignore_selection.get() {
-                return;
-            }
-            let indices = (0..selection.n_items())
-                .filter(|index| selection.is_selected(*index))
-                .map(|index| index as usize)
-                .collect::<Vec<_>>();
-            f(indices);
-        });
-    }
-
-    pub fn connect_focus_enter<F>(&self, f: F)
-    where
-        F: Fn() + Clone + 'static,
-    {
-        let root_dropdown_callback = f.clone();
-        self.column_view.connect_has_focus_notify(move |view| {
-            if view.has_focus() {
-                f();
-            }
-        });
-        self.root_dropdown
-            .connect_has_focus_notify(move |dropdown| {
-                if dropdown.has_focus() {
-                    root_dropdown_callback();
-                }
-            });
-    }
-
-    pub fn connect_primary_click<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        let gesture = gtk::GestureClick::new();
-        gesture.set_button(gdk::BUTTON_PRIMARY);
-        gesture.connect_pressed(move |_, _, _, _| {
-            f();
-        });
-        self.column_view.add_controller(gesture);
-    }
-
-    pub fn connect_activate<F>(&self, f: F)
-    where
-        F: Fn(usize) + 'static,
-    {
-        self.column_view.connect_activate(move |_, position| {
-            f(position as usize);
-        });
-    }
-
-    pub fn connect_open_key<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        let controller = EventControllerKey::new();
-        controller.connect_key_pressed(move |_, key, _, _| {
-            if key == gdk::Key::Return || key == gdk::Key::KP_Enter {
-                f();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        self.column_view.add_controller(controller);
-    }
-
-    pub fn connect_root_changed<F>(&self, f: F)
-    where
-        F: Fn(usize) + 'static,
-    {
-        let ignore_roots = Rc::clone(&self.ignore_roots);
-        self.root_dropdown.connect_selected_notify(move |dropdown| {
-            if ignore_roots.get() {
-                return;
-            }
-            let selected = dropdown.selected();
-            if selected != gtk::INVALID_LIST_POSITION {
-                f(selected as usize);
-            }
-        });
-    }
-
-    pub fn connect_remote_connect<F>(&self, f: F)
-    where
-        F: Fn() + 'static,
-    {
-        self.remote_connect_button.connect_clicked(move |_| {
-            f();
-        });
-    }
-
-    pub fn connect_secondary_click<F>(&self, f: F)
-    where
-        F: Fn(Option<usize>, f64, f64) + 'static,
-    {
-        let root = self.root.clone();
-        let column_view = self.column_view.clone();
-        let gesture = gtk::GestureClick::new();
-        gesture.set_button(gdk::BUTTON_SECONDARY);
-        gesture.connect_pressed(move |_, _, x, y| {
-            let clicked_position = column_view
-                .pick(x, y, gtk::PickFlags::DEFAULT)
-                .and_then(|widget| find_row_position(&widget, &column_view));
-            let point = column_view
-                .compute_point(&root, &gtk::graphene::Point::new(x as f32, y as f32))
-                .unwrap_or_else(|| gtk::graphene::Point::new(x as f32, y as f32));
-            f(clicked_position, point.x() as f64, point.y() as f64);
-        });
-        self.column_view.add_controller(gesture);
-    }
-
-    pub fn connect_sort_changed<F>(&self, f: F)
-    where
-        F: Fn(SortColumn, gtk::SortType) + 'static,
-    {
-        let Some(sorter) = self
-            .column_view
-            .sorter()
-            .and_then(|sorter| sorter.downcast::<gtk::ColumnViewSorter>().ok())
-        else {
-            return;
-        };
-        let columns = self.columns.clone();
-        let ignore_sort = Rc::clone(&self.ignore_sort);
-        let last_sort = Rc::clone(&self.last_sort);
-        sorter.connect_changed(move |sorter, _| {
-            if ignore_sort.get() {
-                return;
-            }
-            let Some(primary_column) = sorter.primary_sort_column() else {
-                return;
-            };
-            let direction = sorter.primary_sort_order();
-            if let Some(binding) = columns
-                .iter()
-                .find(|binding| binding.column == primary_column)
-            {
-                let next_sort = (binding.sort_column, direction);
-                if last_sort.borrow().as_ref() == Some(&next_sort) {
-                    return;
-                }
-                last_sort.borrow_mut().replace(next_sort);
-                f(binding.sort_column, direction);
-            }
-        });
-    }
-}
-
-fn find_row_position(widget: &gtk::Widget, root: &gtk::ColumnView) -> Option<usize> {
-    let mut current = Some(widget.clone());
-    while let Some(candidate) = current {
-        unsafe {
-            if let Some(position) = candidate.data::<usize>(ROW_POSITION_DATA_KEY) {
-                return Some(*position.as_ref());
-            }
-        }
-
-        if candidate == *root.upcast_ref::<gtk::Widget>() {
-            break;
-        }
-        current = candidate.parent();
-    }
-    None
 }

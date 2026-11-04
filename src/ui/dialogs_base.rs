@@ -1,122 +1,227 @@
+use std::{cell::RefCell, rc::Rc};
+
 use gtk::{glib, prelude::*};
 use rust_i18n::t;
 
-pub(crate) struct ModalWindow {
-    pub window: gtk::Window,
-    pub content: gtk::Box,
-    pub actions: gtk::Box,
+use crate::ui::dsl::{
+    adopt, button, entry, hbox, render, switch, text, vbox, Ctx, IntoText, Property,
+};
+
+/// A modal window under construction: the window itself plus the two areas a
+/// dialog fills, its content and its row of action buttons.
+pub(crate) struct Modal {
+    window: Ctx<gtk::Window>,
+    content: Ctx<gtk::Box>,
+    actions: Ctx<gtk::Box>,
 }
 
-pub(crate) fn build_modal_window(
+impl Modal {
+    pub(crate) fn window(&self) -> &Ctx<gtk::Window> {
+        &self.window
+    }
+
+    /// Composes the dialog's content.
+    pub(crate) fn content<R>(&self, body: impl FnOnce() -> R) -> R {
+        self.content.compose(body)
+    }
+
+    /// Composes the dialog's action buttons, right-aligned below the content.
+    pub(crate) fn actions<R>(&self, body: impl FnOnce() -> R) -> R {
+        self.actions.compose(body)
+    }
+
+    /// A button that closes the dialog.
+    pub(crate) fn close_button(&self, label: impl IntoText) -> Ctx<gtk::Button> {
+        let window = self.window.widget().clone();
+        button(label, |button| button.on_click(move || window.close()))
+    }
+}
+
+/// A modal window over `parent`, composed in one block.
+///
+/// Returns the window and whatever `body` returns, typically the widget that
+/// should receive the default action or the initial focus. Closing the
+/// window hands the focus back to `parent`.
+pub(crate) fn modal<R>(
     parent: &gtk::ApplicationWindow,
     title: &str,
-    default_width: i32,
-    default_height: i32,
-) -> ModalWindow {
+    (width, height): (i32, i32),
+    body: impl FnOnce(&Modal) -> R,
+) -> (gtk::Window, R) {
     let window = gtk::Window::builder()
         .transient_for(parent)
         .modal(true)
         .title(title)
-        .default_width(default_width)
-        .default_height(default_height)
+        .default_width(width)
+        .default_height(height)
         .build();
 
-    {
-        let parent = parent.clone();
-        window.connect_close_request(move |_| {
+    let result = render(&window, || {
+        let root = adopt(&window);
+        {
             let parent = parent.clone();
-            glib::idle_add_local_once(move || {
-                parent.present();
-                parent.grab_focus();
+            root.on_close_request(move || {
+                let parent = parent.clone();
+                glib::idle_add_local_once(move || {
+                    parent.present();
+                    parent.grab_focus();
+                });
+                false
             });
-            glib::Propagation::Proceed
+        }
+
+        #[cfg(target_os = "windows")]
+        root.titlebar(|| dialog_titlebar(&window, title));
+
+        let mut areas = None;
+        vbox(10, |frame| {
+            frame.set_margin_top(12);
+            frame.set_margin_bottom(14);
+            frame.set_margin_start(12);
+            frame.set_margin_end(12);
+            let content = vbox(10, |_| {});
+            let actions = hbox(8, |actions| {
+                actions.set_halign(gtk::Align::End);
+                actions.set_margin_top(3);
+            });
+            areas = Some((content, actions));
         });
-    }
+        let (content, actions) = areas.expect("dialog areas composed");
 
-    #[cfg(target_os = "windows")]
-    install_dialog_window_controls(&window, title);
+        body(&Modal {
+            window: root,
+            content,
+            actions,
+        })
+    });
 
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    root.set_margin_top(12);
-    root.set_margin_bottom(14);
-    root.set_margin_start(12);
-    root.set_margin_end(12);
-
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.set_halign(gtk::Align::End);
-    actions.set_margin_top(3);
-    actions.set_margin_bottom(0);
-
-    root.append(&content);
-    root.append(&actions);
-    window.set_child(Some(&root));
-
-    ModalWindow {
-        window,
-        content,
-        actions,
-    }
+    (window, result)
 }
 
+/// The Windows titlebar of a dialog: the title and a close button, matching
+/// the custom window controls of the main window.
 #[cfg(target_os = "windows")]
-fn install_dialog_window_controls(window: &gtk::Window, title: &str) {
-    let header = gtk::HeaderBar::new();
-    header.set_show_title_buttons(false);
+fn dialog_titlebar(window: &gtk::Window, title: &str) -> Ctx<gtk::HeaderBar> {
+    use crate::ui::dsl::{header_bar, icon_button};
 
-    let title_label = gtk::Label::new(Some(title));
-    title_label.add_css_class("app-title");
-    header.set_title_widget(Some(&title_label));
-
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    controls.add_css_class("window-controls");
-
-    let close_button = gtk::Button::from_icon_name("window-close-symbolic");
-    close_button.add_css_class("window-control-button");
-    close_button.add_css_class("window-close-button");
-    close_button.add_css_class("flat");
-    close_button.set_focus_on_click(false);
-    close_button.set_size_request(44, 28);
-    close_button.set_tooltip_text(Some("Close"));
-    {
-        let window = window.clone();
-        close_button.connect_clicked(move |_| {
-            window.close();
+    header_bar(|header| {
+        header.set_show_title_buttons(false);
+        header.title(|| text(title, |label| label.css("app-title")));
+        header.pack_end(|| {
+            hbox(4, |controls| {
+                controls.css("window-controls");
+                let window = window.clone();
+                icon_button("window-close-symbolic", |close| {
+                    close.css("window-control-button");
+                    close.css("window-close-button");
+                    close.css("flat");
+                    close.set_focus_on_click(false);
+                    close.set_size_request(44, 28);
+                    close.set_tooltip_text(Some("Close"));
+                    close.on_click(move || window.close());
+                });
+            })
         });
-    }
-    controls.append(&close_button);
-
-    header.pack_end(&controls);
-    window.set_titlebar(Some(&header));
+    })
 }
 
 pub fn show_error(parent: &gtk::ApplicationWindow, title: &str, detail: &str) {
-    let ModalWindow {
-        window,
-        content,
-        actions,
-    } = build_modal_window(parent, title, 460, 180);
-
-    let title_label = gtk::Label::new(Some(title));
-    title_label.set_xalign(0.0);
-    title_label.set_wrap(true);
-    title_label.add_css_class("dialog-title");
-    content.append(&title_label);
-
-    let detail_label = gtk::Label::new(Some(detail));
-    detail_label.set_xalign(0.0);
-    detail_label.set_wrap(true);
-    content.append(&detail_label);
-
-    let close_button = gtk::Button::with_label(&t!("common.close"));
-    close_button.add_css_class("suggested-action");
-    actions.append(&close_button);
-    window.set_default_widget(Some(&close_button));
-
-    let window_for_close = window.clone();
-    close_button.connect_clicked(move |_| {
-        window_for_close.close();
+    let (window, close) = modal(parent, title, (460, 180), |dialog| {
+        dialog.content(|| {
+            heading(title);
+            paragraph(detail);
+        });
+        dialog.actions(|| {
+            let close = dialog.close_button(t!("common.close"));
+            close.css("suggested-action");
+            close
+        })
     });
-
+    window.set_default_widget(Some(close.widget()));
     window.present();
+}
+
+// ---------------------------------------------------------------------------
+// Building blocks shared by the dialogs
+// ---------------------------------------------------------------------------
+
+/// A bold heading that wraps.
+pub(crate) fn heading(value: impl IntoText) -> Ctx<gtk::Label> {
+    text(value, |label| {
+        label.set_wrap(true);
+        label.css("dialog-title");
+    })
+}
+
+/// A body text that wraps.
+pub(crate) fn paragraph(value: impl IntoText) -> Ctx<gtk::Label> {
+    text(value, |label| label.set_wrap(true))
+}
+
+/// A dimmed, wrapping note.
+pub(crate) fn hint(value: impl IntoText) -> Ctx<gtk::Label> {
+    text(value, |label| {
+        label.set_wrap(true);
+        label.css("dim-label");
+    })
+}
+
+/// A label on the left and the controls composed by `body` on the right.
+pub(crate) fn row(label: impl IntoText, body: impl FnOnce()) -> Ctx<gtk::Box> {
+    hbox(8, |_| {
+        text(label, |label| label.set_hexpand(true));
+        body();
+    })
+}
+
+/// A row with a switch bound both ways to `value`.
+pub(crate) fn switch_row(label: impl IntoText, value: &Property<bool>) -> Ctx<gtk::Box> {
+    row(label, || {
+        switch(value, |_| {});
+    })
+}
+
+/// A full-width entry with a placeholder, bound both ways to `value`.
+pub(crate) fn field(placeholder: &str, value: &Property<String>) -> Ctx<gtk::Entry> {
+    entry(value, |entry| {
+        entry.set_hexpand(true);
+        entry.set_placeholder_text(Some(placeholder));
+    })
+}
+
+/// Presents `window` on the next main-loop turn and focuses `focus`.
+pub(crate) fn present_and_focus(window: &gtk::Window, focus: &impl IsA<gtk::Widget>) {
+    let window = window.clone();
+    let focus = focus.clone();
+    glib::idle_add_local_once(move || {
+        window.present();
+        focus.grab_focus();
+    });
+}
+
+/// A callback that runs at most once, however many handlers share it.
+///
+/// Dialog results are `FnOnce` callbacks, while GTK handlers are `Fn` and a
+/// dialog has several of them; this is the one place that bridges the two.
+pub(crate) struct Once<T>(OnceCallback<T>);
+
+type OnceCallback<T> = Rc<RefCell<Option<Box<dyn FnOnce(T)>>>>;
+
+impl<T> Clone for Once<T> {
+    fn clone(&self) -> Self {
+        Self(Rc::clone(&self.0))
+    }
+}
+
+impl<T> Once<T> {
+    pub(crate) fn new(callback: impl FnOnce(T) + 'static) -> Self {
+        Self(Rc::new(RefCell::new(Some(Box::new(callback)))))
+    }
+
+    pub(crate) fn call(&self, value: T) {
+        let callback = self.0.borrow_mut().take();
+        if let Some(callback) = callback {
+            callback(value);
+        }
+    }
 }

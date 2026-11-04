@@ -42,6 +42,8 @@ pub fn entry_size_label(entry: &Entry) -> String {
     }
 }
 
+/// The type column: a file shows its extension (`exe`, `txt`), so sorting by
+/// type groups files by extension; a file without one shows "File".
 pub fn entry_type_label(entry: &Entry) -> String {
     if entry.is_parent_link {
         return t!("entry.parent").into_owned();
@@ -49,11 +51,17 @@ pub fn entry_type_label(entry: &Entry) -> String {
 
     match entry.kind {
         EntryKind::Directory => t!("entry.folder").into_owned(),
-        EntryKind::File => t!("entry.file").into_owned(),
+        EntryKind::File => entry
+            .extension()
+            .unwrap_or_else(|| t!("entry.file").into_owned()),
         EntryKind::Symlink => t!("entry.symlink").into_owned(),
         EntryKind::ArchiveItem => t!("entry.archive_item").into_owned(),
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/presentation_tests.rs"]
+mod tests;
 
 pub fn entry_modified_label(entry: &Entry) -> String {
     entry

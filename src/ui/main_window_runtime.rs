@@ -8,10 +8,7 @@ use crate::{
     remote::RemoteService,
 };
 
-use super::{
-    context_menu::ContextMenuRuntime, navigation_controller::NavigationRuntime,
-    operations_controller::OperationRuntime,
-};
+use super::{navigation_controller::NavigationRuntime, operations_controller::OperationRuntime};
 
 pub struct MainWindowRuntime {
     pub commander: Rc<RefCell<Commander>>,
@@ -21,7 +18,6 @@ pub struct MainWindowRuntime {
     pub task_spawner: TaskSpawner,
     pub operation_runtime: OperationRuntime,
     pub navigation_runtime: NavigationRuntime,
-    pub context_menu_runtime: ContextMenuRuntime,
     pub config_store: ConfigStore,
     pub app_config_cache: Rc<RefCell<AppConfig>>,
     pub platform_port: SharedPlatformPort,
@@ -49,7 +45,6 @@ impl MainWindowRuntime {
             task_spawner,
             operation_runtime: OperationRuntime::new(),
             navigation_runtime: NavigationRuntime::new(watch_command_tx),
-            context_menu_runtime: ContextMenuRuntime::new(),
             config_store,
             app_config_cache,
             platform_port,

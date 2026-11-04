@@ -53,9 +53,9 @@ impl MainWindow {
                 update
             };
             this.apply_update(update);
-            this.window_chrome().apply_theme();
-            this.window_chrome()
-                .refresh_localized_labels(&this.commander_view, &this.terminal_dock);
+            // Palette and every localized label follow on their own.
+            this.shell.theme.set(next_config.general.theme);
+            crate::ui::dsl::relocalize();
         });
     }
 

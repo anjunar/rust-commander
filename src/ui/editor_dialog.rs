@@ -1,5 +1,5 @@
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     fs,
     path::{Path, PathBuf},
     rc::Rc,
@@ -10,27 +10,17 @@ use gtk::{glib, prelude::*};
 use rust_i18n::t;
 use sourceview5::{self as sourceview, prelude::*};
 
-use crate::ui::dialogs::build_modal_window;
+use crate::ui::{
+    dialogs::{self, modal, present_and_focus},
+    dsl::{button, mount, scrolled, text, tr},
+};
 
+/// Opens `path` in a modal UTF-8 editor. `on_saved` runs after a successful save.
 pub fn edit_file<F>(parent: &gtk::ApplicationWindow, path: PathBuf, on_saved: F) -> Result<()>
 where
     F: Fn(PathBuf) + 'static,
 {
     let initial_text = read_text_file(&path)?;
-    let modal = build_modal_window(
-        parent,
-        &t!("editor.edit_title", file = file_label(&path)),
-        980,
-        720,
-    );
-    let window = modal.window;
-    let content = modal.content;
-    let actions = modal.actions;
-
-    let path_label = gtk::Label::new(Some(&path.display().to_string()));
-    path_label.set_xalign(0.0);
-    path_label.add_css_class("path-label");
-    content.append(&path_label);
 
     let buffer = sourceview::Buffer::new(None);
     buffer.set_text(&initial_text);
@@ -39,101 +29,93 @@ where
     apply_language(&buffer, &path);
     apply_style_scheme(&buffer);
 
-    let view = sourceview::View::with_buffer(&buffer);
-    view.set_hexpand(true);
-    view.set_vexpand(true);
-    view.set_monospace(true);
-    view.set_show_line_numbers(true);
-    view.set_highlight_current_line(true);
-    view.set_auto_indent(true);
-    view.set_insert_spaces_instead_of_tabs(true);
-    view.set_indent_width(4);
-    view.set_tab_width(4);
-    view.set_show_right_margin(true);
-    view.set_right_margin_position(100);
-    view.add_css_class("editor-view");
-
-    let scrolled = gtk::ScrolledWindow::builder()
-        .hexpand(true)
-        .vexpand(true)
-        .child(&view)
-        .build();
-    scrolled.add_css_class("panel-scroller");
-    content.append(&scrolled);
-
-    let status_label = gtk::Label::new(Some(&t!("editor.utf8_text_file")));
-    status_label.set_xalign(0.0);
-    status_label.add_css_class("editor-status");
-    content.append(&status_label);
-
-    let cancel_button = gtk::Button::with_label(&t!("common.cancel"));
-    let save_button = gtk::Button::with_label(&t!("common.save"));
-    save_button.add_css_class("suggested-action");
-    actions.append(&cancel_button);
-    actions.append(&save_button);
-    window.set_default_widget(Some(&save_button));
-
-    let parent = parent.clone();
-    let on_saved = Rc::new(RefCell::new(Some(on_saved)));
     let allow_close = Rc::new(Cell::new(false));
+    let on_saved = Rc::new(on_saved);
+    let title = t!("editor.edit_title", file = file_label(&path)).into_owned();
 
-    {
-        let window = window.clone();
-        let buffer = buffer.clone();
-        let path = path.clone();
-        let parent = parent.clone();
-        let on_saved = Rc::clone(&on_saved);
-        save_button.connect_clicked(move |_| {
-            let text = current_buffer_text(&buffer);
-            match save_text_file(&path, &text) {
-                Ok(()) => {
-                    buffer.set_modified(false);
-                    if let Some(on_saved) = on_saved.borrow_mut().take() {
-                        on_saved(path.clone());
-                    }
-                    window.close();
+    let (window, view) = modal(parent, &title, (980, 720), |editor| {
+        let window = editor.window().widget().clone();
+
+        // Unsaved changes are confirmed before the window may close.
+        {
+            let window = window.clone();
+            let parent = parent.clone();
+            let buffer = buffer.clone();
+            let allow_close = Rc::clone(&allow_close);
+            editor.window().on_close_request(move || {
+                if allow_close.get() || !buffer.is_modified() {
+                    return false;
                 }
-                Err(error) => {
-                    crate::ui::dialogs::show_error(
-                        &parent,
-                        "Could not save file",
-                        &error.to_string(),
-                    );
-                }
-            }
+                request_close_after_confirm(&window, &parent, &buffer, &allow_close);
+                true
+            });
+        }
+
+        let view = editor.content(|| {
+            text(path.display().to_string(), |label| label.css("path-label"));
+            let mut view = None;
+            scrolled(|scroller| {
+                scroller.set_hexpand(true);
+                scroller.set_vexpand(true);
+                scroller.css("panel-scroller");
+                view = Some(mount(sourceview::View::with_buffer(&buffer), |view| {
+                    view.set_hexpand(true);
+                    view.set_vexpand(true);
+                    view.set_monospace(true);
+                    view.set_show_line_numbers(true);
+                    view.set_highlight_current_line(true);
+                    view.set_auto_indent(true);
+                    view.set_insert_spaces_instead_of_tabs(true);
+                    view.set_indent_width(4);
+                    view.set_tab_width(4);
+                    view.set_show_right_margin(true);
+                    view.set_right_margin_position(100);
+                    view.css("editor-view");
+                }));
+            });
+            text(tr!("editor.utf8_text_file"), |status| {
+                status.css("editor-status")
+            });
+            view.expect("editor view composed")
         });
-    }
 
-    {
-        let window = window.clone();
-        let buffer = buffer.clone();
-        let allow_close = Rc::clone(&allow_close);
-        let parent = parent.clone();
-        cancel_button.connect_clicked(move |_| {
-            request_close_after_confirm(&window, &parent, &buffer, &allow_close);
+        let save = editor.actions(|| {
+            button(tr!("common.cancel"), |cancel| {
+                let window = window.clone();
+                let parent = parent.clone();
+                let buffer = buffer.clone();
+                let allow_close = Rc::clone(&allow_close);
+                cancel.on_click(move || {
+                    request_close_after_confirm(&window, &parent, &buffer, &allow_close)
+                });
+            });
+            button(tr!("common.save"), |save| {
+                save.css("suggested-action");
+                let window = window.clone();
+                let parent = parent.clone();
+                let buffer = buffer.clone();
+                let path = path.clone();
+                let on_saved = Rc::clone(&on_saved);
+                save.on_click(
+                    move || match save_text_file(&path, &current_buffer_text(&buffer)) {
+                        Ok(()) => {
+                            buffer.set_modified(false);
+                            on_saved(path.clone());
+                            window.close();
+                        }
+                        Err(error) => {
+                            dialogs::show_error(&parent, "Could not save file", &error.to_string());
+                        }
+                    },
+                );
+            })
         });
-    }
+        window.set_default_widget(Some(save.widget()));
 
-    {
-        let window = window.clone();
-        let buffer = buffer.clone();
-        let allow_close = Rc::clone(&allow_close);
-        let parent = parent.clone();
-        window.connect_close_request(move |window| {
-            if allow_close.get() || !buffer.is_modified() {
-                return glib::Propagation::Proceed;
-            }
-
-            request_close_after_confirm(window, &parent, &buffer, &allow_close);
-            glib::Propagation::Stop
-        });
-    }
-
-    glib::idle_add_local_once(move || {
-        window.present();
-        view.grab_focus();
+        view
     });
 
+    present_and_focus(&window, view.widget());
     Ok(())
 }
 

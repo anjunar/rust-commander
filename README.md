@@ -97,6 +97,17 @@ The project currently depends on:
 - `windows-sys` for Windows-specific integration
 - `vte4` for the Linux terminal backend
 
+### UI DSL
+
+The whole interface is composed with a small DSL in `src/ui/dsl`, modelled on [scalajs-ui](https://github.com/anjunar/scalajs-ui): elements nest like the widget tree, reactive `Property` values drive the widgets both ways, and every binding ends with the widgets it belongs to. Labels built with `tr!` follow the locale, so switching the language relabels the running window.
+
+- `src/ui/shell.rs` composes the main window in one block: titlebar, both panels over the terminal dock, the busy overlay, the status line and the command bar.
+- `src/ui/commands.rs` declares every command once; each becomes a window action with its F-key, and the command-bar buttons point at the same actions.
+- `src/ui/file_panel_view.rs` and `src/ui/columns.rs` build the panels on `column_view`, which keeps GTK's virtualised list model underneath.
+- Dialogs, the editor and the viewer are each one `modal` block; `modal` lives in `src/ui/dialogs_base.rs`.
+
+The module documentation in `src/ui/dsl/mod.rs` has the counter example and the mapping to scalajs-ui names.
+
 ## Build
 
 ### Requirements

@@ -13,30 +13,30 @@ use crate::ui::dialogs;
 
 impl MainWindow {
     pub fn handle_toggle_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
+        if !self.view.terminal.is_supported() {
             self.handle_open_console();
             return;
         }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.toggle());
+        self.view.terminal.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.view.terminal.toggle());
     }
 
     pub fn handle_focus_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
+        if !self.view.terminal.is_supported() {
             self.handle_open_console();
             return;
         }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.focus_terminal());
+        self.view.terminal.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.view.terminal.focus_terminal());
     }
 
     pub fn handle_restart_terminal(self: &Rc<Self>) {
-        if !self.terminal_dock.is_supported() {
+        if !self.view.terminal.is_supported() {
             self.handle_open_console();
             return;
         }
-        self.terminal_dock.set_panel_dir(self.active_panel_path());
-        self.handle_terminal_action(self.terminal_dock.restart_in_panel_dir());
+        self.view.terminal.set_panel_dir(self.active_panel_path());
+        self.handle_terminal_action(self.view.terminal.restart_in_panel_dir());
     }
 
     #[cfg(not(target_os = "windows"))]

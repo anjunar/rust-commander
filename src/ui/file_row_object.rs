@@ -14,6 +14,7 @@ pub struct FileRowData {
     pub path: String,
     pub size: String,
     pub type_label: String,
+    pub type_sort_key: (u8, String),
     pub modified: String,
     pub attributes: String,
     pub icon_name: String,
@@ -77,6 +78,7 @@ impl FileRowObject {
             path: entry.display_path(location),
             size: presentation::entry_size_label(entry),
             type_label: presentation::entry_type_label(entry),
+            type_sort_key: entry.type_sort_key(),
             modified: presentation::entry_modified_label(entry),
             attributes: presentation::entry_attributes_label(entry),
             icon_name: icon.icon_name.to_string(),
@@ -101,6 +103,10 @@ impl FileRowObject {
 
     pub fn type_label(&self) -> String {
         self.imp().data.borrow().type_label.clone()
+    }
+
+    pub fn type_sort_key(&self) -> (u8, String) {
+        self.imp().data.borrow().type_sort_key.clone()
     }
 
     pub fn modified(&self) -> String {
