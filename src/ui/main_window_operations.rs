@@ -229,7 +229,7 @@ impl OperationsController {
                 self.poll_transfer_operation_with_hooks(
                     request,
                     receiver,
-                    &title,
+                    Some(&title),
                     false,
                     false,
                     Some(Box::new(on_finished)),
@@ -261,7 +261,7 @@ impl OperationsController {
                 self.poll_transfer_operation_with_hooks(
                     request,
                     receiver,
-                    &title,
+                    Some(&title),
                     false,
                     false,
                     Some(Box::new(on_finished)),

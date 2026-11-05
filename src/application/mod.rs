@@ -11,7 +11,7 @@ pub mod services;
 pub use app_state::{ActivePanel, AppState};
 pub use commander::{Commander, CreateDirectoryTarget};
 pub use commands::ViewUpdate;
-pub use errors::{NavigationError, OperationError};
+pub use errors::{NavigationError, OperationError, PathAccess};
 pub use load_scheduler::LoadScheduler;
 pub use navigation::{
     filesystem_navigation_request, location_root_navigation_request, parent_navigation_request,

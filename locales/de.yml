@@ -224,6 +224,8 @@ dialog:
   favorites_edit_title: Favorit bearbeiten
   favorites_name_prompt: "Name:"
   favorites_path_prompt: "Pfad:"
+  elevate_action: Als Administrator ausführen
+  elevate_hint: Als Administrator lässt sich der Vorgang trotzdem ausführen. Windows fragt vorher nach Ihrer Bestätigung.
 
 search:
   title: Dateien suchen
@@ -423,6 +425,10 @@ status:
   owner_updated: "Besitzer für %{count} Element(e) auf %{owner} gesetzt."
 
 error:
+  access_denied: Zugriff verweigert
+  access_denied_read: "Keine Leseberechtigung für:\n%{path}"
+  access_denied_write: "Keine Schreibberechtigung für:\n%{path}"
+  access_denied_delete: "Keine Berechtigung zum Löschen von:\n%{path}"
   no_entry_selected: Kein Eintrag ist ausgewählt.
   properties_unavailable: Eigenschaften nicht verfügbar
   parent_has_no_properties: Der übergeordnete Ordnereintrag hat keine Eigenschaften.

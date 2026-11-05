@@ -224,6 +224,8 @@ dialog:
   favorites_edit_title: Modifier le favori
   favorites_name_prompt: "Nom :"
   favorites_path_prompt: "Chemin :"
+  elevate_action: Exécuter en tant qu'administrateur
+  elevate_hint: En tant qu'administrateur, l'opération peut tout de même être effectuée. Windows vous demande d'abord de confirmer.
 
 search:
   title: Rechercher des fichiers
@@ -423,6 +425,10 @@ status:
   owner_updated: "Proprietaire %{owner} applique a %{count} element(s)."
 
 error:
+  access_denied: Accès refusé
+  access_denied_read: "Aucune autorisation de lecture pour :\n%{path}"
+  access_denied_write: "Aucune autorisation d'écriture pour :\n%{path}"
+  access_denied_delete: "Aucune autorisation de suppression pour :\n%{path}"
   no_entry_selected: Aucune entree n'est selectionnee.
   properties_unavailable: Proprietes indisponibles
   parent_has_no_properties: L'entree du dossier parent n'a pas de proprietes.

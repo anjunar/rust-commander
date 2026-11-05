@@ -1,7 +1,10 @@
 use rust_i18n::t;
 
 use super::entry_type_label;
-use crate::domain::{Entry, EntryKind};
+use crate::{
+    application::{OperationError, PathAccess},
+    domain::{Entry, EntryKind},
+};
 
 fn entry(name: &str, kind: EntryKind) -> Entry {
     Entry {
@@ -40,4 +43,33 @@ fn type_column_falls_back_to_the_kind() {
         t!("entry.folder")
     );
     assert_eq!(entry_type_label(&Entry::parent_link()), t!("entry.parent"));
+}
+
+#[test]
+fn a_refusal_is_told_by_kind_of_access_and_names_the_path() {
+    let path = r"C:\Program Files\note.txt";
+    let text = |access| {
+        super::operation_error_text(&OperationError::access_denied(access, path, "raw detail"))
+    };
+
+    assert_eq!(
+        text(PathAccess::Read),
+        t!("error.access_denied_read", path = path)
+    );
+    assert_eq!(
+        text(PathAccess::Write),
+        t!("error.access_denied_write", path = path)
+    );
+    assert_eq!(
+        text(PathAccess::Delete),
+        t!("error.access_denied_delete", path = path)
+    );
+    assert!(text(PathAccess::Write).contains(path));
+}
+
+#[test]
+fn any_other_failure_is_shown_as_reported() {
+    let error = OperationError::execution("Could not write note.txt: disk full");
+
+    assert_eq!(super::operation_error_text(&error), error.detail());
 }

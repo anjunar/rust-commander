@@ -1,6 +1,6 @@
 use std::{
-    fs,
-    io::{Read, Write},
+    fmt, fs,
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 
 use crate::application::{
     ConflictResolution, FileOperationKind, LocalOperationRequest, OperationConflict,
-    OperationError, OperationEvent, OperationSnapshot, OperationSummary, TaskSpawner,
+    OperationError, OperationEvent, OperationSnapshot, OperationSummary, PathAccess, TaskSpawner,
 };
 
 #[derive(Clone)]
@@ -45,6 +45,48 @@ struct CopyProgress {
     processed_entries: u64,
 }
 
+/// One step of an operation. As the context of a failure it keeps the path and
+/// the kind of access, so that a refusal can be named to the user.
+#[derive(Debug)]
+struct Step {
+    access: PathAccess,
+    path: PathBuf,
+    what: &'static str,
+}
+
+impl fmt::Display for Step {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.what, self.path.display())
+    }
+}
+
+fn step(access: PathAccess, path: &Path, what: &'static str) -> Step {
+    Step {
+        access,
+        path: path.to_path_buf(),
+        what,
+    }
+}
+
+/// The failure as the UI gets it. The alternate form keeps the cause, which is
+/// the part that says why; the plain one ends at the outermost context.
+fn operation_failure(error: &anyhow::Error) -> OperationError {
+    let detail = format!("{error:#}");
+    match error.downcast_ref::<Step>() {
+        Some(step) if is_refusal(error) => {
+            OperationError::access_denied(step.access, step.path.clone(), detail)
+        }
+        _ => OperationError::execution(detail),
+    }
+}
+
+fn is_refusal(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<io::Error>())
+        .any(|cause| cause.kind() == io::ErrorKind::PermissionDenied)
+}
+
 pub fn start_operation(
     task_spawner: TaskSpawner,
     request: LocalOperationRequest,
@@ -66,13 +108,106 @@ pub fn start_operation(
         };
 
         if let Err(error) = result {
-            let _ = tx.send(OperationEvent::Failed(OperationError::execution(
-                error.to_string(),
-            )));
+            let _ = tx.send(OperationEvent::Failed(operation_failure(&error)));
         }
     });
 
     (handle, rx)
+}
+
+/// Repeats a local operation through the Windows shell, which asks for
+/// administrator rights first. Windows shows its own progress and conflict
+/// dialogs, so only the outcome comes back here.
+#[cfg(target_os = "windows")]
+pub fn start_elevated_operation(
+    task_spawner: TaskSpawner,
+    request: LocalOperationRequest,
+    overwrite_silently: bool,
+    owner: isize,
+) -> (OperationHandle, Receiver<OperationEvent>) {
+    use crate::platform::windows_shell_operation::{perform, ShellOutcome};
+
+    let (tx, rx) = mpsc::channel();
+    // The dialogs belong to Windows, so nothing here can cancel or resolve.
+    let (resolution_tx, _) = mpsc::channel();
+    let handle = OperationHandle {
+        cancelled: Arc::new(AtomicBool::new(false)),
+        resolution_tx,
+    };
+
+    task_spawner.spawn(move || {
+        let started_at = Instant::now();
+        // Measured first: a move or delete leaves nothing to measure afterwards.
+        let plan = build_plan_for_paths(&request.sources).unwrap_or(OperationPlan {
+            total_bytes: 0,
+            total_entries: request.sources.len() as u64,
+        });
+        let outcome = shell_operation(&request, overwrite_silently, owner)
+            .and_then(|operation| perform(&operation));
+
+        let finished = |bytes, entries| {
+            summary(
+                request.kind.clone(),
+                request.sources.clone(),
+                request.target_directory.clone(),
+                bytes,
+                entries,
+                started_at,
+            )
+        };
+        let _ = tx.send(match outcome {
+            Ok(ShellOutcome::Completed) => {
+                OperationEvent::Finished(finished(plan.total_bytes, plan.total_entries))
+            }
+            Ok(ShellOutcome::Aborted) => OperationEvent::Cancelled(finished(0, 0)),
+            Err(error) => OperationEvent::Failed(OperationError::execution(format!("{error:#}"))),
+        });
+    });
+
+    (handle, rx)
+}
+
+#[cfg(target_os = "windows")]
+fn shell_operation(
+    request: &LocalOperationRequest,
+    overwrite_silently: bool,
+    owner: isize,
+) -> Result<crate::platform::windows_shell_operation::ShellOperation> {
+    use crate::platform::windows_shell_operation::{ShellAction, ShellOperation, ShellTarget};
+
+    let target = || -> Result<ShellTarget> {
+        let directory = request
+            .target_directory
+            .clone()
+            .context("No target directory set for file operation")?;
+        // An explicit target names the one source, as in `run_transfer`.
+        let renamed = request
+            .target_path
+            .as_deref()
+            .filter(|_| request.sources.len() == 1);
+        Ok(ShellTarget {
+            directory: renamed
+                .and_then(Path::parent)
+                .map_or(directory, Path::to_path_buf),
+            name: renamed
+                .and_then(Path::file_name)
+                .map(std::ffi::OsStr::to_os_string),
+            overwrite_silently,
+        })
+    };
+
+    Ok(ShellOperation {
+        action: match request.kind {
+            FileOperationKind::Copy => ShellAction::Copy(target()?),
+            FileOperationKind::Move => ShellAction::Move(target()?),
+            FileOperationKind::Delete => ShellAction::Delete {
+                recycle: request.use_recycle_bin,
+            },
+        },
+        sources: request.sources.clone(),
+        elevate: true,
+        owner,
+    })
 }
 
 fn run_transfer(
@@ -104,6 +239,11 @@ fn run_transfer(
         } else {
             target_directory.join(source_name)
         };
+        // A move copies first. Finding out afterwards would leave both behind.
+        if delete_source {
+            delete_access(source)
+                .with_context(|| step(PathAccess::Delete, source, "Could not move"))?;
+        }
         let transfer_result = copy_path(
             source,
             &target_path,
@@ -136,7 +276,7 @@ fn run_transfer(
 
         if delete_source {
             cleanup_path(source).with_context(|| {
-                format!("Could not remove source {} after move", source.display())
+                step(PathAccess::Delete, source, "Could not remove moved source")
             })?;
         }
         completed_targets.push(target_path);
@@ -231,7 +371,7 @@ fn build_plan_for_paths(paths: &[PathBuf]) -> Result<OperationPlan> {
 
 fn build_copy_plan(path: &Path) -> Result<OperationPlan> {
     let metadata = fs::metadata(path)
-        .with_context(|| format!("Could not read metadata for {}", path.display()))?;
+        .with_context(|| step(PathAccess::Read, path, "Could not read metadata for"))?;
 
     if metadata.is_dir() {
         let mut plan = OperationPlan {
@@ -240,9 +380,10 @@ fn build_copy_plan(path: &Path) -> Result<OperationPlan> {
         };
 
         for entry in fs::read_dir(path)
-            .with_context(|| format!("Could not read directory {}", path.display()))?
+            .with_context(|| step(PathAccess::Read, path, "Could not read directory"))?
         {
-            let entry = entry?;
+            let entry =
+                entry.with_context(|| step(PathAccess::Read, path, "Could not read directory"))?;
             let child_plan = build_copy_plan(&entry.path())?;
             plan.total_bytes += child_plan.total_bytes;
             plan.total_entries += child_plan.total_entries;
@@ -274,7 +415,7 @@ fn copy_path(
     }
 
     let metadata = fs::metadata(source)
-        .with_context(|| format!("Could not read metadata for {}", source.display()))?;
+        .with_context(|| step(PathAccess::Read, source, "Could not read metadata for"))?;
     let Some(target) = resolve_target_conflict(
         source,
         target.to_path_buf(),
@@ -292,15 +433,16 @@ fn copy_path(
 
     if metadata.is_dir() {
         fs::create_dir_all(&target)
-            .with_context(|| format!("Could not create target folder {}", target.display()))?;
+            .with_context(|| step(PathAccess::Write, &target, "Could not create target folder"))?;
 
         progress.processed_entries += 1;
         send_progress(tx, kind.clone(), source, plan, progress, started_at);
 
         for entry in fs::read_dir(source)
-            .with_context(|| format!("Could not read directory {}", source.display()))?
+            .with_context(|| step(PathAccess::Read, source, "Could not read directory"))?
         {
-            let entry = entry?;
+            let entry = entry
+                .with_context(|| step(PathAccess::Read, source, "Could not read directory"))?;
             let child_source = entry.path();
             let child_target = target.join(entry.file_name());
             copy_path(
@@ -345,13 +487,13 @@ fn copy_file(
 ) -> Result<()> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
-            .with_context(|| format!("Could not create target folder {}", parent.display()))?;
+            .with_context(|| step(PathAccess::Write, parent, "Could not create target folder"))?;
     }
 
     let mut reader = fs::File::open(source)
-        .with_context(|| format!("Could not open source file {}", source.display()))?;
+        .with_context(|| step(PathAccess::Read, source, "Could not open source file"))?;
     let mut writer = fs::File::create(target)
-        .with_context(|| format!("Could not create target file {}", target.display()))?;
+        .with_context(|| step(PathAccess::Write, target, "Could not create target file"))?;
     let mut buffer = vec![0_u8; 1024 * 1024];
 
     loop {
@@ -361,17 +503,17 @@ fn copy_file(
 
         let read = reader
             .read(&mut buffer)
-            .with_context(|| format!("Could not read {}", source.display()))?;
+            .with_context(|| step(PathAccess::Read, source, "Could not read"))?;
         if read == 0 {
             break;
         }
 
         writer
             .write_all(&buffer[..read])
-            .with_context(|| format!("Could not write {}", target.display()))?;
+            .with_context(|| step(PathAccess::Write, target, "Could not write"))?;
         writer
             .flush()
-            .with_context(|| format!("Could not flush {}", target.display()))?;
+            .with_context(|| step(PathAccess::Write, target, "Could not flush"))?;
         progress.processed_bytes += read as u64;
         send_progress(tx, kind.clone(), source, plan, progress, started_at);
     }
@@ -401,13 +543,14 @@ fn delete_path(
     }
 
     let metadata = fs::metadata(path)
-        .with_context(|| format!("Could not read metadata for {}", path.display()))?;
+        .with_context(|| step(PathAccess::Read, path, "Could not read metadata for"))?;
 
     if metadata.is_dir() {
         for entry in fs::read_dir(path)
-            .with_context(|| format!("Could not read directory {}", path.display()))?
+            .with_context(|| step(PathAccess::Read, path, "Could not read directory"))?
         {
-            let entry = entry?;
+            let entry =
+                entry.with_context(|| step(PathAccess::Read, path, "Could not read directory"))?;
             delete_path(
                 &entry.path(),
                 plan,
@@ -423,14 +566,15 @@ fn delete_path(
         }
 
         fs::remove_dir(path)
-            .with_context(|| format!("Could not delete folder {}", path.display()))?;
+            .with_context(|| step(PathAccess::Delete, path, "Could not delete folder"))?;
         progress.processed_entries += 1;
         send_progress(tx, kind.clone(), path, plan, progress, started_at);
         return Ok(());
     }
 
     let file_len = metadata.len();
-    fs::remove_file(path).with_context(|| format!("Could not delete file {}", path.display()))?;
+    fs::remove_file(path)
+        .with_context(|| step(PathAccess::Delete, path, "Could not delete file"))?;
     progress.processed_bytes += file_len;
     progress.processed_entries += 1;
     send_progress(tx, kind.clone(), path, plan, progress, started_at);
@@ -452,11 +596,44 @@ fn delete_via_recycle_bin(
     }
 
     let deleted = build_copy_plan(path)?;
-    trash::delete(path)
-        .with_context(|| format!("Could not move {} to the recycle bin", path.display()))?;
+    if let Err(error) = trash::delete(path) {
+        // The recycle bin reports only that it gave up, not why.
+        let cause = match delete_access(path) {
+            Err(refusal) => anyhow::Error::from(refusal),
+            Ok(()) => anyhow::Error::from(error),
+        };
+        return Err(cause.context(step(
+            PathAccess::Delete,
+            path,
+            "Could not move to the recycle bin:",
+        )));
+    }
     progress.processed_bytes += deleted.total_bytes;
     progress.processed_entries += deleted.total_entries;
     send_progress(tx, kind.clone(), path, plan, progress, started_at);
+    Ok(())
+}
+
+/// Asks the system whether `path` may be deleted, without touching it.
+#[cfg(target_os = "windows")]
+fn delete_access(path: &Path) -> io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+
+    fs::OpenOptions::new()
+        .access_mode(DELETE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        // Without it, Windows refuses to open a folder at all.
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .map(drop)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn delete_access(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
@@ -496,7 +673,11 @@ fn resolve_target_conflict(
         match await_resolution(cancelled, resolution_rx) {
             ConflictResolution::Overwrite => {
                 cleanup_path(&target).with_context(|| {
-                    format!("Could not remove conflicting target {}", target.display())
+                    step(
+                        PathAccess::Delete,
+                        &target,
+                        "Could not remove conflicting target",
+                    )
                 })?;
             }
             ConflictResolution::Skip => {

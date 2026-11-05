@@ -24,6 +24,8 @@ mod dialogs_unix;
 pub(crate) use dialogs_base::{independent_window, modal, present_and_focus, Modal};
 pub use dialogs_base::{show_about, show_error};
 pub use dialogs_favorites::{show_favorites, FavoritesAction};
+#[cfg(target_os = "windows")]
+pub use dialogs_operations::offer_elevation;
 pub use dialogs_operations::{confirm_operation, show_conflict, ProgressDialog};
 pub use dialogs_properties::{show_properties, show_remote_properties};
 pub use dialogs_remote::{confirm_ssh_host_key, prompt_remote_connection, RemoteDialogAction};

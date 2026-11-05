@@ -46,9 +46,9 @@ impl RemoteService {
         self.task_spawner.spawn(move || {
             let result = service.run_download(source, &tx, &cancelled, &resolution_rx);
             if let Err(error) = result {
-                let _ = tx.send(OperationEvent::Failed(OperationError::execution(
-                    error.to_string(),
-                )));
+                let _ = tx.send(OperationEvent::Failed(OperationError::execution(format!(
+                    "{error:#}"
+                ))));
             }
         });
 
@@ -71,9 +71,9 @@ impl RemoteService {
         self.task_spawner.spawn(move || {
             let result = service.run_upload(request, &tx, &cancelled, &resolution_rx);
             if let Err(error) = result {
-                let _ = tx.send(OperationEvent::Failed(OperationError::execution(
-                    error.to_string(),
-                )));
+                let _ = tx.send(OperationEvent::Failed(OperationError::execution(format!(
+                    "{error:#}"
+                ))));
             }
         });
 

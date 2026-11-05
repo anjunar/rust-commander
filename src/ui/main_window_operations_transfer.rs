@@ -5,7 +5,7 @@ use rust_i18n::t;
 use crate::{
     application::{
         start_operation_task, ActiveOperationHandle, ActivePanel, ConflictResolution,
-        OperationEvent, OperationPlan, StartedOperation,
+        OperationError, OperationEvent, OperationPlan, StartedOperation,
     },
     presentation,
     remote::RemotePath,
@@ -31,7 +31,7 @@ impl OperationsController {
         self.poll_transfer_operation_with_hooks(
             request,
             receiver,
-            &title,
+            Some(&title),
             false,
             false,
             None::<Box<dyn FnOnce(Result<(), String>)>>,
@@ -88,28 +88,40 @@ impl OperationsController {
         self.poll_transfer_operation_with_hooks(
             request,
             receiver,
-            title,
+            Some(title),
             auto_overwrite,
             true,
             Some(Box::new(on_finished)),
         );
     }
 
+    /// Follows a transfer to its end. `progress_title` names the progress
+    /// dialog; `None` shows none, for an operation that brings its own.
     pub(super) fn poll_transfer_operation_with_hooks(
         &self,
         request: OperationPlan,
         receiver: std::sync::mpsc::Receiver<OperationEvent>,
-        title: &str,
+        progress_title: Option<&str>,
         auto_overwrite: bool,
         skip_selection_refresh: bool,
         on_finished: Option<TransferFinished>,
     ) {
         let active_operation = std::rc::Rc::clone(&self.runtime.active_operation);
-        let progress_dialog = dialogs::ProgressDialog::new(&self.window, title, move || {
-            if let Some(handle) = active_operation.borrow().as_ref() {
-                handle.cancel();
-            }
+        let progress_dialog = progress_title.map(|title| {
+            dialogs::ProgressDialog::new(&self.window, title, move || {
+                if let Some(handle) = active_operation.borrow().as_ref() {
+                    handle.cancel();
+                }
+            })
         });
+        let close_progress = {
+            let progress_dialog = progress_dialog.clone();
+            move || {
+                if let Some(dialog) = &progress_dialog {
+                    dialog.close();
+                }
+            }
+        };
 
         let on_finished = std::rc::Rc::new(std::cell::RefCell::new(on_finished));
         let controller = self.clone();
@@ -118,7 +130,9 @@ impl OperationsController {
             receiver,
             move |event| match event {
                 OperationEvent::Progress(snapshot) => {
-                    progress_dialog.update_progress(&snapshot);
+                    if let Some(dialog) = &progress_dialog {
+                        dialog.update_progress(&snapshot);
+                    }
                     let update = {
                         let mut commander = controller.commander.borrow_mut();
                         commander.set_status(
@@ -134,7 +148,9 @@ impl OperationsController {
                     true
                 }
                 OperationEvent::Conflict(conflict) => {
-                    progress_dialog.set_waiting_for_conflict();
+                    if let Some(dialog) = &progress_dialog {
+                        dialog.set_waiting_for_conflict();
+                    }
                     let should_overwrite = auto_overwrite
                         || !controller
                             .app_config_cache
@@ -157,7 +173,7 @@ impl OperationsController {
                     true
                 }
                 OperationEvent::Finished(summary) => {
-                    progress_dialog.close();
+                    close_progress();
                     controller.clear_active_operation();
                     if !skip_selection_refresh {
                         let selection_update = {
@@ -184,7 +200,7 @@ impl OperationsController {
                     false
                 }
                 OperationEvent::Cancelled(summary) => {
-                    progress_dialog.close();
+                    close_progress();
                     controller.clear_active_operation();
                     if !skip_selection_refresh {
                         let selection_update = {
@@ -210,33 +226,115 @@ impl OperationsController {
                     false
                 }
                 OperationEvent::Failed(error) => {
-                    progress_dialog.close();
+                    close_progress();
                     controller.clear_active_operation();
-                    let error_detail = error.detail().to_string();
+                    let message = presentation::operation_error_text(&error);
                     let update = {
                         let mut commander = controller.commander.borrow_mut();
                         commander.set_status(
                             t!(
                                 "status.file_operation_failed",
-                                error = error_detail.as_str()
+                                error = message.replace('\n', " ")
                             )
                             .into_owned(),
                         )
                     };
                     controller.host.apply_update(update);
-                    if let Some(callback) = on_finished.borrow_mut().take() {
-                        callback(Err(error_detail.clone()));
-                    }
+                    let callback = on_finished.borrow_mut().take();
                     // Remote-edit transfers (`skip_selection_refresh`) handle errors in the callback.
-                    if !skip_selection_refresh {
-                        controller
-                            .host
-                            .show_error(&t!("error.file_operation_failed"), &error_detail);
+                    if skip_selection_refresh {
+                        if let Some(callback) = callback {
+                            callback(Err(message));
+                        }
+                    } else {
+                        controller.report_failure(&request, &error, message, callback);
                     }
                     false
                 }
             },
             || false,
+        );
+    }
+
+    /// Tells the user why an operation failed. A local operation the system
+    /// refused gets the offer to repeat it as administrator.
+    #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
+    fn report_failure(
+        &self,
+        request: &OperationPlan,
+        error: &OperationError,
+        message: String,
+        on_finished: Option<TransferFinished>,
+    ) {
+        let title = if error.denied().is_some() {
+            t!("error.access_denied")
+        } else {
+            t!("error.file_operation_failed")
+        };
+
+        #[cfg(target_os = "windows")]
+        if let OperationPlan::Local(local) = request {
+            if error.denied().is_some() && crate::platform::can_elevate() {
+                self.offer_elevation(local.clone(), &title, message, on_finished);
+                return;
+            }
+        }
+
+        if let Some(callback) = on_finished {
+            callback(Err(message.clone()));
+        }
+        self.host.show_error(&title, &message);
+    }
+
+    #[cfg(target_os = "windows")]
+    fn offer_elevation(
+        &self,
+        request: crate::application::LocalOperationRequest,
+        title: &str,
+        message: String,
+        on_finished: Option<TransferFinished>,
+    ) {
+        let controller = self.clone();
+        let detail = message.clone();
+        dialogs::offer_elevation(&self.window, title, &detail, move |accepted| {
+            if accepted {
+                controller.start_elevated_operation(request, on_finished);
+            } else if let Some(callback) = on_finished {
+                callback(Err(message));
+            }
+        });
+    }
+
+    /// Repeats `request` with administrator rights. Windows shows the prompt
+    /// and the progress, so there is no progress dialog of our own.
+    #[cfg(target_os = "windows")]
+    fn start_elevated_operation(
+        &self,
+        request: crate::application::LocalOperationRequest,
+        on_finished: Option<TransferFinished>,
+    ) {
+        let overwrite_silently = !self
+            .app_config_cache
+            .borrow()
+            .file_operations
+            .confirm_overwrite;
+        let (handle, receiver) = crate::fs::operations::start_elevated_operation(
+            self.task_spawner.clone(),
+            request.clone(),
+            overwrite_silently,
+            crate::platform::native_window_handle(&self.window),
+        );
+        self.runtime
+            .active_operation
+            .borrow_mut()
+            .replace(ActiveOperationHandle::File(handle));
+        self.poll_transfer_operation_with_hooks(
+            OperationPlan::Local(request),
+            receiver,
+            None,
+            false,
+            false,
+            on_finished,
         );
     }
 

@@ -224,6 +224,8 @@ dialog:
   favorites_edit_title: Edit favorite
   favorites_name_prompt: "Name:"
   favorites_path_prompt: "Path:"
+  elevate_action: Run as administrator
+  elevate_hint: As administrator the operation can still be carried out. Windows asks you to confirm this first.
 
 search:
   title: Find files
@@ -423,6 +425,10 @@ status:
   owner_updated: "Updated owner to %{owner} for %{count} item(s)."
 
 error:
+  access_denied: Access denied
+  access_denied_read: "No permission to read:\n%{path}"
+  access_denied_write: "No permission to write to:\n%{path}"
+  access_denied_delete: "No permission to delete:\n%{path}"
   no_entry_selected: No entry is selected.
   properties_unavailable: Properties unavailable
   parent_has_no_properties: The parent directory entry has no properties.

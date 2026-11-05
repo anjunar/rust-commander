@@ -122,6 +122,24 @@ pub fn force_foreground_window(window_title: &str) {
 
 /// Activate a GTK window using its native Win32 HWND (preferred over title lookup).
 pub fn force_foreground_gtk_window(window: &impl IsA<gtk::Window>) {
+    if let Some(hwnd) = gtk_window_hwnd(window) {
+        force_foreground_hwnd(hwnd);
+    }
+}
+
+/// The native handle of a GTK window, as a plain number that may cross threads.
+/// 0 while the window has no native surface.
+pub fn native_window_handle(window: &impl IsA<gtk::Window>) -> isize {
+    gtk_window_hwnd(window).map_or(0, |hwnd| hwnd as isize)
+}
+
+/// Whether administrator rights would add anything: not when this process
+/// has them already.
+pub fn can_elevate() -> bool {
+    unsafe { windows_sys::Win32::UI::Shell::IsUserAnAdmin() == 0 }
+}
+
+fn gtk_window_hwnd(window: &impl IsA<gtk::Window>) -> Option<windows_sys::Win32::Foundation::HWND> {
     use gtk::{
         glib::translate::{from_glib, ToGlibPtr},
         prelude::{Cast, NativeExt, ObjectExt},
@@ -136,15 +154,12 @@ pub fn force_foreground_gtk_window(window: &impl IsA<gtk::Window>) {
         ) -> windows_sys::Win32::Foundation::HWND;
     }
 
-    let window = window.upcast_ref::<gtk::Window>();
-    let Some(surface) = window.surface() else {
-        return;
-    };
+    let surface = window.upcast_ref::<gtk::Window>().surface()?;
     let win32_surface: gtk::glib::Type = unsafe { from_glib(gdk_win32_surface_get_type()) };
-    if !surface.type_().is_a(win32_surface) {
-        return;
-    }
-    force_foreground_hwnd(unsafe { gdk_win32_surface_get_handle(surface.to_glib_none().0) });
+    surface
+        .type_()
+        .is_a(win32_surface)
+        .then(|| unsafe { gdk_win32_surface_get_handle(surface.to_glib_none().0) })
 }
 
 fn force_foreground_hwnd(hwnd: windows_sys::Win32::Foundation::HWND) {

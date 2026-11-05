@@ -1,7 +1,7 @@
 use rust_i18n::t;
 
 use crate::{
-    application::{ActivePanel, AppState, FileOperationKind},
+    application::{ActivePanel, AppState, FileOperationKind, OperationError, PathAccess},
     domain::{sorting::SortColumn, Entry, EntryKind},
 };
 
@@ -22,6 +22,21 @@ pub fn file_operation_label(kind: &FileOperationKind) -> String {
         FileOperationKind::Move => t!("operation.move").into_owned(),
         FileOperationKind::Delete => t!("operation.delete").into_owned(),
     }
+}
+
+/// What the user reads about a failed operation: a refusal in plain words,
+/// anything else as the operation reported it.
+pub fn operation_error_text(error: &OperationError) -> String {
+    let Some((access, path)) = error.denied() else {
+        return error.detail().to_string();
+    };
+    let path = path.display().to_string();
+    match access {
+        PathAccess::Read => t!("error.access_denied_read", path = path),
+        PathAccess::Write => t!("error.access_denied_write", path = path),
+        PathAccess::Delete => t!("error.access_denied_delete", path = path),
+    }
+    .into_owned()
 }
 
 pub fn sort_column_label(column: SortColumn) -> String {

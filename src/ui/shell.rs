@@ -255,6 +255,8 @@ fn status_line(model: &ShellModel) {
         });
         text(&model.status, |status| {
             status.set_hexpand(true);
+            // Paths get long, and a label that may not shrink widens the window.
+            status.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             status.css("status-line");
         });
     });

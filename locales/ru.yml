@@ -224,6 +224,8 @@ dialog:
   favorites_edit_title: Изменить избранное
   favorites_name_prompt: "Имя:"
   favorites_path_prompt: "Путь:"
+  elevate_action: Выполнить от имени администратора
+  elevate_hint: От имени администратора операцию всё же можно выполнить. Сначала Windows запросит подтверждение.
 
 search:
   title: Поиск файлов
@@ -423,6 +425,10 @@ status:
   owner_updated: "Владелец %{owner} обновлён для элементов: %{count}."
 
 error:
+  access_denied: Доступ запрещён
+  access_denied_read: "Нет прав на чтение:\n%{path}"
+  access_denied_write: "Нет прав на запись:\n%{path}"
+  access_denied_delete: "Нет прав на удаление:\n%{path}"
   no_entry_selected: Ничего не выбрано.
   properties_unavailable: Свойства недоступны
   parent_has_no_properties: У записи родительского каталога нет свойств.

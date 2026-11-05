@@ -1,4 +1,7 @@
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use crate::{domain::PanelLocation, remote::HostKeyTrustOffer};
 
@@ -58,10 +61,28 @@ impl fmt::Display for NavigationError {
     }
 }
 
+/// The kind of access an operation needed when the system refused it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PathAccess {
+    Read,
+    Write,
+    Delete,
+}
+
 #[derive(Clone, Debug)]
 pub enum OperationError {
-    Planning { detail: String },
-    Execution { detail: String },
+    Planning {
+        detail: String,
+    },
+    Execution {
+        detail: String,
+    },
+    /// The system refused `access` to `path`; more rights may get past that.
+    AccessDenied {
+        access: PathAccess,
+        path: PathBuf,
+        detail: String,
+    },
 }
 
 impl OperationError {
@@ -77,9 +98,31 @@ impl OperationError {
         }
     }
 
+    pub fn access_denied(
+        access: PathAccess,
+        path: impl Into<PathBuf>,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self::AccessDenied {
+            access,
+            path: path.into(),
+            detail: detail.into(),
+        }
+    }
+
     pub fn detail(&self) -> &str {
         match self {
-            Self::Planning { detail } | Self::Execution { detail } => detail,
+            Self::Planning { detail }
+            | Self::Execution { detail }
+            | Self::AccessDenied { detail, .. } => detail,
+        }
+    }
+
+    /// What the system refused, when that is why the operation failed.
+    pub fn denied(&self) -> Option<(PathAccess, &Path)> {
+        match self {
+            Self::AccessDenied { access, path, .. } => Some((*access, path)),
+            Self::Planning { .. } | Self::Execution { .. } => None,
         }
     }
 }
@@ -88,7 +131,9 @@ impl fmt::Display for OperationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Planning { detail } => write!(f, "Operation could not be prepared: {detail}"),
-            Self::Execution { detail } => write!(f, "Operation failed: {detail}"),
+            Self::Execution { detail } | Self::AccessDenied { detail, .. } => {
+                write!(f, "Operation failed: {detail}")
+            }
         }
     }
 }

@@ -191,6 +191,49 @@ pub fn show_conflict<F>(
     present_and_focus(&window, overwrite.widget());
 }
 
+/// Says what the system refused and offers to repeat the operation as
+/// administrator. `on_choice` gets whether the user took the offer; closing
+/// the dialog in any other way counts as no.
+#[cfg(target_os = "windows")]
+pub fn offer_elevation<F>(parent: &gtk::ApplicationWindow, title: &str, detail: &str, on_choice: F)
+where
+    F: FnOnce(bool) + 'static,
+{
+    let accepted = Rc::new(std::cell::Cell::new(false));
+
+    let (window, elevate) = modal(parent, title, (520, 200), |dialog| {
+        dialog.content(|| {
+            heading(title);
+            paragraph(detail);
+            paragraph(t!("dialog.elevate_hint"));
+        });
+        dialog.actions(|| {
+            dialog.close_button(t!("common.cancel"));
+            button(t!("dialog.elevate_action"), |button| {
+                button.css("suggested-action");
+                let accepted = Rc::clone(&accepted);
+                let window = dialog.window().widget().clone();
+                button.on_click(move || {
+                    accepted.set(true);
+                    window.close();
+                });
+            })
+        })
+    });
+
+    // The prompt of Windows comes on the next main-loop turn, once this is gone.
+    let on_choice = Once::new(on_choice);
+    window.connect_close_request(move |_| {
+        let on_choice = on_choice.clone();
+        let accepted = accepted.get();
+        glib::idle_add_local_once(move || on_choice.call(accepted));
+        glib::Propagation::Proceed
+    });
+
+    window.set_default_widget(Some(elevate.widget()));
+    present_and_focus(&window, elevate.widget());
+}
+
 /// A modal progress window. The text and the bar follow the properties; the
 /// bar itself is kept only for `pulse`, which is an action and not state.
 #[derive(Clone)]

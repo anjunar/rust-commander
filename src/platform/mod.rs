@@ -15,6 +15,8 @@ pub mod x11_window_icon;
 pub mod windows;
 #[cfg(target_os = "windows")]
 pub mod windows_file_clipboard;
+#[cfg(target_os = "windows")]
+pub mod windows_shell_operation;
 
 pub use context_menu::{show_context_menu, ContextMenuRequest};
 pub use icons::{fallback_icon_name_for_row, icon_for_listing_entry, set_icon_style};
@@ -29,9 +31,13 @@ pub use windows::apply_runtime_window_icon;
 #[cfg(target_os = "windows")]
 pub use windows::available_roots;
 #[cfg(target_os = "windows")]
+pub use windows::can_elevate;
+#[cfg(target_os = "windows")]
 pub use windows::force_foreground_gtk_window;
 #[cfg(target_os = "windows")]
 pub use windows::force_foreground_window;
+#[cfg(target_os = "windows")]
+pub use windows::native_window_handle;
 #[cfg(target_os = "windows")]
 pub use windows::show_file_properties;
 #[cfg(target_os = "windows")]
