@@ -58,6 +58,12 @@ columnview columnheader button {
     font-weight: 700;
 }
 
+/* Tighter rows than the stock column view, so a panel shows more files. */
+columnview.file-table > listview > row > cell {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
 .parent-link {
     font-style: italic;
 }

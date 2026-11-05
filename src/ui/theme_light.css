@@ -49,11 +49,6 @@ headerbar .titlebutton:active,
     background: #fffdf8;
 }
 
-.active-panel {
-    border-color: #1d6fd1;
-    box-shadow: 0 0 0 1px #1d6fd1;
-}
-
 dropdown,
 dropdown button,
 entry,
@@ -84,11 +79,14 @@ entry:focus {
     border-color: #d7ccbf;
 }
 
+/* The cursor row tells which panel is active; the path and the tab of the
+   other panel only step back a little. */
 .active-panel .path-label {
     color: #0f2236;
-    background: #cfe2ff;
-    border-color: #1d6fd1;
-    font-weight: 600;
+}
+
+.file-panel:not(.active-panel) .path-label {
+    color: #7b8794;
 }
 
 scrolledwindow,
@@ -130,22 +128,14 @@ columnview row:selected:focus-visible {
     box-shadow: none;
 }
 
-columnview .row-alt {
-    background: rgba(36, 48, 61, 0.025);
-}
-
 /* No hover band on unselected rows: GTK can leave :hover stuck on a recycled
    ListView row while selection is elsewhere (looks like a second cursor).
-   Keep :selected (and inactive cursor frame) visible under the pointer. */
+   Keep :selected (and the inactive cursor) visible under the pointer. */
 .file-table row:hover:not(:selected),
 columnview row:hover:not(:selected),
 columnview > listview > row:hover:not(:selected) {
     background: transparent;
     background-color: transparent;
-}
-
-columnview row:selected .row-alt {
-    background: transparent;
 }
 
 columnview row:selected,
@@ -160,15 +150,11 @@ treeexpander row:selected {
 .file-panel:not(.active-panel) columnview row:selected,
 .file-panel:not(.active-panel) listview row:selected,
 .file-panel:not(.active-panel) treeexpander row:selected {
-    background: transparent;
-    background-color: transparent;
+    background: rgba(36, 48, 61, 0.08);
+    background-color: rgba(36, 48, 61, 0.08);
     color: #24303d;
     outline: none;
-    box-shadow: inset 0 0 0 1px #6b7785;
-}
-
-.file-panel:not(.active-panel) columnview row:selected .row-alt {
-    background: rgba(36, 48, 61, 0.025);
+    box-shadow: none;
 }
 
 .parent-link {
@@ -341,6 +327,10 @@ messagedialog box,
     border-color: #d3c8b8;
 }
 
+.file-panel:not(.active-panel) .panel-tab.active {
+    color: #6a7684;
+}
+
 .panel-footer {
-    color: #24303d;
+    color: #6a7684;
 }

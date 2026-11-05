@@ -17,8 +17,6 @@ use crate::{
 /// Bright red for marked rows (#ff4d4d), as 16-bit Pango channels.
 const MARKED_FG: (u16, u16, u16) = (0xffff, 0x4d4d, 0x4d4d);
 
-const ROW_ALT_CLASS: &str = "row-alt";
-
 /// Declares the file columns on `table` and returns which column sorts by what.
 pub(crate) fn file_columns(table: &Table) -> Vec<(gtk::ColumnViewColumn, SortColumn)> {
     let attributes_width = if cfg!(target_os = "windows") { 96 } else { 128 };
@@ -99,9 +97,8 @@ fn name_column(table: &Table) -> gtk::ColumnViewColumn {
                 label,
             }
         },
-        |cell: &NameCell, row: &FileRowObject, position| {
+        |cell: &NameCell, row: &FileRowObject, _| {
             row.set_name_cell(Some(&cell.row));
-            stripe(&cell.row, position);
             if name_editor(&cell.row).is_some() {
                 return;
             }
@@ -133,7 +130,8 @@ fn name_column(table: &Table) -> gtk::ColumnViewColumn {
     )
 }
 
-/// One text value per row; sizes are right-aligned, the rest centred.
+/// One text value per row; sizes are right-aligned, the rest starts under
+/// its column title.
 fn text_column(table: &Table, column: SortColumn) -> gtk::ColumnViewColumn {
     table.column_with(
         column_title(column),
@@ -145,15 +143,14 @@ fn text_column(table: &Table, column: SortColumn) -> gtk::ColumnViewColumn {
                 label.set_margin_bottom(1);
                 label.set_xalign(match column {
                     SortColumn::Size => 1.0,
-                    _ => 0.5,
+                    _ => 0.0,
                 });
                 label.set_ellipsize(gtk::pango::EllipsizeMode::End);
             })
             .widget()
             .clone()
         },
-        move |label: &gtk::Label, row: &FileRowObject, position| {
-            stripe(label, position);
+        move |label: &gtk::Label, row: &FileRowObject, _| {
             let value = match column {
                 SortColumn::Name => row.name(),
                 SortColumn::Size => row.size(),
@@ -165,15 +162,6 @@ fn text_column(table: &Table, column: SortColumn) -> gtk::ColumnViewColumn {
         },
         |_, _| {},
     )
-}
-
-/// Zebra stripes by model index: `:nth-child` flips when GTK recycles rows.
-fn stripe(widget: &impl IsA<gtk::Widget>, position: u32) {
-    if position % 2 == 1 {
-        widget.add_css_class(ROW_ALT_CLASS);
-    } else {
-        widget.remove_css_class(ROW_ALT_CLASS);
-    }
 }
 
 fn show_row_text(label: &gtk::Label, value: &str, marked: bool) {
