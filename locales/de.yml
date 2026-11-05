@@ -7,13 +7,13 @@ panel:
 
 column:
   name: Name
-  size: Groesse
+  size: Größe
   type: Typ
-  modified: Geaendert
+  modified: Geändert
   attributes: Attribute
 
 entry:
-  parent: Uebergeordnet
+  parent: Übergeordnet
   folder: Ordner
   file: Datei
   symlink: Symlink
@@ -22,24 +22,24 @@ entry:
 operation:
   copy: Kopieren
   move: Verschieben
-  delete: Loeschen
+  delete: Löschen
   copy_verb: kopieren
   move_verb: verschieben
-  delete_verb: loeschen
+  delete_verb: löschen
 
 common:
-  close: Schliessen
+  close: Schließen
   cancel: Abbrechen
   apply: Anwenden
-  open: Oeffnen
+  open: Öffnen
   rename: Umbenennen
   create: Erstellen
   save: Speichern
   ok: OK
-  skip: Ueberspringen
-  overwrite: Ueberschreiben
+  skip: Überspringen
+  overwrite: Überschreiben
   clear: Leeren
-  delete_permanent: Endgueltig loeschen
+  delete_permanent: Endgültig löschen
   items_count: "%{count} Elemente"
 
 command:
@@ -54,12 +54,12 @@ command:
   sort_name: F3 Name
   sort_extension: F4 Ext
   sort_date: F5 Datum
-  sort_size: F6 Groesse
+  sort_size: F6 Größe
   new_file: F4 Neue Datei
   copy_as: F5 Kopieren als
   mkdir: F7 Ordner
-  delete: F8 Loeschen
-  delete_permanent: F8 Endgueltig
+  delete: F8 Löschen
+  delete_permanent: F8 Endgültig
   terminal: F9 Terminal
   quit: F10 Beenden
 
@@ -68,7 +68,7 @@ menu:
   commands: Befehle
   view: Ansicht
   help: Hilfe
-  open: Oeffnen
+  open: Öffnen
   view_file: Anzeigen
   edit_file: Bearbeiten
   properties: Eigenschaften
@@ -76,7 +76,7 @@ menu:
   new_file: Neue Textdatei
   mkdir: Verzeichnis erstellen
   new_tab: Neuer Tab
-  close_tab: Tab schliessen
+  close_tab: Tab schließen
   favorites: Favoriten
   connect_remote: SFTP…
   find_files: Dateien suchen…
@@ -84,11 +84,11 @@ menu:
   copy: Kopieren
   copy_as: Kopieren als…
   move: Verschieben
-  delete: Loeschen
-  delete_permanent: Endgueltig loeschen
+  delete: Löschen
+  delete_permanent: Endgültig löschen
   clipboard_cut: Ausschneiden
   clipboard_copy: In Zwischenablage kopieren
-  clipboard_paste: Einfuegen
+  clipboard_paste: Einfügen
   mark_all: Alles markieren
   switch_panel: Panel wechseln
   swap_panels: Panels tauschen
@@ -96,28 +96,28 @@ menu:
   sort_name: Nach Name sortieren
   sort_extension: Nach Erweiterung sortieren
   sort_date: Nach Datum sortieren
-  sort_size: Nach Groesse sortieren
-  remember_folder_sort: Sortierung fuer diesen Ordner merken
-  forget_folder_sort: Sortierung fuer diesen Ordner vergessen
+  sort_size: Nach Größe sortieren
+  remember_folder_sort: Sortierung für diesen Ordner merken
+  forget_folder_sort: Sortierung für diesen Ordner vergessen
   drive_left: Linkes Laufwerk
   drive_right: Rechtes Laufwerk
   go_root: Zum Stammverzeichnis
   refresh: Aktualisieren
   toggle_hidden_files: Versteckte/Systemdateien anzeigen
   settings: Einstellungen
-  about: Ueber
+  about: Über
 
 context:
-  open: Oeffnen
+  open: Öffnen
   view: Anzeigen
   edit: Bearbeiten
   rename: Umbenennen
-  delete: Loeschen
-  open_terminal: Terminal oeffnen
+  delete: Löschen
+  open_terminal: Terminal öffnen
 
 settings:
   title: Anwendungseinstellungen
-  description: Minimale Einstellungen fuer Sprache, Ansicht, Dateioperationen und Viewer.
+  description: Minimale Einstellungen für Sprache, Ansicht, Dateioperationen und Viewer.
   language: Sprache
   theme: Theme
   theme_system: System
@@ -134,29 +134,29 @@ settings:
   show_hidden_files: Versteckte Dateien anzeigen
   folders_first: Ordner immer oben anzeigen
   use_recycle_bin: Papierkorb verwenden
-  confirm_delete: Vor Loeschen bestaetigen
-  confirm_overwrite: Vor Ueberschreiben bestaetigen
-  streaming_threshold_mb: Streaming ab Dateigroesse in MB
-  max_edit_size_mb: Max. editierbare Dateigroesse in MB
+  confirm_delete: Vor Löschen bestätigen
+  confirm_overwrite: Vor Überschreiben bestätigen
+  streaming_threshold_mb: Streaming ab Dateigröße in MB
+  max_edit_size_mb: Max. editierbare Dateigröße in MB
   line_wrap: Zeilenumbruch
   show_line_numbers: Zeilennummern anzeigen
-  reset_defaults: Auf Standard zuruecksetzen
-  restart_hint: Einige Aenderungen werden erst nach dem erneuten Oeffnen betroffener Ansichten sichtbar.
-  restart_notice: Einige Aenderungen werden erst nach Neustart wirksam.
+  reset_defaults: Auf Standard zurücksetzen
+  restart_hint: Einige Änderungen werden erst nach dem erneuten Öffnen betroffener Ansichten sichtbar.
+  restart_notice: Einige Änderungen werden erst nach Neustart wirksam.
 
 dialog:
   about_comments: Ein klarer GTK4-Zweifenster-Dateimanager.
-  copy_confirmation_title: Kopieren bestaetigen
+  copy_confirmation_title: Kopieren bestätigen
   copy_confirmation_detail: "%{source} kopieren nach:"
-  archive_unsupported_title: Archivformat nicht unterstuetzt
+  archive_unsupported_title: Archivformat nicht unterstützt
   archive_unsupported_detail: "%{reason}.\n\n%{path}"
   ssh_host_key_title: Unbekannter SSH-Host
-  ssh_host_key_heading: Diesem SSH-Hostschluessel vertrauen?
-  ssh_host_key_detail: "Die Authentizitaet von Host %{host}:%{port} konnte nicht bestaetigt werden.\nSchluesseltyp: %{key_type}\nFingerabdruck (SHA256): %{fingerprint}\n\nWenn Sie diesem Host vertrauen, wird der Schluessel in ~/.ssh/known_hosts gespeichert."
-  ssh_host_key_warning: Vertrauen Sie dem Schluessel nur, wenn Sie diesen Host erwartet haben. Ein unerwarteter Schluessel kann auf einen Man-in-the-Middle-Angriff hinweisen.
+  ssh_host_key_heading: Diesem SSH-Hostschlüssel vertrauen?
+  ssh_host_key_detail: "Die Authentizität von Host %{host}:%{port} konnte nicht bestätigt werden.\nSchlüsseltyp: %{key_type}\nFingerabdruck (SHA256): %{fingerprint}\n\nWenn Sie diesem Host vertrauen, wird der Schlüssel in ~/.ssh/known_hosts gespeichert."
+  ssh_host_key_warning: Vertrauen Sie dem Schlüssel nur, wenn Sie diesen Host erwartet haben. Ein unerwarteter Schlüssel kann auf einen Man-in-the-Middle-Angriff hinweisen.
   ssh_host_key_trust: Vertrauen und fortfahren
   remote_save_profile_label: Profil beim Verbinden speichern
-  remote_save_profile_tooltip: "Wenn aktiviert, speichert Verbinden zusaetzlich dieses Profil (Host, Port, Benutzername, Schluesselpfade). Passwoerter und Passphrasen werden nie auf die Festplatte geschrieben — sie bleiben nur im Speicher fuer die aktuelle Sitzung."
+  remote_save_profile_tooltip: "Wenn aktiviert, speichert Verbinden zusätzlich dieses Profil (Host, Port, Benutzername, Schlüsselpfade). Passwörter und Passphrasen werden nie auf die Festplatte geschrieben — sie bleiben nur im Speicher für die aktuelle Sitzung."
   remote_title: Mit Remote verbinden
   remote_saved_profile: Gespeichertes Profil
   remote_new_connection: Neue Verbindung
@@ -165,44 +165,44 @@ dialog:
   remote_port: Port
   remote_username: Benutzername
   remote_start_directory: Startverzeichnis
-  remote_skip_host_key: "Unsicher: Hostschluesselpruefung ueberspringen"
-  remote_skip_host_key_warning: Nur fuer Test- oder Demo-Server verwenden. Deaktiviert die known_hosts-Pruefung und ermoeglicht Man-in-the-Middle-Angriffe.
+  remote_skip_host_key: "Unsicher: Hostschlüsselprüfung überspringen"
+  remote_skip_host_key_warning: Nur für Test- oder Demo-Server verwenden. Deaktiviert die known_hosts-Prüfung und ermöglicht Man-in-the-Middle-Angriffe.
   remote_authentication: Authentifizierung
   remote_auth_password: Passwort
-  remote_auth_key_file: Schluesseldatei
+  remote_auth_key_file: Schlüsseldatei
   remote_password_placeholder: Passwort oder Passphrase
-  remote_private_key: Pfad zum privaten Schluessel
-  remote_delete_profile: Profil loeschen
+  remote_private_key: Pfad zum privaten Schlüssel
+  remote_delete_profile: Profil löschen
   remote_connect: Verbinden
-  move_confirmation_title: Verschieben bestaetigen
+  move_confirmation_title: Verschieben bestätigen
   move_confirmation_detail: "%{source} verschieben nach:"
-  delete_confirmation_title: Loeschen bestaetigen
-  delete_confirmation_detail: "%{source} loeschen?"
-  delete_permanent_confirmation_title: Endgueltig loeschen
-  delete_permanent_confirmation_detail: "%{source} endgueltig loeschen?\n\nDer Papierkorb wird umgangen. Dies kann nicht rueckgaengig gemacht werden."
+  delete_confirmation_title: Löschen bestätigen
+  delete_confirmation_detail: "%{source} löschen?"
+  delete_permanent_confirmation_title: Endgültig löschen
+  delete_permanent_confirmation_detail: "%{source} endgültig löschen?\n\nDer Papierkorb wird umgangen. Dies kann nicht rückgängig gemacht werden."
   mkdir_title: Ordner erstellen
-  mkdir_prompt: "Namen fuer den neuen Ordner eingeben:"
+  mkdir_prompt: "Namen für den neuen Ordner eingeben:"
   properties_title: Eigenschaften
   properties_name: Name
   properties_location: Speicherort
   properties_type: Typ
-  properties_size: Groesse
+  properties_size: Größe
   properties_size_folder: Ordner
   properties_created: Erstellt
-  properties_modified: Geaendert
+  properties_modified: Geändert
   properties_attributes: Attribute
   properties_permissions: Berechtigungen
   properties_mode_octal: "Modus (oktal):"
   properties_perm_read: Lesen
   properties_perm_write: Schreiben
-  properties_perm_execute: Ausfuehren
+  properties_perm_execute: Ausführen
   properties_perm_owner: Besitzer
   properties_perm_group: Gruppe
   properties_perm_other: Andere
   new_file_title: Textdatei erstellen
-  new_file_prompt: "Namen fuer die neue Textdatei eingeben:"
+  new_file_prompt: "Namen für die neue Textdatei eingeben:"
   copy_as_title: Kopieren unter neuem Namen
-  copy_as_prompt: "Namen fuer die Kopie eingeben:"
+  copy_as_prompt: "Namen für die Kopie eingeben:"
   chmod_title: Chmod
   chmod_prompt: "Dateimodus setzen:"
   chmod_placeholder: "Beispiel: 755 oder u+rwX"
@@ -213,79 +213,79 @@ dialog:
   conflict_title: "%{kind}-Konflikt"
   conflict_detail: "Das Ziel existiert bereits.\n\nQuelle: %{source}\nZiel: %{target}"
   favorites_title: Favoriten
-  favorites_hint: "Waehlen Sie einen Favoritenordner oder fuegen Sie das aktuelle Verzeichnis hinzu."
-  favorites_add: Aktuelles hinzufuegen
+  favorites_hint: "Wählen Sie einen Favoritenordner oder fügen Sie das aktuelle Verzeichnis hinzu."
+  favorites_add: Aktuelles hinzufügen
   favorites_edit: Bearbeiten
-  favorites_delete: Loeschen
+  favorites_delete: Löschen
   favorites_move_up: Nach oben
   favorites_move_down: Nach unten
-  favorites_go: Oeffnen
-  favorites_add_title: Favorit hinzufuegen
+  favorites_go: Öffnen
+  favorites_add_title: Favorit hinzufügen
   favorites_edit_title: Favorit bearbeiten
   favorites_name_prompt: "Name:"
   favorites_path_prompt: "Pfad:"
 
 search:
   title: Dateien suchen
-  description: Suche nach Namen. Platzhalter (* ?) oder regulaere Ausdruecke. Ausschliessen ueberspringt passende Namen und Ordner.
+  description: Suche nach Namen. Platzhalter (* ?) oder reguläre Ausdrücke. Ausschließen überspringt passende Namen und Ordner.
   name_label: "Name:"
   name_placeholder: "*.rs"
-  exclude_label: "Ausschliessen:"
+  exclude_label: "Ausschließen:"
   exclude_placeholder: "node_modules;target;.git"
   location_label: "Suchen in:"
   include_subfolders: Unterordner einbeziehen
-  case_sensitive: Gross-/Kleinschreibung beachten
-  use_regex: Regulaerer Ausdruck
+  case_sensitive: Groß-/Kleinschreibung beachten
+  use_regex: Regulärer Ausdruck
   start: Start
   stop: Stopp
   column_path: Pfad
   status_idle: Bereit
   status_searching: "Gefunden: %{count} · Suche: %{path}"
   status_done: "Gefunden: %{count}"
-  status_done_with_errors: "Gefunden: %{count} · %{errors} Ordner uebersprungen"
+  status_done_with_errors: "Gefunden: %{count} · %{errors} Ordner übersprungen"
   status_cancelled: "Gestoppt · Gefunden: %{count}"
-  status_opened: "Suchergebnis geoeffnet: %{path}"
-  not_local: Die Dateisuche funktioniert nur in einem lokalen Ordner. Oeffnen Sie ein lokales Verzeichnis im aktiven Panel und versuchen Sie es erneut.
+  status_opened: "Suchergebnis geöffnet: %{path}"
+  not_local: Die Dateisuche funktioniert nur in einem lokalen Ordner. Öffnen Sie ein lokales Verzeichnis im aktiven Panel und versuchen Sie es erneut.
   invalid_location: Geben Sie ein vorhandenes lokales Verzeichnis an.
-  invalid_pattern: "Ungueltiges Muster: %{error}"
+  invalid_pattern: "Ungültiges Muster: %{error}"
 
 editor:
   utf8_text_file: UTF-8-Textdatei
   untitled: Unbenannt
   status: "UTF-8-Textdatei | Zl %{line}, Sp %{col}"
-  binary_file_not_editable: Die ausgewaehlte Datei scheint binaer zu sein und kann nicht als Text bearbeitet werden.
-  invalid_utf8_for_edit: "Die ausgewaehlte Datei ist kein gueltiges UTF-8 und kann nicht im Texteditor bearbeitet werden: %{path}"
-  discard_changes_title: Aenderungen verwerfen?
-  discard_changes_detail: Im Editor gibt es ungespeicherte Aenderungen.
+  binary_file_not_editable: Die ausgewählte Datei scheint binär zu sein und kann nicht als Text bearbeitet werden.
+  invalid_utf8_for_edit: "Die ausgewählte Datei ist kein gültiges UTF-8 und kann nicht im Texteditor bearbeitet werden: %{path}"
+  discard_changes_title: Änderungen verwerfen?
+  discard_changes_detail: Im Editor gibt es ungespeicherte Änderungen.
   keep_editing: Weiter bearbeiten
   discard: Verwerfen
   menu_file: Datei
   menu_edit: Bearbeiten
   new: Neu
-  open: Oeffnen…
+  open: Öffnen…
   save: Speichern
   save_as: Speichern unter…
   exit: Beenden
-  undo: Rueckgaengig
+  undo: Rückgängig
   redo: Wiederholen
   cut: Ausschneiden
   copy: Kopieren
-  paste: Einfuegen
-  delete: Loeschen
-  select_all: Alles auswaehlen
+  paste: Einfügen
+  delete: Löschen
+  select_all: Alles auswählen
   duplicate_line: Zeile duplizieren
   find: Suchen…
   find_next: Weitersuchen
-  find_previous: Rueckwaerts suchen
+  find_previous: Rückwärts suchen
   replace: Ersetzen…
   go_to_line: Gehe zu Zeile…
   find_placeholder: Suchen
   replace_placeholder: Ersetzen
   go_to_line_title: Gehe zu Zeile
   go_to_line_prompt: "Zeilennummer:"
-  open_title: Datei oeffnen
+  open_title: Datei öffnen
   save_title: Datei speichern
-  could_not_open_file: Datei konnte nicht geoeffnet werden
+  could_not_open_file: Datei konnte nicht geöffnet werden
   could_not_save_file: Datei konnte nicht gespeichert werden
   could_not_upload_remote: Remote-Datei konnte nicht hochgeladen werden
 
@@ -305,22 +305,22 @@ viewer:
   mode_csv: CSV
   mode_code: Code
   mode_archive: "Archiv (%{count})"
-  status: "%{mode} | %{size} | Zeile %{line} | Spalte %{col} | F2 Modus wechseln | Esc schliessen"
-  status_markdown: "%{mode} | %{size} | Esc schliessen"
-  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → blaettern | Esc schliessen"
+  status: "%{mode} | %{size} | Zeile %{line} | Spalte %{col} | F2 Modus wechseln | Esc schließen"
+  status_markdown: "%{mode} | %{size} | Esc schließen"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → blättern | Esc schließen"
   status_image_loading: "%{mode} | %{index}/%{total} | laden…"
   image_loading: Laden…
-  read_only_text_truncated: "Schreibgeschuetzte Textansicht. Die ersten %{shown} von %{total} werden angezeigt."
-  read_only_text_total: "Schreibgeschuetzte Textansicht. Insgesamt %{total}."
-  read_only_hex_truncated: "Schreibgeschuetzte Hex-Ansicht fuer binaere Inhalte. Die ersten %{shown} von %{total} werden angezeigt."
-  read_only_hex_total: "Schreibgeschuetzte Hex-Ansicht fuer binaere Inhalte. Insgesamt %{total}."
-  invalid_utf8_for_view: Die ausgewaehlte Datei ist kein gueltiges UTF-8 und kann nicht als Text angezeigt werden.
+  read_only_text_truncated: "Schreibgeschützte Textansicht. Die ersten %{shown} von %{total} werden angezeigt."
+  read_only_text_total: "Schreibgeschützte Textansicht. Insgesamt %{total}."
+  read_only_hex_truncated: "Schreibgeschützte Hex-Ansicht für binäre Inhalte. Die ersten %{shown} von %{total} werden angezeigt."
+  read_only_hex_total: "Schreibgeschützte Hex-Ansicht für binäre Inhalte. Insgesamt %{total}."
+  invalid_utf8_for_view: Die ausgewählte Datei ist kein gültiges UTF-8 und kann nicht als Text angezeigt werden.
   could_not_decode_preview: Die Textvorschau konnte nicht dekodiert werden.
   empty_hex_file: "00000000  <leere Datei>"
   error_with_detail: "Betrachterfehler: %{error}"
   scroll_update_error: "Betrachterfehler: Scroll-Position konnte nicht aktualisiert werden"
   render_error_body: "Dateiansicht konnte nicht gerendert werden.\n\n%{error}"
-  file_too_large: "Datei ist zu gross fuer die Vorschau (%{size}; Limit %{limit})."
+  file_too_large: "Datei ist zu groß für die Vorschau (%{size}; Limit %{limit})."
   image_decode_error: Bild konnte nicht dekodiert werden.
   image_dimensions: "%{width} × %{height} px"
   structured_parse_error: Strukturierte Datei konnte nicht gelesen werden.
@@ -328,7 +328,7 @@ viewer:
   csv_truncated: "erste %{rows} Zeilen"
   archive_empty: Archiv ist leer.
   archive_col_name: Name
-  archive_col_size: Groesse
+  archive_col_size: Größe
   archive_col_type: Typ
   archive_type_dir: ORDNER
   archive_type_file: DATEI
@@ -343,70 +343,70 @@ progress:
   remote_edit_upload: Hochladen der gespeicherten Datei...
   eta_unknown: "ETA --:--"
   cancel_operation: Vorgang abbrechen
-  in_progress: "%{kind} laeuft"
+  in_progress: "%{kind} läuft"
   file_operation_detail: "%{processed} von %{total} | %{processed_entries} / %{total_entries} Elemente\n%{item}"
   archive_copy: Archiv kopieren
-  archive_copy_in_progress: Archivkopie laeuft
-  selected_archive_items: "%{count} ausgewaehlte Archivelemente"
+  archive_copy_in_progress: Archivkopie läuft
+  selected_archive_items: "%{count} ausgewählte Archivelemente"
   preparing_archive_operation: Archivvorgang wird vorbereitet...
   working: Arbeite...
   items_count: "Elemente %{processed}/%{total}"
-  waiting_for_conflict_resolution: Warte auf Konfliktaufloesung...
+  waiting_for_conflict_resolution: Warte auf Konfliktauflösung...
 
 terminal:
   title: Terminal
   restart: Neustart
   title_windows_pending: Terminal (Windows-Backend ausstehend)
-  title_unsupported: Terminal (Backend auf dieser Plattform nicht verfuegbar)
+  title_unsupported: Terminal (Backend auf dieser Plattform nicht verfügbar)
   panel_path: "Panel-Pfad: %{path}"
-  unsupported_path_chars: "Das Terminalverzeichnis enthaelt nicht unterstuetzte Zeichen: %{path}"
-  windows_placeholder_title: Das eingebettete Terminal ist derzeit auf Linux-Builds mit VTE verfuegbar.
-  windows_placeholder_body: "Angefordertes Arbeitsverzeichnis: %{path}\n\nWarum dies unter Windows noch ein Platzhalter ist:\nConPTY liefert einen Pseudokonsolen-Stream, aber die Host-Anwendung muss Terminalausgabe selbst rendern und Eingaben selbst erfassen. GTK4 bietet auf Windows kein natives Terminal-Widget wie VTE, und dieses Projekt verzichtet bewusst auf einen eigenen Emulator.\n\nDie Dock-Architektur ist bereits getrennt, sodass spaeter ein Windows-natives Terminal-Steuerelement hinzugefuegt werden kann, ohne die umgebende Commander-UI zu aendern."
+  unsupported_path_chars: "Das Terminalverzeichnis enthält nicht unterstützte Zeichen: %{path}"
+  windows_placeholder_title: Das eingebettete Terminal ist derzeit auf Linux-Builds mit VTE verfügbar.
+  windows_placeholder_body: "Angefordertes Arbeitsverzeichnis: %{path}\n\nWarum dies unter Windows noch ein Platzhalter ist:\nConPTY liefert einen Pseudokonsolen-Stream, aber die Host-Anwendung muss Terminalausgabe selbst rendern und Eingaben selbst erfassen. GTK4 bietet auf Windows kein natives Terminal-Widget wie VTE, und dieses Projekt verzichtet bewusst auf einen eigenen Emulator.\n\nDie Dock-Architektur ist bereits getrennt, sodass später ein Windows-natives Terminal-Steuerelement hinzugefügt werden kann, ohne die umgebende Commander-UI zu ändern."
 
 archive:
   extracted_items: "%{count} Element(e) nach %{target} extrahiert"
 
 status:
-  ready: Bereit. F3 zeigt an, F4 bearbeitet, Enter oeffnet, Tab wechselt Panels, F5 kopiert.
+  ready: Bereit. F3 zeigt an, F4 bearbeitet, Enter öffnet, Tab wechselt Panels, F5 kopiert.
   quick_search: "Suche: %{query}"
-  selected_active: "%{status} | %{count} im aktiven Panel ausgewaehlt"
-  selected_inactive: "%{status} | %{count} im inaktiven Panel ausgewaehlt"
-  selected_both: "%{status} | %{active} aktiv ausgewaehlt | %{inactive} inaktiv ausgewaehlt"
+  selected_active: "%{status} | %{count} im aktiven Panel ausgewählt"
+  selected_inactive: "%{status} | %{count} im inaktiven Panel ausgewählt"
+  selected_both: "%{status} | %{active} aktiv ausgewählt | %{inactive} inaktiv ausgewählt"
   archive_settings_updated: Archiveinstellungen aktualisiert. Interne und native Archiv-Backends sind aktiv.
-  view_refreshed: Dateiaenderungen erkannt. Ansicht aktualisiert.
+  view_refreshed: Dateiänderungen erkannt. Ansicht aktualisiert.
   directory_refreshed: Verzeichnis aktualisiert.
   hidden_files_shown: Versteckte Dateien werden angezeigt.
   hidden_files_hidden: Versteckte Dateien sind ausgeblendet.
   refresh_failed: "Aktualisierung von %{panel} fehlgeschlagen: %{error}"
   sorted_panel: "%{panel}-Panel nach %{column} sortiert."
-  folder_sort_remembered: "Sortierung fuer %{path} gespeichert."
-  folder_sort_forgotten: "Gespeicherte Sortierung fuer %{path} entfernt."
-  folder_sort_not_set: "Keine gespeicherte Sortierung fuer %{path}."
-  rename_skipped: Umbenennen uebersprungen. Der Name ist unveraendert.
+  folder_sort_remembered: "Sortierung für %{path} gespeichert."
+  folder_sort_forgotten: "Gespeicherte Sortierung für %{path} entfernt."
+  folder_sort_not_set: "Keine gespeicherte Sortierung für %{path}."
+  rename_skipped: Umbenennen übersprungen. Der Name ist unverändert.
   renamed: "Umbenannt: %{path}"
   created_directory: "Ordner erstellt: %{path}"
   created_file: "Datei erstellt: %{path}"
   copied_as: "%{source} als %{target} kopiert"
-  console_opened_at: "Konsole geoeffnet in %{path}"
+  console_opened_at: "Konsole geöffnet in %{path}"
   language_changed: "Sprache auf %{language} gesetzt."
   saved: "Gespeichert: %{path}"
   remote_saved: "Gespeichert und hochgeladen: %{path}"
-  remote_edit_transfer_cancelled: Uebertragung beim Remote-Bearbeiten abgebrochen.
+  remote_edit_transfer_cancelled: Übertragung beim Remote-Bearbeiten abgebrochen.
   up_one_level: "Eine Ebene nach oben: %{path}"
-  loading_parent_directory: Uebergeordneter Ordner wird geladen...
-  opened: "Geoeffnet: %{path}"
+  loading_parent_directory: Übergeordneter Ordner wird geladen...
+  opened: "Geöffnet: %{path}"
   opened_favorite: "Favorit: %{path}"
   opened_location_root: "Stamm: %{path}"
-  opened_with_default_app: "Mit Standardanwendung geoeffnet: %{path}"
-  archive_unsupported: "Archiv nicht unterstuetzt: %{path} (%{reason})"
+  opened_with_default_app: "Mit Standardanwendung geöffnet: %{path}"
+  archive_unsupported: "Archiv nicht unterstützt: %{path} (%{reason})"
   loading_directory: Ordner wird geladen...
-  opened_archive: "Archiv geoeffnet: %{path}"
-  opening_archive: Archiv wird geoeffnet...
+  opened_archive: "Archiv geöffnet: %{path}"
+  opening_archive: Archiv wird geöffnet...
   switched_panel: "%{panel}-Panel nach %{path} gewechselt"
   loading_drive: Laufwerk wird geladen...
   navigation_failed: "Navigation fehlgeschlagen: %{error}"
   navigation_loader_disconnected: "Navigation fehlgeschlagen: Hintergrundlader getrennt."
-  host_key_trusted: "SSH-Hostschluessel fuer %{host}:%{port} als vertrauenswuerdig gespeichert."
+  host_key_trusted: "SSH-Hostschlüssel für %{host}:%{port} als vertrauenswürdig gespeichert."
   operation_current_item: "%{kind}: %{item}"
   operation_completed: "%{kind} abgeschlossen: %{count} Elemente, %{size} in %{seconds}s"
   operation_cancelled: "%{kind} nach %{count} Elementen und %{size} abgebrochen."
@@ -414,63 +414,63 @@ status:
   copy_current_path: "Kopiere: %{path}"
   clipboard_copied: "%{count} Element(e) in die Zwischenablage kopiert"
   clipboard_cut: "%{count} Element(e) in die Zwischenablage ausgeschnitten"
-  archive_extraction_in_progress: Archiv-Extraktion laeuft
+  archive_extraction_in_progress: Archiv-Extraktion läuft
   archive_copy_cancelled: Archivkopie abgebrochen.
   archive_copy_failed: "Archivkopie fehlgeschlagen: %{error}"
   command_failed: "Befehl fehlgeschlagen: %{error}"
-  permissions_updated: "Modus fuer %{count} Element(e) auf %{mode} gesetzt."
+  permissions_updated: "Modus für %{count} Element(e) auf %{mode} gesetzt."
   remote_permissions_updated: "Berechtigungen von %{path} auf %{mode} gesetzt."
-  owner_updated: "Besitzer fuer %{count} Element(e) auf %{owner} gesetzt."
+  owner_updated: "Besitzer für %{count} Element(e) auf %{owner} gesetzt."
 
 error:
-  no_entry_selected: Kein Eintrag ist ausgewaehlt.
-  properties_unavailable: Eigenschaften nicht verfuegbar
-  parent_has_no_properties: Der uebergeordnete Ordnereintrag hat keine Eigenschaften.
-  invalid_unix_mode: Gueltigen Oktalmodus eingeben (z. B. 755 oder 644).
-  view_unavailable: Anzeigen ist nicht verfuegbar
-  parent_cannot_be_viewed: Der uebergeordnete Verzeichniseintrag kann nicht angezeigt werden.
-  directory_cannot_be_viewed: Verzeichnisse koennen im Dateibetrachter nicht angezeigt werden.
+  no_entry_selected: Kein Eintrag ist ausgewählt.
+  properties_unavailable: Eigenschaften nicht verfügbar
+  parent_has_no_properties: Der übergeordnete Ordnereintrag hat keine Eigenschaften.
+  invalid_unix_mode: Gültigen Oktalmodus eingeben (z. B. 755 oder 644).
+  view_unavailable: Anzeigen ist nicht verfügbar
+  parent_cannot_be_viewed: Der übergeordnete Verzeichniseintrag kann nicht angezeigt werden.
+  directory_cannot_be_viewed: Verzeichnisse können im Dateibetrachter nicht angezeigt werden.
   archive_view_not_wired: Die Anzeige von Dateien direkt in Archiven ist architektonisch vorbereitet, aber noch nicht angeschlossen.
-  could_not_open_viewer: Betrachter konnte nicht geoeffnet werden
-  rename_unavailable: Umbenennen ist nicht verfuegbar
-  parent_cannot_be_renamed: Der uebergeordnete Verzeichniseintrag kann nicht umbenannt werden.
-  could_not_open_console: Konsole konnte nicht geoeffnet werden
+  could_not_open_viewer: Betrachter konnte nicht geöffnet werden
+  rename_unavailable: Umbenennen ist nicht verfügbar
+  parent_cannot_be_renamed: Der übergeordnete Verzeichniseintrag kann nicht umbenannt werden.
+  could_not_open_console: Konsole konnte nicht geöffnet werden
   could_not_save_settings: Einstellungen konnten nicht gespeichert werden
-  edit_unavailable: Bearbeiten ist nicht verfuegbar
-  copy_unavailable: Kopieren ist nicht verfuegbar
-  parent_cannot_be_copied: Der uebergeordnete Eintrag kann nicht kopiert werden.
-  copy_rename_filesystem_only: Kopieren mit Umbenennen ist nur im lokalen Dateisystem verfuegbar.
-  parent_cannot_be_edited: Der uebergeordnete Verzeichniseintrag kann nicht bearbeitet werden.
-  directory_cannot_be_edited: Verzeichnisse koennen nicht im Texteditor geoeffnet werden.
-  archive_edit_not_supported: Das Bearbeiten von Dateien direkt in Archiven wird in diesem Stadium nicht unterstuetzt.
-  archive_rename_not_supported: Das Umbenennen von Dateien direkt in Archiven wird nicht unterstuetzt.
-  edit_file_too_large: "Datei ist zu gross zum Bearbeiten (%{size}). Limit: %{limit}."
-  edit_filesystem_or_remote_only: Bearbeiten ist nur fuer lokale und SFTP-Dateien verfuegbar.
-  remote_session_missing: Remote-Sitzung ist nicht mehr verfuegbar.
-  remote_edit_download_missing: Heruntergeladene Datei wurde im temporaeren Ordner nicht gefunden.
-  could_not_open_editor: Editor konnte nicht geoeffnet werden
-  could_not_open_directory: Verzeichnis konnte nicht geoeffnet werden
-  folder_sort_unavailable: Ordnersortierung nicht verfuegbar
-  folder_sort_filesystem_only: Das Speichern der Sortierung ist nur fuer lokale Ordner verfuegbar.
-  could_not_trust_host_key: SSH-Hostschluessel konnte nicht als vertrauenswuerdig gespeichert werden
-  file_operation_running: Dateivorgang laeuft bereits
-  cancel_or_finish_current_operation: Bitte den aktuellen Vorgang erst abbrechen oder abschliessen.
-  operation_unavailable: Vorgang ist nicht verfuegbar
-  clipboard_unavailable: Zwischenablage nicht verfuegbar
-  clipboard_empty: Die Zwischenablage enthaelt keine Dateien zum Einfuegen.
-  clipboard_sources_missing: Dateien aus der Zwischenablage sind nicht mehr verfuegbar.
+  edit_unavailable: Bearbeiten ist nicht verfügbar
+  copy_unavailable: Kopieren ist nicht verfügbar
+  parent_cannot_be_copied: Der übergeordnete Eintrag kann nicht kopiert werden.
+  copy_rename_filesystem_only: Kopieren mit Umbenennen ist nur im lokalen Dateisystem verfügbar.
+  parent_cannot_be_edited: Der übergeordnete Verzeichniseintrag kann nicht bearbeitet werden.
+  directory_cannot_be_edited: Verzeichnisse können nicht im Texteditor geöffnet werden.
+  archive_edit_not_supported: Das Bearbeiten von Dateien direkt in Archiven wird in diesem Stadium nicht unterstützt.
+  archive_rename_not_supported: Das Umbenennen von Dateien direkt in Archiven wird nicht unterstützt.
+  edit_file_too_large: "Datei ist zu groß zum Bearbeiten (%{size}). Limit: %{limit}."
+  edit_filesystem_or_remote_only: Bearbeiten ist nur für lokale und SFTP-Dateien verfügbar.
+  remote_session_missing: Remote-Sitzung ist nicht mehr verfügbar.
+  remote_edit_download_missing: Heruntergeladene Datei wurde im temporären Ordner nicht gefunden.
+  could_not_open_editor: Editor konnte nicht geöffnet werden
+  could_not_open_directory: Verzeichnis konnte nicht geöffnet werden
+  folder_sort_unavailable: Ordnersortierung nicht verfügbar
+  folder_sort_filesystem_only: Das Speichern der Sortierung ist nur für lokale Ordner verfügbar.
+  could_not_trust_host_key: SSH-Hostschlüssel konnte nicht als vertrauenswürdig gespeichert werden
+  file_operation_running: Dateivorgang läuft bereits
+  cancel_or_finish_current_operation: Bitte den aktuellen Vorgang erst abbrechen oder abschließen.
+  operation_unavailable: Vorgang ist nicht verfügbar
+  clipboard_unavailable: Zwischenablage nicht verfügbar
+  clipboard_empty: Die Zwischenablage enthält keine Dateien zum Einfügen.
+  clipboard_sources_missing: Dateien aus der Zwischenablage sind nicht mehr verfügbar.
   clipboard_set_failed: Dateien konnten nicht in die System-Zwischenablage gelegt werden.
-  clipboard_filesystem_only: Ausschneiden und Kopieren in die Zwischenablage sind nur im lokalen Dateisystem verfuegbar.
-  clipboard_cut_remote_unsupported: Ausschneiden in einen Remote-Ordner wird nicht unterstuetzt. Bitte Kopieren verwenden.
-  clipboard_paste_archive_unsupported: Einfuegen in ein Archiv wird nicht unterstuetzt.
-  favorites_unavailable: Favoriten nicht verfuegbar
-  no_favorite_selected: Kein Favorit ausgewaehlt.
+  clipboard_filesystem_only: Ausschneiden und Kopieren in die Zwischenablage sind nur im lokalen Dateisystem verfügbar.
+  clipboard_cut_remote_unsupported: Ausschneiden in einen Remote-Ordner wird nicht unterstützt. Bitte Kopieren verwenden.
+  clipboard_paste_archive_unsupported: Einfügen in ein Archiv wird nicht unterstützt.
+  favorites_unavailable: Favoriten nicht verfügbar
+  no_favorite_selected: Kein Favorit ausgewählt.
   favorite_fields_required: Name und Pfad sind erforderlich.
   favorite_path_missing: "Favoritenpfad existiert nicht oder ist kein Ordner: %{path}"
   empty_destination: Zielpfad darf nicht leer sein.
-  invalid_destination: Zielpfad ist ungueltig.
+  invalid_destination: Zielpfad ist ungültig.
   file_operation_failed: Dateivorgang fehlgeschlagen
-  no_filesystem_target_directory: Kein Zielverzeichnis im Dateisystem verfuegbar.
+  no_filesystem_target_directory: Kein Zielverzeichnis im Dateisystem verfügbar.
   archive_copy_failed: Archivkopie fehlgeschlagen
   command_failed: Befehl fehlgeschlagen
   could_not_start_terminal: Terminal konnte nicht gestartet werden
