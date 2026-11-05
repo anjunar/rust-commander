@@ -37,6 +37,19 @@ impl<W: IsA<gtk::Widget>> Ctx<W> {
         }));
     }
 
+    /// Offers the actions of `group` as `<prefix>.<name>` while the scope lives.
+    ///
+    /// Actions usually capture the widgets they work on, so a group that stayed
+    /// on its widget would keep that widget alive for good.
+    pub fn own_action_group(&self, prefix: &str, group: &impl IsA<gio::ActionGroup>) {
+        let widget = self.widget().clone();
+        widget.insert_action_group(prefix, Some(group));
+        let prefix = prefix.to_owned();
+        self.add_disposable(Disposable::new(move || {
+            widget.insert_action_group(&prefix, None::<&gio::ActionGroup>);
+        }));
+    }
+
     /// Runs `tick` every `interval` while the scope lives.
     pub fn every(&self, interval: Duration, tick: impl Fn() + 'static) {
         let source = glib::timeout_add_local(interval, move || {

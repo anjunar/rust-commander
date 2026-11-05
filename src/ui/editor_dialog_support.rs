@@ -11,7 +11,7 @@ use gtk::{gdk, glib, prelude::*};
 use rust_i18n::t;
 use sourceview5 as sourceview;
 
-use crate::{application::ConfigStore, config::ThemePreference};
+use crate::{application::ConfigStore, config::ThemePreference, ui::dsl::Ctx};
 
 use super::{RemoteEditBinding, RemoteUploadHook};
 
@@ -35,36 +35,40 @@ pub(super) struct EditorWidgets {
 }
 
 pub(super) fn schedule_editor_focus(widgets: &Rc<EditorWidgets>) {
-    let widgets = Rc::clone(widgets);
     // Present immediately while we may still be inside a user-input handler
     // (e.g. New File confirm). Deferred-only present often loses on Windows.
-    present_editor_window(&widgets);
+    present_editor_window(widgets);
+
+    // Everything later holds the editor weakly: a window closed by then stays
+    // closed, and none of this may keep it alive.
+    let editor = Rc::downgrade(widgets);
 
     #[cfg(target_os = "windows")]
     {
-        let widgets_for_map = Rc::clone(&widgets);
+        let editor = editor.clone();
         widgets.window.connect_map(move |_| {
-            present_editor_window(&widgets_for_map);
+            if let Some(widgets) = editor.upgrade() {
+                present_editor_window(&widgets);
+            }
         });
     }
 
-    glib::idle_add_local_once({
-        let widgets = Rc::clone(&widgets);
-        move || {
-            place_cursor_at_start(&widgets.buffer);
-            let mut start = widgets.buffer.start_iter();
-            let _ = widgets.view.scroll_to_iter(&mut start, 0.0, true, 0.0, 0.0);
-            present_editor_window(&widgets);
-            #[cfg(target_os = "windows")]
-            for delay_ms in [50_u64, 150, 350] {
-                let widgets = Rc::clone(&widgets);
-                glib::timeout_add_local_once(
-                    std::time::Duration::from_millis(delay_ms),
-                    move || {
-                        present_editor_window(&widgets);
-                    },
-                );
-            }
+    glib::idle_add_local_once(move || {
+        let Some(widgets) = editor.upgrade() else {
+            return;
+        };
+        place_cursor_at_start(&widgets.buffer);
+        let mut start = widgets.buffer.start_iter();
+        let _ = widgets.view.scroll_to_iter(&mut start, 0.0, true, 0.0, 0.0);
+        present_editor_window(&widgets);
+        #[cfg(target_os = "windows")]
+        for delay_ms in [50_u64, 150, 350] {
+            let editor = editor.clone();
+            glib::timeout_add_local_once(Duration::from_millis(delay_ms), move || {
+                if let Some(widgets) = editor.upgrade() {
+                    present_editor_window(&widgets);
+                }
+            });
         }
     });
 }
@@ -256,45 +260,42 @@ async fn confirm_discard(parent: &impl IsA<gtk::Window>) -> bool {
     matches!(dialog.choose_future(Some(parent)).await, Ok(1))
 }
 
+/// Keeps the remembered geometry current while the window is open.
+///
+/// Both belong to the window's scope: a closed window reports a size of zero,
+/// and it can outlive its closing because its actions hold on to it.
 pub(super) fn install_editor_geometry_tracking(
-    window: &gtk::ApplicationWindow,
+    window: &Ctx<gtk::ApplicationWindow>,
     config_store: &ConfigStore,
 ) {
     {
         let config_store = config_store.clone();
-        window.connect_maximized_notify(move |window| {
+        let handler = window.widget().connect_maximized_notify(move |window| {
             remember_editor_geometry(window, &config_store);
         });
+        window.own_signal(handler);
     }
 
-    let window_weak = window.downgrade();
+    let tracked = window.widget().clone();
     let config_store = config_store.clone();
-    glib::timeout_add_local(Duration::from_millis(250), move || {
-        let Some(window) = window_weak.upgrade() else {
-            return glib::ControlFlow::Break;
-        };
-        remember_editor_geometry(&window, &config_store);
-        glib::ControlFlow::Continue
+    window.every(Duration::from_millis(250), move || {
+        remember_editor_geometry(&tracked, &config_store);
     });
 }
 
 fn remember_editor_geometry(window: &gtk::ApplicationWindow, config_store: &ConfigStore) {
     let cache = config_store.cache();
     let mut app_config = cache.borrow_mut();
-    app_config.editor.maximized = window.is_maximized();
-    if !app_config.editor.maximized {
-        app_config.editor.width = window.width().max(1);
-        app_config.editor.height = window.height().max(1);
-    }
+    app_config
+        .editor
+        .remember_window(window.width(), window.height(), window.is_maximized());
 }
 
 pub(super) fn persist_editor_geometry(window: &gtk::ApplicationWindow, config_store: &ConfigStore) {
     if let Err(error) = config_store.update(|app_config| {
-        app_config.editor.maximized = window.is_maximized();
-        if !app_config.editor.maximized {
-            app_config.editor.width = window.width().max(1);
-            app_config.editor.height = window.height().max(1);
-        }
+        app_config
+            .editor
+            .remember_window(window.width(), window.height(), window.is_maximized());
     }) {
         eprintln!("Could not save editor window state: {error}");
     }

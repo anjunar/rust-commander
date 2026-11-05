@@ -225,18 +225,46 @@ pub struct EditorConfig {
 }
 
 impl EditorConfig {
+    const DEFAULT_WIDTH: i32 = 980;
+    const DEFAULT_HEIGHT: i32 = 720;
+    /// Below this an editor window is of no use, so such a size is not restored.
+    const MIN_WIDTH: i32 = 320;
+    const MIN_HEIGHT: i32 = 240;
+
     pub fn max_edit_size_bytes(&self) -> u64 {
         self.max_edit_size_mb
             .saturating_mul(1024)
             .saturating_mul(1024)
+    }
+
+    /// The size to open an editor window with.
+    pub fn window_size(&self) -> (i32, i32) {
+        if self.width < Self::MIN_WIDTH || self.height < Self::MIN_HEIGHT {
+            (Self::DEFAULT_WIDTH, Self::DEFAULT_HEIGHT)
+        } else {
+            (self.width, self.height)
+        }
+    }
+
+    /// Remembers the geometry of an open window. A window that reports no size
+    /// is not on screen, so it has nothing to remember.
+    pub fn remember_window(&mut self, width: i32, height: i32, maximized: bool) {
+        if width <= 0 || height <= 0 {
+            return;
+        }
+        self.maximized = maximized;
+        if !maximized {
+            self.width = width;
+            self.height = height;
+        }
     }
 }
 
 impl Default for EditorConfig {
     fn default() -> Self {
         Self {
-            width: 980,
-            height: 720,
+            width: Self::DEFAULT_WIDTH,
+            height: Self::DEFAULT_HEIGHT,
             maximized: false,
             max_edit_size_mb: 10,
         }

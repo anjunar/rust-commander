@@ -198,3 +198,46 @@ fn configs_without_an_icon_style_get_the_icons_of_the_platform() {
     };
     assert_eq!(loaded.general.icon_style, expected);
 }
+
+#[test]
+fn an_unusable_editor_size_opens_with_the_default_size() {
+    let default = EditorConfig::default();
+    let saved = |width, height| EditorConfig {
+        width,
+        height,
+        ..EditorConfig::default()
+    };
+
+    assert_eq!(saved(1, 1).window_size(), (default.width, default.height));
+    assert_eq!(
+        saved(1200, 1).window_size(),
+        (default.width, default.height)
+    );
+    assert_eq!(saved(1200, 800).window_size(), (1200, 800));
+}
+
+#[test]
+fn a_window_without_a_size_leaves_the_editor_geometry_alone() {
+    let mut config = EditorConfig {
+        width: 1200,
+        height: 800,
+        maximized: true,
+        ..EditorConfig::default()
+    };
+
+    config.remember_window(0, 0, false);
+
+    assert_eq!((config.width, config.height), (1200, 800));
+    assert!(config.maximized);
+}
+
+#[test]
+fn a_maximized_editor_keeps_its_normal_size() {
+    let mut config = EditorConfig::default();
+
+    config.remember_window(1100, 700, false);
+    config.remember_window(2560, 1400, true);
+
+    assert_eq!((config.width, config.height), (1100, 700));
+    assert!(config.maximized);
+}

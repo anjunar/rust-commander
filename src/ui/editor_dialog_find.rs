@@ -131,11 +131,25 @@ pub(super) fn go_to_line(widgets: &Rc<EditorWidgets>) {
     dialog.set_child(Some(&root));
     dialog.set_default_widget(Some(&ok));
 
+    // The handlers live inside the dialog, so they hold it and the entry weakly.
+    // A strong reference would keep the dialog, and through it the editor, alive.
+    let close_dialog = {
+        let dialog = dialog.downgrade();
+        move || {
+            if let Some(dialog) = dialog.upgrade() {
+                dialog.close();
+            }
+        }
+    };
+
     let apply_goto = Rc::new({
         let widgets = Rc::clone(widgets);
-        let entry = entry.clone();
-        let dialog = dialog.clone();
+        let entry = entry.downgrade();
+        let close_dialog = close_dialog.clone();
         move || {
+            let Some(entry) = entry.upgrade() else {
+                return;
+            };
             let Ok(line) = entry.text().parse::<i32>() else {
                 return;
             };
@@ -146,16 +160,11 @@ pub(super) fn go_to_line(widgets: &Rc<EditorWidgets>) {
                 let _ = widgets.view.scroll_to_iter(&mut iter, 0.2, true, 0.0, 0.0);
                 widgets.view.grab_focus();
             }
-            dialog.close();
+            close_dialog();
         }
     });
 
-    {
-        let dialog = dialog.clone();
-        cancel.connect_clicked(move |_| {
-            dialog.close();
-        });
-    }
+    cancel.connect_clicked(move |_| close_dialog());
     {
         let apply_goto = Rc::clone(&apply_goto);
         ok.connect_clicked(move |_| apply_goto());

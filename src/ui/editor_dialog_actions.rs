@@ -4,7 +4,10 @@ use gtk::{gio, glib, prelude::*};
 use rust_i18n::t;
 use sourceview5::{self as sourceview, prelude::*};
 
-use crate::ui::sourceview_lang::{apply_language, apply_style_scheme};
+use crate::ui::{
+    dsl::Ctx,
+    sourceview_lang::{apply_language, apply_style_scheme},
+};
 
 use super::{
     support::{
@@ -80,7 +83,10 @@ fn append_menu_item(menu: &gio::Menu, label: &str, action: &str) {
     menu.append_item(&gio::MenuItem::new(Some(label), Some(action)));
 }
 
-pub(super) fn install_editor_actions(widgets: &Rc<EditorWidgets>) {
+pub(super) fn install_editor_actions(
+    window: &Ctx<gtk::ApplicationWindow>,
+    widgets: &Rc<EditorWidgets>,
+) {
     let group = gio::SimpleActionGroup::new();
 
     add_action(&group, "new", {
@@ -184,7 +190,7 @@ pub(super) fn install_editor_actions(widgets: &Rc<EditorWidgets>) {
         move |_| super::find::go_to_line(&widgets)
     });
 
-    widgets.window.insert_action_group("editor", Some(&group));
+    window.own_action_group("editor", &group);
 }
 
 fn add_action(

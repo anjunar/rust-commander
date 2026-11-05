@@ -416,6 +416,22 @@ fn viewer_and_editor_open_files() {
     assert!(saved.get());
     assert_eq!(fs::read_to_string(&file).expect("saved file"), "changed\n");
 
+    // A closed editor is gone, also after it opened a dialog of its own.
+    WidgetExt::activate_action(&editor, "editor.go-to-line", None).expect("go to line action");
+    let go_to_line = gtk::Window::list_toplevels()
+        .into_iter()
+        .filter_map(|window| window.downcast::<gtk::Window>().ok())
+        .find(|window| window.transient_for().as_ref() == Some(&editor))
+        .expect("go to line dialog");
+    go_to_line.destroy();
+    drop(go_to_line);
+
+    let closed = editor.downgrade();
+    drop((source, buffer));
+    editor.destroy();
+    drop(editor);
+    assert!(closed.upgrade().is_none(), "the closed editor is released");
+
     fs::remove_dir_all(&directory).expect("test directory removed");
 }
 

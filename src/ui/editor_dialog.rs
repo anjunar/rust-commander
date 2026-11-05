@@ -125,9 +125,10 @@ where
     let search_context = sourceview::SearchContext::new(&buffer, Some(&search_settings));
     search_context.set_highlight(true);
 
-    let size = (editor_config.width.max(1), editor_config.height.max(1));
+    let size = editor_config.window_size();
     let (window, widgets) = independent_window(parent, &title_text, size, |editor| {
         let window = editor.window();
+        install_editor_geometry_tracking(window, &config_store);
 
         let mut find_entry = None;
         let mut replace_entry = None;
@@ -224,7 +225,7 @@ where
             .header()
             .widget()
             .pack_start(&build_editor_menu_bar());
-        install_editor_actions(&widgets);
+        install_editor_actions(window, &widgets);
         install_editor_shortcuts(window.widget());
 
         // Unsaved changes are confirmed before the window may close.
@@ -279,7 +280,6 @@ where
         let window = window.clone();
         glib::idle_add_local_once(move || window.maximize());
     }
-    install_editor_geometry_tracking(&window, &config_store);
     schedule_editor_focus(&widgets);
 
     Ok(())
