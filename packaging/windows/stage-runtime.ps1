@@ -81,6 +81,19 @@ function Test-GtkSourceViewDataRoot {
     return ($langCount -gt 0) -and ($styleCount -gt 0)
 }
 
+function Test-GtkSourceViewEmbeddedData {
+    param([string]$MingwRoot)
+
+    # Newer releases carry languages and styles as resources inside the library.
+    $library = Join-Path $MingwRoot "bin\libgtksourceview-5-0.dll"
+    if (-not (Test-Path -LiteralPath $library)) {
+        return $false
+    }
+
+    $content = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($library))
+    return $content.Contains("rust.lang") -and $content.Contains("Adwaita-dark.xml")
+}
+
 function Get-GtkSourceViewDataRoot {
     param([string]$MingwRoot)
 
@@ -104,7 +117,12 @@ function Get-GtkSourceViewDataRoot {
         }
     }
 
-    throw "GtkSourceView data not found under $MingwRoot. Expected share\gtksourceview-5 with language-specs (*.lang) and styles (*.xml)."
+    $installed = Join-Path $MingwRoot "share\gtksourceview-5"
+    if ((Test-Path -LiteralPath $installed) -and (Test-GtkSourceViewEmbeddedData -MingwRoot $MingwRoot)) {
+        return (Resolve-Path -LiteralPath $installed).Path
+    }
+
+    throw "GtkSourceView data not found under $MingwRoot. Expected share\gtksourceview-5 with language-specs (*.lang) and styles (*.xml), or both embedded in libgtksourceview-5-0.dll."
 }
 
 function Resolve-Objdump {
