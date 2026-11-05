@@ -6,8 +6,9 @@ use unrar::{
 };
 
 use super::{
-    safe_join_extract_path, ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError,
-    ArchiveFormat, ArchiveFormatDetector, ArchiveSession,
+    archive_entry_matches_selection, normalize_archive_entry_path, safe_join_extract_path,
+    ArchiveBackend, ArchiveEntry, ArchiveEntryKind, ArchiveError, ArchiveFormat,
+    ArchiveFormatDetector, ArchiveSession,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -29,10 +30,7 @@ impl UnrarBackend {
     }
 
     fn normalized_path(path: &Path) -> String {
-        path.to_string_lossy()
-            .replace('\\', "/")
-            .trim_matches('/')
-            .to_string()
+        normalize_archive_entry_path(&path.to_string_lossy())
     }
 
     fn entry_from_header(header: &unrar::FileHeader) -> Option<ArchiveEntry> {
@@ -60,12 +58,6 @@ impl UnrarBackend {
             modified_time: None,
             attributes: Some(format!("{:X}", header.file_attr)),
         })
-    }
-
-    fn selected_match(candidate: &str, selection: &[String]) -> bool {
-        selection
-            .iter()
-            .any(|selected| candidate == selected || candidate.starts_with(&format!("{selected}/")))
     }
 
     fn extract_matching(
@@ -162,11 +154,7 @@ impl ArchiveBackend for UnrarBackend {
             }
         }
 
-        Ok(ArchiveSession::new(
-            self.id(),
-            path.to_path_buf(),
-            entries,
-        ))
+        Ok(ArchiveSession::new(self.id(), path.to_path_buf(), entries))
     }
 
     fn extract_entry(
@@ -175,10 +163,7 @@ impl ArchiveBackend for UnrarBackend {
         entry_path: &str,
         target_dir: &Path,
     ) -> Result<(), ArchiveError> {
-        let requested = Self::normalized_path(Path::new(entry_path));
-        self.extract_matching(session, target_dir, |candidate| {
-            candidate == requested || candidate.starts_with(&format!("{requested}/"))
-        })
+        self.extract_entries(session, &[entry_path.to_string()], target_dir)
     }
 
     fn extract_entries(
@@ -192,7 +177,7 @@ impl ArchiveBackend for UnrarBackend {
             .map(|path| Self::normalized_path(Path::new(path)))
             .collect::<Vec<_>>();
         self.extract_matching(session, target_dir, |candidate| {
-            Self::selected_match(candidate, &normalized)
+            archive_entry_matches_selection(candidate, &normalized)
         })
     }
 }

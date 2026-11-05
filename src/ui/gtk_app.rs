@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use anyhow::Result;
+use gtk::gio;
 use gtk::prelude::*;
 
 use crate::{
@@ -16,7 +17,19 @@ pub fn run() -> Result<()> {
     {
         configure_macos_runtime();
     }
+    #[cfg(target_os = "windows")]
+    {
+        configure_windows_runtime();
+    }
 
+    // On Windows, avoid GtkApplication single-instance file forwarding: a remote
+    // open can go through in-process shell APIs and abort on bad extensions.
+    #[cfg(target_os = "windows")]
+    let app = gtk::Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    #[cfg(not(target_os = "windows"))]
     let app = gtk::Application::builder().application_id(APP_ID).build();
 
     #[cfg(target_os = "windows")]
@@ -27,6 +40,7 @@ pub fn run() -> Result<()> {
     app.connect_activate(|app| {
         let app_config = config::load_or_default();
         i18n::apply_locale(app_config.locale.language.as_deref());
+        crate::platform::set_icon_style(app_config.general.icon_style);
 
         let fallback_path = match std::env::current_dir() {
             Ok(path) => path,
@@ -70,6 +84,52 @@ pub fn run() -> Result<()> {
 
     app.run();
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_runtime() {
+    let Ok(exe_path) = std::env::current_exe() else {
+        return;
+    };
+    let Some(exe_dir) = exe_path.parent() else {
+        return;
+    };
+
+    let install_root = if exe_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("bin"))
+    {
+        exe_dir.parent().unwrap_or(exe_dir)
+    } else {
+        exe_dir
+    };
+
+    let share_dir = install_root.join("share");
+    if share_dir.is_dir() {
+        prepend_env_path("XDG_DATA_DIRS", &share_dir);
+        std::env::set_var("GTK_DATA_PREFIX", install_root);
+        std::env::set_var("GTK_EXE_PREFIX", install_root);
+    }
+
+    let glib_schema_dir = share_dir.join("glib-2.0").join("schemas");
+    if glib_schema_dir.is_dir() {
+        std::env::set_var("GSETTINGS_SCHEMA_DIR", &glib_schema_dir);
+    }
+
+    if let Some(loaders_dir) =
+        find_first_named_dir(&install_root.join("lib").join("gdk-pixbuf-2.0"), "loaders")
+    {
+        std::env::set_var("GDK_PIXBUF_MODULEDIR", &loaders_dir);
+    }
+    let pixbuf_cache = install_root
+        .join("lib")
+        .join("gdk-pixbuf-2.0")
+        .join("2.10.0")
+        .join("loaders.cache");
+    if pixbuf_cache.is_file() {
+        std::env::set_var("GDK_PIXBUF_MODULE_FILE", &pixbuf_cache);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -134,16 +194,17 @@ fn configure_macos_runtime() {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn prepend_env_path(key: &str, value: &std::path::Path) {
     if !value.exists() {
         return;
     }
 
+    let separator = if cfg!(windows) { ";" } else { ":" };
     match std::env::var_os(key) {
         Some(existing) if !existing.is_empty() => {
             let mut combined = std::path::PathBuf::from(value).into_os_string();
-            combined.push(":");
+            combined.push(separator);
             combined.push(existing);
             std::env::set_var(key, combined);
         }
@@ -153,7 +214,7 @@ fn prepend_env_path(key: &str, value: &std::path::Path) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn find_first_named_dir(root: &std::path::Path, target_name: &str) -> Option<std::path::PathBuf> {
     let entries = std::fs::read_dir(root).ok()?;
     for entry in entries.flatten() {

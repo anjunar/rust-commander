@@ -1,8 +1,9 @@
 use rust_i18n::t;
 
 use crate::{
-    application::{spawn_directory_load, LoadAction, NavigationRequest},
-    ui::glib_poll,
+    application::{spawn_directory_load, LoadAction, NavigationError, NavigationRequest},
+    remote::RemoteService,
+    ui::{dialogs, glib_poll},
 };
 
 use super::NavigationController;
@@ -16,14 +17,16 @@ impl NavigationController {
         }
 
         let request = self.prepare_navigation_request(request);
+        let panel = request.panel;
         self.host
-            .set_navigation_busy(true, request.busy_message.as_str());
+            .set_navigation_busy(panel, true, request.busy_message.as_str());
 
         let archive_service = self.archive_service.borrow().clone();
         let remote_service = self.remote_service.clone();
         let session_store = std::rc::Rc::clone(&self.session_store);
         let show_hidden_files = self.app_config_cache.borrow().panels.show_hidden_files;
         let request_for_tracking = request.clone();
+        let request_for_disconnect = request_for_tracking.clone();
         let rx = spawn_directory_load(
             self.task_spawner.clone(),
             request,
@@ -39,11 +42,21 @@ impl NavigationController {
             std::time::Duration::from_millis(30),
             rx,
             move |result| {
-                controller.host.set_navigation_busy(false, "");
+                controller
+                    .host
+                    .set_navigation_busy(request_for_tracking.panel, false, "");
                 match result {
                     Ok(load) => {
                         if !controller.commit_loaded_generation(load.panel, load.generation) {
                             return false;
+                        }
+                        {
+                            let commander = controller.commander.borrow();
+                            if commander.state().active_tab_id(load.panel) != load.tab_id {
+                                // Tab changed while loading; keep the other tab's in-memory state.
+                                controller.host.notify_initial_panel_loaded(load.panel);
+                                return false;
+                            }
                         }
                         let update = {
                             let mut commander = controller.commander.borrow_mut();
@@ -53,6 +66,7 @@ impl NavigationController {
                                     load.next_location,
                                     load.entries,
                                     load.status,
+                                    load.selection_intent,
                                 ),
                                 LoadAction::Refresh => commander.refresh_panel_loaded(
                                     load.panel,
@@ -74,6 +88,36 @@ impl NavigationController {
                             request_for_tracking.panel,
                             request_for_tracking.generation,
                         );
+                        if let NavigationError::HostKeyTrustRequired { offer } = *error {
+                            let retry_request = request_for_tracking.clone();
+                            let trust_controller = controller.clone();
+                            let window = trust_controller.window.clone();
+                            let trusted_offer = offer.clone();
+                            dialogs::confirm_ssh_host_key(&window, &offer, move || {
+                                if let Err(error) = RemoteService::trust_host_key(&trusted_offer) {
+                                    trust_controller.host.show_error(
+                                        &t!("error.could_not_trust_host_key"),
+                                        &error.to_string(),
+                                    );
+                                    trust_controller.host.focus_active_panel();
+                                    return;
+                                }
+                                trust_controller.host.set_status(
+                                    t!(
+                                        "status.host_key_trusted",
+                                        host = trusted_offer.host.as_str(),
+                                        port = trusted_offer.port
+                                    )
+                                    .into_owned(),
+                                );
+                                trust_controller.start_directory_load(retry_request);
+                            });
+                            controller
+                                .host
+                                .notify_initial_panel_loaded(request_for_tracking.panel);
+                            return false;
+                        }
+
                         let error_detail = error.detail().to_string();
                         let update = {
                             let mut commander = controller.commander.borrow_mut();
@@ -95,10 +139,14 @@ impl NavigationController {
                 false
             },
             move || {
-                disconnect_controller.host.set_navigation_busy(false, "");
+                disconnect_controller.host.set_navigation_busy(
+                    request_for_disconnect.panel,
+                    false,
+                    "",
+                );
                 disconnect_controller.finish_in_flight_load(
-                    request_for_tracking.panel,
-                    request_for_tracking.generation,
+                    request_for_disconnect.panel,
+                    request_for_disconnect.generation,
                 );
                 let update = {
                     let mut commander = disconnect_controller.commander.borrow_mut();
@@ -108,7 +156,7 @@ impl NavigationController {
                 disconnect_controller.host.focus_active_panel();
                 disconnect_controller
                     .host
-                    .notify_initial_panel_loaded(request_for_tracking.panel);
+                    .notify_initial_panel_loaded(request_for_disconnect.panel);
                 false
             },
         );
@@ -116,8 +164,32 @@ impl NavigationController {
 
     pub(super) fn prepare_navigation_request(
         &self,
-        request: NavigationRequest,
+        mut request: NavigationRequest,
     ) -> NavigationRequest {
+        {
+            let mut commander = self.commander.borrow_mut();
+            let panel = request.panel;
+            request.tab_id = commander.state().active_tab_id(panel);
+            request.folders_first = commander.state().panel(panel).folders_first;
+
+            let mut sort_state = commander.state().panel(panel).sort_state;
+            if let Some(path) = request.next_location.filesystem_path() {
+                let folder_sort = &self.app_config_cache.borrow().folder_sort;
+                let session_override = commander
+                    .state()
+                    .panel(panel)
+                    .folder_sort_session_override(path);
+                if let Some(resolved) = crate::domain::resolve_folder_sort_for_navigation(
+                    folder_sort,
+                    path,
+                    session_override,
+                ) {
+                    sort_state = resolved;
+                    commander.adopt_sort_state(panel, resolved);
+                }
+            }
+            request.sort_state = sort_state;
+        }
         self.runtime
             .load_scheduler
             .borrow_mut()

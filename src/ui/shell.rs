@@ -5,21 +5,22 @@
 //! what the application decides comes back through [`ShellModel`] and the
 //! handles in [`ShellView`].
 
-use std::{path::PathBuf, rc::Rc};
+use std::{cell::Cell, path::PathBuf, rc::Rc};
 
-use gtk::prelude::*;
+use gtk::{gdk, glib, prelude::*};
 
 use crate::{
     application::ActivePanel,
     config::ThemePreference,
     domain::sorting::{SortColumn, SortDirection},
     ui::{
-        commands::{Command, COMMANDS},
+        commands::{bar_command, command, Command, CommandBarMode, COMMANDS},
         dsl::{
-            adopt, button, from_notify, hbox, localized, overlay, paned, render, spinner, text,
+            adopt, container, from_notify, hbox, localized_with, paned, render, spinner, text,
             vbox, Ctx, Property, ReadOnly,
         },
-        file_panel_view::{file_panel, FilePanel},
+        file_panel_view::{file_panel, FilePanel, PanelKeyNavigation},
+        main_window_menu::menu_bar,
         terminal_controller::{TerminalAction, TerminalController},
         terminal_dock::{terminal_dock, TerminalDock},
         theme::ThemeController,
@@ -28,13 +29,22 @@ use crate::{
 
 pub(crate) const APP_WINDOW_TITLE: &str = "RCommander";
 
+/// Pull the divider to the exact centre when a drag comes near the midpoint.
+const CENTER_SNAP_IN_PX: i32 = 18;
+/// Keep it there until the drag moves farther out again.
+const CENTER_SNAP_OUT_PX: i32 = 32;
+
 /// Everything the user can do in the main window, as the shell reports it.
 pub(crate) trait ShellEvents {
     fn run_command(&self, command: &'static Command);
     fn panel_focused(&self, panel: ActivePanel);
-    fn selection_changed(&self, panel: ActivePanel, indices: Vec<usize>);
+    fn cursor_changed(&self, panel: ActivePanel, index: usize);
     fn row_activated(&self, panel: ActivePanel, index: usize);
-    fn open_requested(&self, panel: ActivePanel);
+    fn panel_key(&self, panel: ActivePanel, action: PanelKeyNavigation);
+    /// Moves the cursor to the first match of `query`; `false` when there is none.
+    fn quick_search(&self, panel: ActivePanel, query: &str) -> bool;
+    fn tab_activated(&self, panel: ActivePanel, index: usize);
+    fn tab_new(&self, panel: ActivePanel);
     fn root_selected(&self, panel: ActivePanel, index: usize);
     fn connect_remote(&self, panel: ActivePanel);
     fn context_menu(
@@ -54,8 +64,8 @@ pub(crate) trait ShellEvents {
 pub(crate) struct ShellModel {
     pub status: Property<String>,
     pub busy: Property<bool>,
-    pub busy_message: Property<String>,
     pub theme: Property<ThemePreference>,
+    pub command_mode: Property<CommandBarMode>,
 }
 
 impl ShellModel {
@@ -63,8 +73,8 @@ impl ShellModel {
         Self {
             status: Property::new(String::new()),
             busy: Property::new(false),
-            busy_message: Property::new(String::new()),
             theme: Property::new(theme),
+            command_mode: Property::new(CommandBarMode::Normal),
         }
     }
 }
@@ -104,10 +114,14 @@ pub(crate) fn build_shell(
         // Every command is a window action; the command bar points at them.
         for command in COMMANDS {
             let events = Rc::clone(&events);
-            root.action(command.action, command.accels, move || {
-                events.run_command(command)
-            });
+            let run = move || events.run_command(command);
+            if command.toggle {
+                root.toggle_action(command.action, command.accels, false, run);
+            } else {
+                root.action(command.action, command.accels, run);
+            }
         }
+        track_modifiers(&root, &model.command_mode, &events);
 
         // The palette follows the preference, and the desktop when it says "System".
         root.add_disposable(
@@ -121,6 +135,7 @@ pub(crate) fn build_shell(
         root.titlebar(|| {
             crate::ui::dsl::header_bar(|header| {
                 header.title(|| text(APP_WINDOW_TITLE, |title| title.css("app-title")));
+                header.pack_start(menu_bar);
                 #[cfg(target_os = "windows")]
                 {
                     header.set_show_title_buttons(false);
@@ -133,36 +148,30 @@ pub(crate) fn build_shell(
         vbox(8, |shell| {
             shell.margin(8);
 
-            overlay(|stage| {
-                stage.set_hexpand(true);
-                stage.set_vexpand(true);
-                let mut panels = None;
-                let mut dock = None;
-                let content = paned(gtk::Orientation::Vertical, |content| {
-                    content.set_hexpand(true);
-                    content.set_vexpand(true);
-                    content.set_resize_start_child(true);
-                    content.set_resize_end_child(false);
-                    content.set_shrink_start_child(false);
-                    content.set_shrink_end_child(false);
-                    content.bind_sensitive(model.busy.map(|busy| !busy));
-                    panels = Some(content.start(|| commander_panes(&events)));
-                    dock = Some(content.end(|| terminal_dock(terminal, Rc::clone(&events))));
-                });
-                stage.layer(|| busy_overlay(model));
-
-                let (panes, left, right) = panels.expect("panels composed");
-                handles = Some((
-                    left,
-                    right,
-                    panes,
-                    content.widget().clone(),
-                    dock.expect("terminal dock composed"),
-                ));
+            let mut panels = None;
+            let mut dock = None;
+            let content = paned(gtk::Orientation::Vertical, |content| {
+                content.set_hexpand(true);
+                content.set_vexpand(true);
+                content.set_resize_start_child(true);
+                content.set_resize_end_child(false);
+                content.set_shrink_start_child(false);
+                content.set_shrink_end_child(false);
+                panels = Some(content.start(|| commander_panes(&events)));
+                dock = Some(content.end(|| terminal_dock(terminal, Rc::clone(&events))));
             });
 
+            let (panes, left, right) = panels.expect("panels composed");
+            handles = Some((
+                left,
+                right,
+                panes,
+                content.widget().clone(),
+                dock.expect("terminal dock composed"),
+            ));
+
             status_line(model);
-            command_bar();
+            command_bar(&model.command_mode);
         });
 
         let (left, right, panes, content, terminal) = handles.expect("shell composed");
@@ -186,9 +195,12 @@ fn commander_panes(events: &Rc<dyn ShellEvents>) -> (gtk::Paned, FilePanel, File
         panes.css("commander-view");
         panes.set_resize_start_child(true);
         panes.set_resize_end_child(true);
-        panes.set_shrink_start_child(false);
-        panes.set_shrink_end_child(false);
-        panes.set_wide_handle(true);
+        // Panels may shrink below their content's natural width, so changing
+        // a folder or a tab never moves the divider away from where it was put.
+        panes.set_shrink_start_child(true);
+        panes.set_shrink_end_child(true);
+        panes.set_wide_handle(false);
+        snap_to_center(panes);
         let left = panes.start(|| file_panel(ActivePanel::Left, Rc::clone(events)));
         let right = panes.end(|| file_panel(ActivePanel::Right, Rc::clone(events)));
         panels = Some((left, right));
@@ -197,26 +209,40 @@ fn commander_panes(events: &Rc<dyn ShellEvents>) -> (gtk::Paned, FilePanel, File
     (panes.widget().clone(), left, right)
 }
 
-/// A centred card shown while a directory loads; it lets clicks through.
-fn busy_overlay(model: &ShellModel) {
-    vbox(12, |card| {
-        card.set_halign(gtk::Align::Center);
-        card.set_valign(gtk::Align::Center);
-        card.css("navigation-overlay");
-        card.set_can_target(false);
-        card.bind(&model.busy, |card, busy| {
-            card.set_opacity(if *busy { 1.0 } else { 0.0 });
-            card.set_sensitive(*busy);
-        });
-        spinner(|spinner| {
-            spinner.css("navigation-overlay-spinner");
-            spinner.bind_spinning(&model.busy);
-        });
-        text(&model.busy_message, |label| {
-            label.set_xalign(0.5);
-            label.css("navigation-overlay-label");
-        });
+/// Makes the divider stick to the middle while it is dragged past it.
+fn snap_to_center(panes: &Ctx<gtk::Paned>) {
+    let snapping = Cell::new(false);
+    let latched = Cell::new(false);
+    let handler = panes.connect_notify_local(Some("position"), move |panes, _| {
+        if snapping.get() {
+            return;
+        }
+        let width = panes.width();
+        if width <= 0 {
+            return;
+        }
+
+        let center = width / 2;
+        let position = panes.position();
+        let distance = (position - center).abs();
+        if latched.get() {
+            if distance > CENTER_SNAP_OUT_PX {
+                latched.set(false);
+                return;
+            }
+        } else if distance <= CENTER_SNAP_IN_PX {
+            latched.set(true);
+        } else {
+            return;
+        }
+
+        if position != center {
+            snapping.set(true);
+            panes.set_position(center);
+            snapping.set(false);
+        }
     });
+    panes.own_signal(handler);
 }
 
 fn status_line(model: &ShellModel) {
@@ -233,24 +259,161 @@ fn status_line(model: &ShellModel) {
     });
 }
 
-/// The F-key bar: one button per labelled command, bound to its action.
-fn command_bar() {
-    hbox(6, |bar| {
+/// The F-key bar: ten buttons that show what their key does under the
+/// modifiers held right now.
+fn command_bar(mode: &Property<CommandBarMode>) {
+    hbox(3, |bar| {
         bar.css("command-bar");
         bar.set_homogeneous(true);
-        for command in COMMANDS {
-            let Some(label) = command.label else {
-                continue;
-            };
-            button(
-                localized(move || rust_i18n::t!(label).into_owned()),
-                |button| {
-                    button.css("command-button");
-                    button.set_action_name(Some(&command.detailed_name()));
-                },
-            );
+        for key in 1..=10 {
+            command_button(key, mode);
         }
     });
+}
+
+fn command_button(key: u8, mode: &Property<CommandBarMode>) {
+    let label = localized_with(mode, move |mode| {
+        bar_command(*mode, key)
+            .and_then(|command| command.slot)
+            .map(|slot| rust_i18n::t!(slot.label).into_owned())
+            .unwrap_or_default()
+    });
+    let key_text = label.map(|label| split_command_label(label).0);
+    let caption = label.map(|label| split_command_label(label).1);
+
+    container(gtk::Button::new(), |button| {
+        button.css("command-button");
+        button.set_focus_on_click(false);
+        button.set_can_focus(false);
+        button.css_if("command-button-idle", label.map(String::is_empty));
+        // A key with nothing to do in this mode still does its plain job when clicked.
+        button.bind(mode, move |button, mode| {
+            let command =
+                bar_command(*mode, key).or_else(|| bar_command(CommandBarMode::Normal, key));
+            button.set_action_name(command.map(Command::detailed_name).as_deref());
+        });
+
+        hbox(6, |row| {
+            row.set_halign(gtk::Align::Center);
+            row.set_valign(gtk::Align::Center);
+            row.set_hexpand(true);
+            text(&key_text, |label| {
+                label.css("command-key");
+                label.set_valign(gtk::Align::Center);
+                label.bind_visible(key_text.map(|text| !text.is_empty()));
+            });
+            text(&caption, |label| {
+                label.css("command-caption");
+                label.set_valign(gtk::Align::Center);
+                label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                label.bind_visible(caption.map(|text| !text.is_empty()));
+            });
+        });
+    });
+}
+
+/// Splits `F5 Copy` into the key and its caption; either can be empty.
+fn split_command_label(full: &str) -> (String, String) {
+    let trimmed = full.trim();
+    match trimmed.split_once(' ') {
+        Some((key, rest)) if is_function_key(key) => (key.to_owned(), rest.trim().to_owned()),
+        _ if is_function_key(trimmed) => (trimmed.to_owned(), String::new()),
+        _ => (String::new(), trimmed.to_owned()),
+    }
+}
+
+fn is_function_key(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(chars.next(), Some('F') | Some('f'))
+        && chars.next().is_some_and(|ch| ch.is_ascii_digit())
+        && chars.all(|ch| ch.is_ascii_digit())
+}
+
+/// Follows the modifier keys, for the labels of the command bar, and takes
+/// plain F10 before GTK and Windows can turn it into a menu shortcut.
+fn track_modifiers(
+    root: &Ctx<gtk::ApplicationWindow>,
+    mode: &Property<CommandBarMode>,
+    events: &Rc<dyn ShellEvents>,
+) {
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let mode = mode.clone();
+        let events = Rc::clone(events);
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            let modifiers = effective_modifiers(key, modifiers, true);
+            mode.set(command_bar_mode(modifiers));
+
+            let any = gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::SHIFT_MASK
+                | gdk::ModifierType::SUPER_MASK;
+            if key == gdk::Key::F10 && !modifiers.intersects(any) {
+                if let Some(quit) = command("quit") {
+                    events.run_command(quit);
+                }
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+    }
+    {
+        let mode = mode.clone();
+        keys.connect_key_released(move |_, key, _, modifiers| {
+            mode.set(command_bar_mode(effective_modifiers(key, modifiers, false)));
+        });
+    }
+    root.own_controller(keys);
+
+    // A modifier released in another window never reaches this one.
+    let mode = mode.clone();
+    let handler = root.connect_is_active_notify(move |window| {
+        if !window.is_active() {
+            mode.set(CommandBarMode::Normal);
+        }
+    });
+    root.own_signal(handler);
+}
+
+/// The modifier state including the key that just changed it, which GTK
+/// reports only with the next event.
+fn effective_modifiers(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+    pressed: bool,
+) -> gdk::ModifierType {
+    let mut modifiers = modifiers;
+    let bit = match key {
+        gdk::Key::Alt_L | gdk::Key::Alt_R | gdk::Key::Meta_L | gdk::Key::Meta_R => {
+            gdk::ModifierType::ALT_MASK
+        }
+        gdk::Key::Control_L | gdk::Key::Control_R => gdk::ModifierType::CONTROL_MASK,
+        gdk::Key::Shift_L | gdk::Key::Shift_R => gdk::ModifierType::SHIFT_MASK,
+        _ => return modifiers,
+    };
+    if pressed {
+        modifiers.insert(bit);
+    } else {
+        modifiers.remove(bit);
+    }
+    modifiers
+}
+
+fn command_bar_mode(modifiers: gdk::ModifierType) -> CommandBarMode {
+    let control = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
+    let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+    if control && shift {
+        CommandBarMode::Hidden
+    } else if control {
+        CommandBarMode::Ctrl
+    } else if shift {
+        CommandBarMode::Shift
+    } else if modifiers.contains(gdk::ModifierType::ALT_MASK) {
+        CommandBarMode::Alt
+    } else {
+        CommandBarMode::Normal
+    }
 }
 
 /// Whether the desktop asks for dark styles; constant where GTK cannot tell.
@@ -267,7 +430,7 @@ fn prefers_dark() -> ReadOnly<bool> {
 
 /// Minimise, maximise/restore and close, for the custom Windows titlebar.
 #[cfg(target_os = "windows")]
-fn window_controls(window: &gtk::ApplicationWindow) {
+pub(crate) fn window_controls(window: &gtk::ApplicationWindow) {
     use crate::ui::dsl::icon_button;
 
     let maximized = from_notify(window, "maximized", |window: &gtk::ApplicationWindow| {
@@ -283,7 +446,7 @@ fn window_controls(window: &gtk::ApplicationWindow) {
                 button.css(class);
                 button.css("flat");
                 button.set_focus_on_click(false);
-                button.set_size_request(44, 28);
+                button.set_size_request(36, 24);
                 button.on_click(run);
             })
         };
@@ -338,3 +501,7 @@ fn window_controls(window: &gtk::ApplicationWindow) {
 pub(crate) fn default_local_directory() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/ui_shell_tests.rs"]
+mod tests;

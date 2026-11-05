@@ -32,14 +32,14 @@
 //! | `input`, `checkboxInput`, `comboBox`    | [`entry`], [`password`], [`check`], [`switch`], [`dropdown`], [`dropdown_list`], [`spin`] |
 //! | `Condition.when(prop) { ... }`          | [`when`]                                            |
 //! | `Foreach(list) { ... }`                 | [`foreach`], [`foreach_in`]                         |
-//! | `Table`, `DataGrid`                     | [`column_view`], [`Table::column`], [`sorter_by`]   |
+//! | `Table`, `DataGrid`                     | [`column_view`], [`Table::column`], [`Table::column_with`], [`Table::refresh_row`], [`sorter_by`] |
 //! | `Property`, `ReadOnlyProperty`          | [`Property`], [`ReadOnly`], [`ReadOnly::combine`], [`from_notify`] |
 //! | `ListProperty`                          | [`ListProperty`], [`ListChange`]                    |
 //! | `Disposable`, `CompositeDisposable`     | [`Disposable`], [`CompositeDisposable`]             |
 //! | i18n message state                      | [`tr!`], [`localized`], [`localized_with`], [`relocalize`] |
 //! | viewport windows, overlays              | [`overlay`], [`paned`], [`header_bar`], [`Ctx::titlebar`], [`Ctx::popover`], [`popup_menu`] |
 //! | `on("keydown")`, `onWindowKeyDown`      | [`Ctx::on_key_pressed`], [`Ctx::on_pressed`], [`Ctx::on_scroll`], [`Ctx::on_focus_change`], [`Ctx::on_close_request`] |
-//! | commands                                | [`Ctx::action`] (`win.<name>` with accelerators)    |
+//! | commands                                | [`Ctx::action`], [`Ctx::toggle_action`] (`win.<name>` with accelerators) |
 //! | lifecycle-bound timers                  | [`Ctx::every`], [`Ctx::after`]                      |
 //! | `DslLayer.child(component) { ... }`     | [`mount`], [`container`]                            |
 //!

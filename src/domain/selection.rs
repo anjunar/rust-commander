@@ -21,12 +21,14 @@ pub enum SelectionFallback {
     None,
     NeighborOrClamp,
     ParentOrFirst,
+    First,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct SelectionModel {
     anchor_index: Option<usize>,
     focused_index: Option<usize>,
+    /// Marked rows (independent of the cursor), as in classic file commanders.
     selected_indices: BTreeSet<usize>,
 }
 
@@ -58,11 +60,31 @@ impl SelectionIntent {
         }
     }
 
+    /// Keep the cursor, drop marks (e.g. after a successful copy).
+    pub fn clear_marks(snapshot: SelectionSnapshot) -> Self {
+        Self {
+            preferred_cursor: snapshot.cursor_key.clone(),
+            snapshot: SelectionSnapshot {
+                selected_keys: BTreeSet::new(),
+                ..snapshot
+            },
+            fallback: SelectionFallback::NeighborOrClamp,
+        }
+    }
+
     pub fn for_navigation(remembered_cursor: Option<EntryKey>) -> Self {
         Self {
             snapshot: SelectionSnapshot::default(),
             preferred_cursor: remembered_cursor,
             fallback: SelectionFallback::ParentOrFirst,
+        }
+    }
+
+    pub fn select_first() -> Self {
+        Self {
+            snapshot: SelectionSnapshot::default(),
+            preferred_cursor: None,
+            fallback: SelectionFallback::First,
         }
     }
 }
@@ -80,13 +102,10 @@ impl SelectionModel {
         }
     }
 
+    /// Cursor on `index` with no marks.
     pub fn single(index: Option<usize>) -> Self {
         match index {
-            Some(index) => {
-                let mut selected_indices = BTreeSet::new();
-                selected_indices.insert(index);
-                Self::from_cursor(selected_indices, Some(index))
-            }
+            Some(index) => Self::from_cursor(BTreeSet::new(), Some(index)),
             None => Self::default(),
         }
     }
@@ -117,40 +136,52 @@ impl SelectionModel {
         self.selected_indices.iter().copied()
     }
 
-    pub fn set_from_indices(&mut self, indices: impl IntoIterator<Item = usize>, len: usize) {
-        let selected = indices
-            .into_iter()
-            .filter(|index| *index < len)
-            .collect::<BTreeSet<_>>();
-
-        if selected.is_empty() {
-            self.clear();
-            return;
-        }
-
-        let focused = self
-            .focused_index
-            .filter(|index| selected.contains(index))
-            .or_else(|| selected.iter().next().copied());
-        let anchor = self
-            .anchor_index
-            .filter(|index| selected.contains(index))
-            .or(focused);
-
-        self.anchor_index = anchor;
-        self.focused_index = focused;
-        self.selected_indices = selected;
+    pub fn is_marked(&self, index: usize) -> bool {
+        self.selected_indices.contains(&index)
     }
 
+    /// Replace marks only; cursor is unchanged.
+    pub fn set_marks(&mut self, indices: impl IntoIterator<Item = usize>, len: usize) {
+        self.selected_indices = indices.into_iter().filter(|index| *index < len).collect();
+    }
+
+    /// Move the cursor without clearing marks.
+    pub fn set_focus(&mut self, index: usize, len: usize) {
+        if index < len {
+            self.anchor_index = Some(index);
+            self.focused_index = Some(index);
+        }
+    }
+
+    pub fn toggle_mark(&mut self, index: usize) {
+        if !self.selected_indices.remove(&index) {
+            self.selected_indices.insert(index);
+        }
+    }
+
+    /// Toggle mark at focus (caller decides whether the row is markable), then move down.
+    pub fn toggle_mark_and_advance(&mut self, markable: bool, len: usize) {
+        let Some(focus) = self.focused_index else {
+            return;
+        };
+        if markable && focus < len {
+            self.toggle_mark(focus);
+        }
+        if len > 0 {
+            self.set_focus((focus + 1).min(len - 1), len);
+        }
+    }
+
+    /// Clear marks and place the cursor on a single index.
     pub fn set_single(&mut self, index: usize, len: usize) {
         if index < len {
             self.anchor_index = Some(index);
             self.focused_index = Some(index);
             self.selected_indices.clear();
-            self.selected_indices.insert(index);
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.anchor_index = None;
         self.focused_index = None;
@@ -178,7 +209,7 @@ pub fn apply_selection(entries: &[Entry], intent: &SelectionIntent) -> Selection
         return SelectionModel::default();
     }
 
-    let mut selected = intent
+    let selected = intent
         .snapshot
         .selected_keys
         .iter()
@@ -199,12 +230,6 @@ pub fn apply_selection(entries: &[Entry], intent: &SelectionIntent) -> Selection
         .or_else(|| fallback_index(entries, intent.fallback, intent.snapshot.cursor_index))
         .or_else(|| selected.iter().next().copied());
 
-    if selected.is_empty() {
-        if let Some(index) = cursor {
-            selected.insert(index);
-        }
-    }
-
     SelectionModel::new(selected, cursor, cursor)
 }
 
@@ -223,6 +248,7 @@ fn fallback_index(
             .iter()
             .position(|entry| entry.is_parent_link)
             .or(Some(0)),
+        SelectionFallback::First => Some(0),
         SelectionFallback::NeighborOrClamp => {
             previous_index.map(|index| index.min(entries.len() - 1))
         }

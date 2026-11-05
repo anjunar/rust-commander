@@ -50,8 +50,8 @@ headerbar .titlebutton:active,
 }
 
 .active-panel {
-    border-color: #d3c8b8;
-    box-shadow: none;
+    border-color: #1d6fd1;
+    box-shadow: 0 0 0 1px #1d6fd1;
 }
 
 dropdown,
@@ -84,14 +84,25 @@ entry:focus {
     border-color: #d7ccbf;
 }
 
+.active-panel .path-label {
+    color: #0f2236;
+    background: #cfe2ff;
+    border-color: #1d6fd1;
+    font-weight: 600;
+}
+
 scrolledwindow,
 scrolledwindow > viewport,
+.panel-scroller,
+.panel-scroller > viewport,
 .file-table,
 columnview,
+columnview > listview,
 listview,
 listview.view,
 widget.view {
     background: #fffdf9;
+    background-color: #fffdf9;
     color: #24303d;
 }
 
@@ -100,20 +111,41 @@ columnview header button,
 columnview columnheader,
 columnview columnheader button {
     background: #efe8dc;
+    background-color: #efe8dc;
     color: #314152;
     border-color: #d8cebf;
 }
 
 columnview row {
     color: #24303d;
+    outline: none;
+    box-shadow: none;
 }
 
-columnview row:nth-child(even) {
+columnview row:focus,
+columnview row:focus-visible,
+columnview row:selected:focus,
+columnview row:selected:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+columnview .row-alt {
     background: rgba(36, 48, 61, 0.025);
 }
 
-columnview row:hover {
-    background: rgba(29, 111, 209, 0.08);
+/* No hover band on unselected rows: GTK can leave :hover stuck on a recycled
+   ListView row while selection is elsewhere (looks like a second cursor).
+   Keep :selected (and inactive cursor frame) visible under the pointer. */
+.file-table row:hover:not(:selected),
+columnview row:hover:not(:selected),
+columnview > listview > row:hover:not(:selected) {
+    background: transparent;
+    background-color: transparent;
+}
+
+columnview row:selected .row-alt {
+    background: transparent;
 }
 
 columnview row:selected,
@@ -121,17 +153,41 @@ listview row:selected,
 treeexpander row:selected {
     background: #cfe2ff;
     color: #0f2236;
+    outline: none;
+    box-shadow: none;
 }
 
 .file-panel:not(.active-panel) columnview row:selected,
 .file-panel:not(.active-panel) listview row:selected,
 .file-panel:not(.active-panel) treeexpander row:selected {
-    background: #d9d7d2;
-    color: #2c3946;
+    background: transparent;
+    background-color: transparent;
+    color: #24303d;
+    outline: none;
+    box-shadow: inset 0 0 0 1px #6b7785;
+}
+
+.file-panel:not(.active-panel) columnview row:selected .row-alt {
+    background: rgba(36, 48, 61, 0.025);
 }
 
 .parent-link {
     color: #2d73b9;
+}
+
+columnview label.marked,
+label.marked,
+.marked {
+    color: #d32f2f;
+    background: none;
+    background-color: transparent;
+}
+
+columnview row:selected label.marked,
+columnview row:selected .marked {
+    color: #b71c1c;
+    background: none;
+    background-color: transparent;
 }
 
 separator {
@@ -141,6 +197,7 @@ separator {
 .panel-scroller {
     border: 1px solid #ddd3c5;
     background: #fffdf9;
+    background-color: #fffdf9;
 }
 
 .editor-view,
@@ -200,6 +257,28 @@ messagedialog box,
     background: #f0e8dc;
     color: #24303d;
     border: 1px solid #d6cbba;
+    box-shadow: none;
+}
+
+.command-button:hover {
+    background: #e7ddcf;
+    border-color: #cbbdaa;
+    box-shadow: none;
+}
+
+.command-button:focus,
+.command-button:focus-visible {
+    box-shadow: none;
+    border-color: #1d6fd1;
+}
+
+.command-key {
+    background: #e2d6c5;
+    color: #1a5fad;
+}
+
+.command-caption {
+    color: #24303d;
 }
 
 .window-control-button {
@@ -235,9 +314,33 @@ messagedialog box,
     box-shadow: none;
 }
 
-.navigation-overlay {
-    background: rgba(255, 253, 248, 0.94);
+.panel-tab-bar {
+    border-bottom-color: #d3c8b8;
+}
+
+.panel-tab,
+.panel-tab-add {
+    color: #6a7684;
+    background: transparent;
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.panel-tab:hover,
+.panel-tab-add:hover {
     color: #24303d;
+    background: #f3ebe0;
+    background-color: #f3ebe0;
+}
+
+.panel-tab.active,
+.panel-tab.active:hover {
+    color: #0f2236;
+    background: #fffdf8;
+    background-color: #fffdf8;
     border-color: #d3c8b8;
-    box-shadow: 0 12px 36px rgba(36, 48, 61, 0.14);
+}
+
+.panel-footer {
+    color: #24303d;
 }

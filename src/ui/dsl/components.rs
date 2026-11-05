@@ -152,7 +152,11 @@ impl Ctx<gtk::Entry> {
         {
             let guard = guard.clone();
             self.bind(value, move |entry, text| {
-                guard.run(|| entry.set_text(text));
+                // `set_text` replaces the content and puts the cursor at the
+                // start, so what the user just typed must not come back here.
+                if entry.text().as_str() != text.as_str() {
+                    guard.run(|| entry.set_text(text));
+                }
             });
         }
         let value = value.clone();

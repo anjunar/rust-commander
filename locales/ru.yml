@@ -1,0 +1,476 @@
+panel:
+  footer_ready: "элементов: %{count}"
+  footer_selected: "%{folders} пап., %{files} файл. · %{size}"
+  left: левая
+  right: правая
+  root_sftp: SFTP…
+
+column:
+  name: Имя
+  size: Размер
+  type: Тип
+  modified: Изменён
+  attributes: Атрибуты
+
+entry:
+  parent: Родитель
+  folder: Папка
+  file: Файл
+  symlink: Ярлык
+  archive_item: Запись архива
+
+operation:
+  copy: Копирование
+  move: Перемещение
+  delete: Удаление
+  copy_verb: копировать
+  move_verb: переместить
+  delete_verb: удалить
+
+common:
+  close: Закрыть
+  cancel: Отмена
+  apply: Применить
+  open: Открыть
+  rename: Переименовать
+  create: Создать
+  save: Сохранить
+  ok: OK
+  skip: Пропустить
+  overwrite: Перезаписать
+  clear: Очистить
+  delete_permanent: Удалить безвозвратно
+  items_count: "элементов: %{count}"
+
+command:
+  settings: F1 Настройки
+  rename: F2 Переименовать
+  drive_left: F1 Левый диск
+  drive_right: F2 Правый диск
+  view: F3 Просмотр
+  edit: F4 Правка
+  copy: F5 Копировать
+  move: F6 Переместить
+  sort_name: F3 Имя
+  sort_extension: F4 Расш.
+  sort_date: F5 Дата
+  sort_size: F6 Размер
+  new_file: F4 Новый файл
+  copy_as: F5 Копия как
+  mkdir: F7 Каталог
+  delete: F8 Удалить
+  delete_permanent: F8 Стереть
+  terminal: F9 Терминал
+  quit: F10 Выход
+
+menu:
+  files: Файлы
+  commands: Команды
+  view: Вид
+  help: Справка
+  open: Открыть
+  view_file: Просмотр
+  edit_file: Правка
+  properties: Свойства
+  rename: Переименовать
+  new_file: Новый текстовый файл
+  mkdir: Создать каталог
+  new_tab: Новая вкладка
+  close_tab: Закрыть вкладку
+  favorites: Избранное
+  connect_remote: SFTP…
+  find_files: Поиск файлов…
+  quit: Выход
+  copy: Копировать
+  copy_as: Копировать как…
+  move: Переместить
+  delete: Удалить
+  delete_permanent: Удалить безвозвратно
+  clipboard_cut: Вырезать
+  clipboard_copy: Копировать в буфер
+  clipboard_paste: Вставить
+  mark_all: Выделить всё
+  switch_panel: Сменить панель
+  swap_panels: Поменять панели местами
+  terminal: Терминал
+  sort_name: Сортировка по имени
+  sort_extension: Сортировка по расширению
+  sort_date: Сортировка по дате
+  sort_size: Сортировка по размеру
+  remember_folder_sort: Запомнить сортировку для этой папки
+  forget_folder_sort: Сбросить сортировку этой папки
+  drive_left: Левый диск
+  drive_right: Правый диск
+  go_root: В корень расположения
+  refresh: Обновить
+  toggle_hidden_files: Показывать скрытые/системные файлы
+  settings: Настройки
+  about: О программе
+
+context:
+  open: Открыть
+  view: Просмотр
+  edit: Правка
+  rename: Переименовать
+  delete: Удалить
+  open_terminal: Открыть терминал
+
+settings:
+  title: Настройки приложения
+  description: Основные настройки языка, вида, операций с файлами и просмотрщика.
+  language: Язык
+  theme: Тема
+  theme_system: Системная
+  theme_light: Светлая
+  theme_dark: Тёмная
+  icon_style: Значки файлов
+  icon_style_symbolic: Символьные (тема)
+  icon_style_system: Системные (цветные)
+  section_general: Общие
+  section_view: Вид
+  section_file_operations: Операции с файлами
+  section_viewer: Просмотрщик
+  section_editor: Редактор
+  show_hidden_files: Показывать скрытые файлы
+  folders_first: Папки сверху
+  use_recycle_bin: Использовать корзину
+  confirm_delete: Подтверждать удаление
+  confirm_overwrite: Подтверждать перезапись
+  streaming_threshold_mb: Поток с размера файла в МБ
+  max_edit_size_mb: Макс. размер редактируемого файла в МБ
+  line_wrap: Перенос строк
+  show_line_numbers: Номера строк
+  reset_defaults: Сбросить по умолчанию
+  restart_hint: Некоторые изменения видны только после повторного открытия затронутых окон.
+  restart_notice: Некоторые изменения вступают в силу только после перезапуска приложения.
+
+dialog:
+  about_comments: Чистый двухпанельный файловый менеджер на GTK4.
+  copy_confirmation_title: Подтверждение копирования
+  copy_confirmation_detail: "Копировать %{source} в:"
+  archive_unsupported_title: Формат архива не поддерживается
+  archive_unsupported_detail: "%{reason}.\n\n%{path}"
+  ssh_host_key_title: Неизвестный SSH-хост
+  ssh_host_key_heading: Доверять этому SSH-ключу хоста?
+  ssh_host_key_detail: "Подлинность хоста %{host}:%{port} не подтверждена.\nТип ключа: %{key_type}\nОтпечаток (SHA256): %{fingerprint}\n\nЕсли вы доверяете этому хосту, ключ будет сохранён в ~/.ssh/known_hosts."
+  ssh_host_key_warning: Доверяйте ключу только если ожидали именно этот хост. Неожиданный ключ может указывать на атаку «человек посередине».
+  ssh_host_key_trust: Доверять и продолжить
+  remote_save_profile_label: Сохранить профиль при подключении
+  remote_save_profile_tooltip: "Если включено, «Подключить» также сохранит профиль (хост, порт, логин, пути к ключам). Пароль и passphrase на диск не записываются — они остаются только в памяти на время текущего сеанса."
+  remote_title: Подключение к удалённому хосту
+  remote_saved_profile: Сохранённый профиль
+  remote_new_connection: Новое подключение
+  remote_profile_name: Имя профиля
+  remote_host: Хост
+  remote_port: Порт
+  remote_username: Имя пользователя
+  remote_start_directory: Начальный каталог
+  remote_skip_host_key: "Небезопасно: пропустить проверку ключа хоста"
+  remote_skip_host_key_warning: Используйте только для тестовых или демо-серверов. Отключает проверку known_hosts и допускает атаки «человек посередине».
+  remote_authentication: Аутентификация
+  remote_auth_password: Пароль
+  remote_auth_key_file: Файл ключа
+  remote_password_placeholder: Пароль или passphrase
+  remote_private_key: Путь к закрытому ключу
+  remote_delete_profile: Удалить профиль
+  remote_connect: Подключить
+  move_confirmation_title: Подтверждение перемещения
+  move_confirmation_detail: "Переместить %{source} в:"
+  delete_confirmation_title: Подтверждение удаления
+  delete_confirmation_detail: "Удалить %{source}?"
+  delete_permanent_confirmation_title: Безвозвратное удаление
+  delete_permanent_confirmation_detail: "Удалить %{source} безвозвратно?\n\nКорзина не используется, отменить нельзя."
+  mkdir_title: Создать каталог
+  mkdir_prompt: "Введите имя нового каталога:"
+  properties_title: Свойства
+  properties_name: Имя
+  properties_location: Расположение
+  properties_type: Тип
+  properties_size: Размер
+  properties_size_folder: Папка
+  properties_created: Создан
+  properties_modified: Изменён
+  properties_attributes: Атрибуты
+  properties_permissions: Права доступа
+  properties_mode_octal: "Режим (восьм.):"
+  properties_perm_read: Чтение
+  properties_perm_write: Запись
+  properties_perm_execute: Выполнение
+  properties_perm_owner: Владелец
+  properties_perm_group: Группа
+  properties_perm_other: Остальные
+  new_file_title: Создать текстовый файл
+  new_file_prompt: "Введите имя нового текстового файла:"
+  copy_as_title: Копировать под новым именем
+  copy_as_prompt: "Введите имя для копии:"
+  chmod_title: Chmod
+  chmod_prompt: "Задать режим доступа:"
+  chmod_placeholder: "Пример: 755 или u+rwX"
+  chown_title: Chown
+  chown_prompt: "Задать владельца или владелец:группа:"
+  chown_placeholder: "Пример: root:users"
+  recursive_apply: Применить рекурсивно
+  conflict_title: "Конфликт: %{kind}"
+  conflict_detail: "Цель уже существует.\n\nИсточник: %{source}\nЦель: %{target}"
+  favorites_title: Избранное
+  favorites_hint: "Выберите избранную папку или добавьте текущий каталог."
+  favorites_add: Добавить текущую
+  favorites_edit: Изменить
+  favorites_delete: Удалить
+  favorites_move_up: Вверх
+  favorites_move_down: Вниз
+  favorites_go: Перейти
+  favorites_add_title: Добавить в избранное
+  favorites_edit_title: Изменить избранное
+  favorites_name_prompt: "Имя:"
+  favorites_path_prompt: "Путь:"
+
+search:
+  title: Поиск файлов
+  description: Поиск по имени. Используйте маски (* ?) или включите регулярное выражение. Исключение пропускает совпадающие имена и папки.
+  name_label: "Имя:"
+  name_placeholder: "*.rs"
+  exclude_label: "Исключить:"
+  exclude_placeholder: "node_modules;target;.git"
+  location_label: "Искать в:"
+  include_subfolders: Включая подпапки
+  case_sensitive: Учитывать регистр
+  use_regex: Регулярное выражение
+  start: Начать
+  stop: Стоп
+  column_path: Путь
+  status_idle: Готово
+  status_searching: "Найдено: %{count} · Поиск: %{path}"
+  status_done: "Найдено: %{count}"
+  status_done_with_errors: "Найдено: %{count} · пропущено папок: %{errors}"
+  status_cancelled: "Остановлено · Найдено: %{count}"
+  status_opened: "Открыт результат поиска: %{path}"
+  not_local: Поиск файлов работает только в локальной папке. Откройте локальный каталог в активной панели и повторите.
+  invalid_location: Укажите существующий локальный каталог для поиска.
+  invalid_pattern: "Неверный шаблон: %{error}"
+
+editor:
+  utf8_text_file: Текстовый файл UTF-8
+  untitled: Без имени
+  status: "Текстовый файл UTF-8 | Стр. %{line}, Стлб. %{col}"
+  binary_file_not_editable: Выбранный файл похож на двоичный и не может быть отредактирован как текст.
+  invalid_utf8_for_edit: "Выбранный файл не является корректным UTF-8 и не может быть открыт в текстовом редакторе: %{path}"
+  discard_changes_title: Отменить изменения?
+  discard_changes_detail: В редакторе есть несохранённые изменения.
+  keep_editing: Продолжить правку
+  discard: Отменить
+  menu_file: Файл
+  menu_edit: Правка
+  new: Создать
+  open: Открыть…
+  save: Сохранить
+  save_as: Сохранить как…
+  exit: Выход
+  undo: Отменить
+  redo: Повторить
+  cut: Вырезать
+  copy: Копировать
+  paste: Вставить
+  delete: Удалить
+  select_all: Выделить всё
+  duplicate_line: Дублировать строку
+  find: Найти…
+  find_next: Найти далее
+  find_previous: Найти ранее
+  replace: Заменить…
+  go_to_line: Перейти к строке…
+  find_placeholder: Найти
+  replace_placeholder: Заменить
+  go_to_line_title: Перейти к строке
+  go_to_line_prompt: "Номер строки:"
+  open_title: Открыть файл
+  save_title: Сохранить файл
+  could_not_open_file: Не удалось открыть файл
+  could_not_save_file: Не удалось сохранить файл
+  could_not_upload_remote: Не удалось выгрузить удалённый файл
+
+viewer:
+  window_title: Просмотрщик
+  view_prefix: Просмотр
+  title: "Просмотр %{file}"
+  mode_text: Текст
+  mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Изображение
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Код
+  mode_archive: "Архив (%{count})"
+  status: "%{mode} | %{size} | стр. %{line} | стлб. %{col} | F2 режим | Esc закрыть"
+  status_markdown: "%{mode} | %{size} | Esc закрыть"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → листать | Esc закрыть"
+  status_image_loading: "%{mode} | %{index}/%{total} | загрузка…"
+  image_loading: Загрузка…
+  read_only_text_truncated: "Просмотр текста только для чтения. Показаны первые %{shown} из %{total}."
+  read_only_text_total: "Просмотр текста только для чтения. Всего %{total}."
+  read_only_hex_truncated: "Просмотр hex только для чтения (двоичные данные). Показаны первые %{shown} из %{total}."
+  read_only_hex_total: "Просмотр hex только для чтения (двоичные данные). Всего %{total}."
+  invalid_utf8_for_view: Выбранный файл не является корректным UTF-8 и не может быть показан как текст.
+  could_not_decode_preview: Не удалось декодировать текстовый предпросмотр.
+  empty_hex_file: "00000000  <пустой файл>"
+  error_with_detail: "Ошибка просмотрщика: %{error}"
+  scroll_update_error: "Ошибка просмотрщика: не удалось обновить позицию прокрутки"
+  render_error_body: "Не удалось отобразить файл.\n\n%{error}"
+  file_too_large: "Файл слишком большой для просмотра (%{size}; лимит %{limit})."
+  image_decode_error: Не удалось декодировать изображение.
+  image_dimensions: "%{width} × %{height} пикс."
+  structured_parse_error: Не удалось разобрать структурированный файл.
+  csv_parse_error: Не удалось разобрать CSV/TSV файл.
+  csv_truncated: "показаны первые %{rows} строк"
+  archive_empty: Архив пуст.
+  archive_col_name: Имя
+  archive_col_size: Размер
+  archive_col_type: Тип
+  archive_type_dir: ПАПКА
+  archive_type_file: ФАЙЛ
+  archive_type_link: ССЫЛКА
+  archive_type_unknown: "?"
+
+
+progress:
+  operation_title: "Операция: %{kind}"
+  preparing_file_operation: Подготовка операции с файлами...
+  remote_edit_download: Загрузка для редактирования...
+  remote_edit_upload: Выгрузка сохранённого файла...
+  eta_unknown: "ETA --:--"
+  cancel_operation: Отменить операцию
+  in_progress: "%{kind} выполняется"
+  file_operation_detail: "%{processed} из %{total} | %{processed_entries} / %{total_entries} элем.\n%{item}"
+  archive_copy: Копирование из архива
+  archive_copy_in_progress: Копирование из архива выполняется
+  selected_archive_items: "выбрано записей архива: %{count}"
+  preparing_archive_operation: Подготовка операции с архивом...
+  working: Выполняется...
+  items_count: "Элементы %{processed}/%{total}"
+  waiting_for_conflict_resolution: Ожидание разрешения конфликта...
+
+terminal:
+  title: Терминал
+  restart: Перезапуск
+  title_windows_pending: Терминал (бэкенд Windows пока недоступен)
+  title_unsupported: Терминал (бэкенд недоступен на этой платформе)
+  panel_path: "Путь панели: %{path}"
+  unsupported_path_chars: "Каталог терминала содержит неподдерживаемые символы: %{path}"
+  windows_placeholder_title: Встроенный терминал сейчас доступен в сборках Linux с VTE.
+  windows_placeholder_body: "Запрошенный рабочий каталог: %{path}\n\nПочему на Windows пока заглушка:\nConPTY даёт поток псевдоконсоли, но приложение-хост должно само рисовать вывод и собирать ввод. В GTK4 нет нативного виджета терминала для Windows, сопоставимого с VTE, а проект намеренно не строит свой эмулятор.\n\nАрхитектура дока уже отделена, чтобы позже добавить нативный Windows-терминал без смены окружающего UI командира."
+
+archive:
+  extracted_items: "Извлечено элементов: %{count} → %{target}"
+
+status:
+  ready: Готово. F3 — просмотр, F4 — правка, Enter — открыть, Tab — смена панели, F5 — копирование.
+  quick_search: "Поиск: %{query}"
+  selected_active: "%{status} | выделено в активной панели: %{count}"
+  selected_inactive: "%{status} | выделено в неактивной панели: %{count}"
+  selected_both: "%{status} | активно: %{active} | неактивно: %{inactive}"
+  archive_settings_updated: Настройки архивов обновлены. Активны внутренние/нативные бэкенды архивов.
+  view_refreshed: Обнаружены изменения файлов. Вид обновлён.
+  directory_refreshed: Каталог обновлён.
+  hidden_files_shown: Скрытые файлы показаны.
+  hidden_files_hidden: Скрытые файлы скрыты.
+  refresh_failed: "Ошибка обновления %{panel}: %{error}"
+  sorted_panel: "Панель %{panel} отсортирована по %{column}."
+  folder_sort_remembered: "Сортировка для %{path} запомнена."
+  folder_sort_forgotten: "Сохранённая сортировка для %{path} сброшена."
+  folder_sort_not_set: "Для %{path} нет сохранённой сортировки."
+  rename_skipped: Переименование пропущено. Имя не изменилось.
+  renamed: "Переименовано: %{path}"
+  created_directory: "Создан каталог: %{path}"
+  created_file: "Создан файл: %{path}"
+  copied_as: "Скопировано %{source} как %{target}"
+  console_opened_at: "Консоль открыта в %{path}"
+  language_changed: "Язык изменён на %{language}."
+  saved: "Сохранено: %{path}"
+  remote_saved: "Сохранено и выгружено: %{path}"
+  remote_edit_transfer_cancelled: Передача при удалённом редактировании отменена.
+  up_one_level: "На уровень выше: %{path}"
+  loading_parent_directory: Загрузка родительского каталога...
+  opened: "Открыто: %{path}"
+  opened_favorite: "Избранное: %{path}"
+  opened_location_root: "Корень: %{path}"
+  opened_with_default_app: "Открыто приложением по умолчанию: %{path}"
+  archive_unsupported: "Архив не поддерживается: %{path} (%{reason})"
+  loading_directory: Загрузка каталога...
+  opened_archive: "Открыт архив: %{path}"
+  opening_archive: Открытие архива...
+  switched_panel: "Панель %{panel} переключена на %{path}"
+  loading_drive: Загрузка диска...
+  navigation_failed: "Ошибка навигации: %{error}"
+  navigation_loader_disconnected: "Ошибка навигации: фоновый загрузчик отключён."
+  host_key_trusted: "SSH-ключ хоста %{host}:%{port} добавлен в доверенные."
+  operation_current_item: "%{kind}: %{item}"
+  operation_completed: "%{kind} завершено: элементов %{count}, %{size} за %{seconds} с"
+  operation_cancelled: "%{kind} отменено после элементов: %{count}, %{size}."
+  file_operation_failed: "Ошибка операции с файлом: %{error}"
+  copy_current_path: "Копирование: %{path}"
+  clipboard_copied: "В буфер скопировано элементов: %{count}"
+  clipboard_cut: "В буфер вырезано элементов: %{count}"
+  archive_extraction_in_progress: Извлечение из архива выполняется
+  archive_copy_cancelled: Копирование из архива отменено.
+  archive_copy_failed: "Ошибка копирования из архива: %{error}"
+  command_failed: "Ошибка команды: %{error}"
+  permissions_updated: "Режим доступа %{mode} обновлён для элементов: %{count}."
+  remote_permissions_updated: "Права %{path} обновлены на %{mode}."
+  owner_updated: "Владелец %{owner} обновлён для элементов: %{count}."
+
+error:
+  no_entry_selected: Ничего не выбрано.
+  properties_unavailable: Свойства недоступны
+  parent_has_no_properties: У записи родительского каталога нет свойств.
+  invalid_unix_mode: Введите корректный восьмеричный режим (например 755 или 644).
+  view_unavailable: Просмотр недоступен
+  parent_cannot_be_viewed: Родительский каталог нельзя просмотреть.
+  directory_cannot_be_viewed: Каталоги нельзя открыть в просмотрщике файлов.
+  archive_view_not_wired: Просмотр файлов прямо в архивах подготовлен архитектурно, но ещё не подключён.
+  could_not_open_viewer: Не удалось открыть просмотрщик
+  rename_unavailable: Переименование недоступно
+  parent_cannot_be_renamed: Родительский каталог нельзя переименовать.
+  could_not_open_console: Не удалось открыть консоль
+  could_not_save_settings: Не удалось сохранить настройки
+  edit_unavailable: Правка недоступна
+  copy_unavailable: Копирование недоступно
+  parent_cannot_be_edited: Родительский каталог нельзя редактировать.
+  parent_cannot_be_copied: Родительский каталог нельзя скопировать.
+  copy_rename_filesystem_only: Копирование с переименованием доступно только в локальной файловой системе.
+  directory_cannot_be_edited: Каталоги нельзя открыть в текстовом редакторе.
+  archive_edit_not_supported: Правка файлов прямо в архивах на этом этапе не поддерживается.
+  archive_rename_not_supported: Переименование файлов прямо в архивах не поддерживается.
+  edit_file_too_large: "Файл слишком большой для редактирования (%{size}). Лимит: %{limit}."
+  edit_filesystem_or_remote_only: Редактирование доступно только для локальных и SFTP-файлов.
+  remote_session_missing: Удалённый сеанс больше недоступен.
+  remote_edit_download_missing: Загруженный файл не найден во временной папке.
+  could_not_open_editor: Не удалось открыть редактор
+  could_not_open_directory: Не удалось открыть каталог
+  folder_sort_unavailable: Сортировка папки недоступна
+  folder_sort_filesystem_only: Запоминание сортировки доступно только для локальных каталогов.
+  could_not_trust_host_key: Не удалось доверить SSH-ключ хоста
+  file_operation_running: Операция с файлами уже выполняется
+  cancel_or_finish_current_operation: Сначала отмените или завершите текущую операцию.
+  operation_unavailable: Операция недоступна
+  clipboard_unavailable: Буфер обмена недоступен
+  clipboard_empty: В буфере обмена нет файлов для вставки.
+  clipboard_sources_missing: Файлы из буфера обмена больше недоступны.
+  clipboard_set_failed: Не удалось поместить файлы в системный буфер обмена.
+  clipboard_filesystem_only: Вырезание и копирование в буфер доступны только в локальной файловой системе.
+  clipboard_cut_remote_unsupported: Вырезание в удалённую папку не поддерживается. Используйте копирование.
+  clipboard_paste_archive_unsupported: Вставка в архив не поддерживается.
+  favorites_unavailable: Избранное недоступно
+  no_favorite_selected: Избранное не выбрано.
+  favorite_fields_required: Нужны имя и путь.
+  favorite_path_missing: "Путь избранного не существует или не является каталогом: %{path}"
+  empty_destination: Путь назначения не может быть пустым.
+  invalid_destination: Путь назначения недействителен.
+  file_operation_failed: Ошибка операции с файлом
+  no_filesystem_target_directory: Нет доступного целевого каталога файловой системы.
+  archive_copy_failed: Ошибка копирования из архива
+  command_failed: Ошибка команды
+  could_not_start_terminal: Не удалось запустить терминал

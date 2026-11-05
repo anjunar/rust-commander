@@ -4,6 +4,10 @@ use anyhow::{Context, Result};
 
 use crate::domain::entry::{Entry, EntryKind};
 
+use super::links::classify_fs_entry;
+
+pub use super::links::resolve_directory_navigation_path;
+
 pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> {
     let mut entries = Vec::new();
 
@@ -20,23 +24,7 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
         if !show_hidden_files && is_hidden(&metadata, &file_name) {
             continue;
         }
-        let modified_at = metadata.modified().ok();
-
-        entries.push(Entry {
-            name: file_name.clone(),
-            archive_path: None,
-            remote_path: None,
-            kind: if metadata.is_dir() {
-                EntryKind::Directory
-            } else {
-                EntryKind::File
-            },
-            is_dir: metadata.is_dir(),
-            size_bytes: metadata.len(),
-            modified_at,
-            attributes: format_attributes(&metadata, &file_name),
-            is_parent_link: false,
-        });
+        entries.push(entry_from_metadata(&entry_path, file_name, &metadata));
     }
 
     if path.parent().is_some() {
@@ -47,7 +35,7 @@ pub fn read_entries(path: &Path, show_hidden_files: bool) -> Result<Vec<Entry>> 
 }
 
 pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>> {
-    let metadata = match fs::metadata(path) {
+    let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
@@ -64,23 +52,25 @@ pub fn read_entry(path: &Path, show_hidden_files: bool) -> Result<Option<Entry>>
     if !show_hidden_files && is_hidden(&metadata, &file_name) {
         return Ok(None);
     }
+
+    Ok(Some(entry_from_metadata(path, file_name, &metadata)))
+}
+
+fn entry_from_metadata(path: &Path, file_name: String, metadata: &fs::Metadata) -> Entry {
+    let (kind, is_dir, size_bytes) = classify_fs_entry(path, metadata);
     let modified_at = metadata.modified().ok();
 
-    Ok(Some(Entry {
+    Entry {
         name: file_name.clone(),
         archive_path: None,
         remote_path: None,
-        kind: if metadata.is_dir() {
-            EntryKind::Directory
-        } else {
-            EntryKind::File
-        },
-        is_dir: metadata.is_dir(),
-        size_bytes: metadata.len(),
+        kind,
+        is_dir,
+        size_bytes,
         modified_at,
-        attributes: format_attributes(&metadata, &file_name),
+        attributes: format_attributes(metadata, &file_name, is_dir, kind),
         is_parent_link: false,
-    }))
+    }
 }
 
 pub fn rename_path(source: &Path, target: &Path) -> Result<()> {
@@ -124,26 +114,59 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Recursively sums file sizes under `path` (directories themselves add 0).
+/// Directory links are followed once at the root via OS path semantics; nested
+/// symlink directories are not re-entered (non-following child metadata).
+pub fn directory_total_size(path: &Path) -> u64 {
+    let root = resolve_directory_navigation_path(path);
+    let mut total = 0u64;
+    let mut stack = vec![root];
+
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if metadata.is_dir() {
+                // Avoid descending into nested directory links/junctions.
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
+                stack.push(entry.path());
+            } else {
+                total = total.saturating_add(metadata.len());
+            }
+        }
+    }
+
+    total
+}
+
 pub fn format_system_time(timestamp: SystemTime) -> String {
     let datetime: chrono::DateTime<chrono::Local> = timestamp.into();
     datetime.format("%Y-%m-%d %H:%M").to_string()
 }
 
 #[cfg(target_os = "windows")]
-fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
+fn format_attributes(metadata: &fs::Metadata, name: &str, is_dir: bool, kind: EntryKind) -> String {
     let mut flags = Vec::new();
 
     if metadata.permissions().readonly() {
         flags.push("R");
     }
-    if metadata.is_dir() {
+    if is_dir {
         flags.push("D");
+    }
+    if matches!(kind, EntryKind::Symlink) || metadata.file_type().is_symlink() {
+        flags.push("L");
     }
     if name.starts_with('.') {
         flags.push("H");
     }
 
-    #[cfg(target_os = "windows")]
     {
         use std::os::windows::fs::MetadataExt;
 
@@ -157,6 +180,9 @@ fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
         if attributes & 0x4 != 0 {
             flags.push("S");
         }
+        if attributes & 0x400 != 0 && !flags.contains(&"L") {
+            flags.push("L");
+        }
     }
 
     if flags.is_empty() {
@@ -167,7 +193,12 @@ fn format_attributes(metadata: &fs::Metadata, name: &str) -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn format_attributes(metadata: &fs::Metadata, _name: &str) -> String {
+fn format_attributes(
+    metadata: &fs::Metadata,
+    _name: &str,
+    _is_dir: bool,
+    _kind: EntryKind,
+) -> String {
     format_unix_attributes(metadata)
 }
 
@@ -176,10 +207,10 @@ fn format_unix_attributes(metadata: &fs::Metadata) -> String {
     use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 
     let file_type = metadata.file_type();
-    let kind = if file_type.is_dir() {
-        'd'
-    } else if file_type.is_symlink() {
+    let kind = if file_type.is_symlink() {
         'l'
+    } else if file_type.is_dir() {
+        'd'
     } else if file_type.is_socket() {
         's'
     } else if file_type.is_fifo() {
@@ -232,7 +263,7 @@ fn execute_char(
     }
 }
 
-fn is_hidden(metadata: &fs::Metadata, name: &str) -> bool {
+pub(crate) fn is_hidden(metadata: &fs::Metadata, name: &str) -> bool {
     if name == "." || name == ".." {
         return false;
     }

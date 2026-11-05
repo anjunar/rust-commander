@@ -26,33 +26,25 @@ impl OperationsController {
             move |event| match event {
                 crate::archive::ArchiveTaskEvent::Progress(progress) => {
                     progress_dialog.update_archive_progress(&progress);
+                    let path = progress.current_path.clone().unwrap_or_else(|| {
+                        t!("status.archive_extraction_in_progress").into_owned()
+                    });
                     let update = {
                         let mut commander = controller.commander.borrow_mut();
-                        commander.set_status(
-                            t!(
-                                "status.copy_current_path",
-                                path =
-                                    progress.current_path.clone().unwrap_or_else(|| t!(
-                                        "status.archive_extraction_in_progress"
-                                    )
-                                    .into_owned())
-                            )
-                            .into_owned(),
-                        )
+                        commander
+                            .set_status(t!("status.copy_current_path", path = path).into_owned())
                     };
                     controller.host.apply_update(update);
                     true
                 }
                 crate::archive::ArchiveTaskEvent::Finished(message) => {
-                    progress_dialog.close();
-                    controller.clear_active_operation();
+                    close_archive_operation(&controller, &progress_dialog);
                     controller.host.set_status(message);
                     controller.navigation.refresh_dirty_panels_if_idle();
                     false
                 }
                 crate::archive::ArchiveTaskEvent::Cancelled => {
-                    progress_dialog.close();
-                    controller.clear_active_operation();
+                    close_archive_operation(&controller, &progress_dialog);
                     controller
                         .host
                         .set_status(t!("status.archive_copy_cancelled").into_owned());
@@ -60,8 +52,7 @@ impl OperationsController {
                     false
                 }
                 crate::archive::ArchiveTaskEvent::Failed(error) => {
-                    progress_dialog.close();
-                    controller.clear_active_operation();
+                    close_archive_operation(&controller, &progress_dialog);
                     let update = {
                         let mut commander = controller.commander.borrow_mut();
                         commander.set_status(
@@ -79,4 +70,12 @@ impl OperationsController {
             || false,
         );
     }
+}
+
+fn close_archive_operation(
+    controller: &OperationsController,
+    progress_dialog: &dialogs::ProgressDialog,
+) {
+    progress_dialog.close();
+    controller.clear_active_operation();
 }

@@ -14,97 +14,143 @@ The goal is simple: a fast, practical, keyboard-friendly desktop file manager th
 
 ## Current Status
 
-RCommander is already usable as a real desktop application, not just a UI prototype. It supports the core commander workflow, native file panels, file operations with progress feedback, file viewing/editing, archive handling, and now SFTP remote file transfer as a major milestone for the project.
+RCommander is already usable as a real desktop application. It supports the core commander workflow, native file panels with tabs, file operations with progress feedback, viewing/editing, archives, favorites, find-files, and SFTP remote browsing with upload/download and remote editing.
 
-The project is still young and evolving quickly. APIs, internal structure, and feature details may change while the application grows toward a more complete commander experience.
-
-## SFTP Milestone
-
-`v0.3.0` is centered on SFTP support. RCommander can now work across local and remote panes without turning remote access into a second-class feature.
-
-- SFTP remote browsing in a native commander pane
-- SFTP file download to the local filesystem
-- SFTP file upload from the local filesystem
-- Recursive directory download and upload
-- Password authentication
-- Public key authentication with optional passphrase
-- Cross-platform support on Windows, Linux, and macOS
-
-Host key verification is enforced against the user's OpenSSH `known_hosts` file by default. For demo and test environments, a per-profile `Insecure: skip host key verification` option is available. That override disables `known_hosts` validation and should only be used when you explicitly accept the MITM risk.
+The project is still evolving quickly. APIs, internal structure, and feature details may change while the application grows toward a more complete commander experience.
 
 ## Features
 
-- Native GTK4 desktop interface
-- Classic two-pane commander layout
-- Keyboard-oriented workflow
-- `F1` settings dialog for application and panel options
-- Directory navigation in both panels
-- Open files with the system default application
-- Rename, create-directory, copy, move, and delete operations
-- Progress dialog for longer file operations
-- Conflict handling for overwrite, skip, rename, or cancel
-- SFTP remote browsing and directory navigation
-- SFTP upload and download between local and remote panes
-- Recursive SFTP directory transfer
-- SFTP password authentication
-- SFTP public key authentication
+- Native GTK4 desktop interface with classic two-pane layout
+- Keyboard-oriented workflow, tabs, favorites, and find-files
+- Per-tab sort persistence, plus optional remembered sort for specific local folders
+- Rename, create directory/file, copy, move, delete (recycle bin or permanent)
+- Progress dialogs and conflict handling (overwrite / skip / rename / cancel)
+- Built-in UTF-8 editor (local and SFTP) with size limit and upload progress on save
+- Nginx config syntax highlighting (`nginx.conf`, `*.nginx`, and likely `.conf` files)
+- Vue SFC syntax highlighting (`*.vue`: template/HTML, script JS/TS, style CSS/SCSS)
 - File viewer for text and binary files
-- Hex-style viewing for binary files
-- UTF-8 text file editing
-- ZIP archive support
-- RAR archive support through `unrar`
-- Windows resource/icon integration
-- `F9` terminal toggle and `F10` quit action
-- Linux terminal dock backed by a real VTE terminal widget
-- Windows terminal dock placeholder with a clean backend boundary for future native terminal integration
+- Properties: native Windows Explorer sheet for local files; built-in dialog for Linux/macOS and archives; on SFTP, editable Unix mode (octal + checkboxes)
+- Archives: ZIP, 7-Zip (`.7z`), RAR (`unrar`), ISO, and Tar-like formats via libarchive on non-Windows
+- SFTP browsing, listing cache, mkdir, upload/download, password and public-key auth
+- SSH host-key trust dialog against OpenSSH `known_hosts`
+- Terminal dock: real VTE on Linux; Windows placeholder behind a clean backend boundary
 
-## Keyboard Workflow
+## Keyboard Shortcuts
+
+### Panels and navigation
 
 | Key | Action |
 | --- | --- |
 | `Tab` | Switch active panel |
+| `Ctrl+U` | Swap left and right panels |
 | `Enter` | Open directory or launch file with the default application |
-| `F1` | Open settings |
-| `F2` | Rename selected file or directory |
-| `F3` | View selected file |
+| `Right` | Enter selected directory |
+| `Left` | Go to parent directory |
+| `Ctrl+\` | Go to location root |
+| `Alt+F1` / `Alt+F2` | Choose drive/root for left / right panel (includes SFTP…) |
+| `Ctrl+R` | Refresh current folder (bypasses SFTP listing cache) |
+| `Ctrl+.` | Toggle hidden/system files |
+| Type to search | Quick-search in the active panel |
+
+### Function keys
+
+| Key | Action |
+| --- | --- |
+| `F1` | Settings |
+| `F2` | Rename |
+| `F3` | View file |
 | `F4` | Edit UTF-8 text file |
-| `F5` | Copy selected item to the opposite panel |
-| `F6` | Move selected item to the opposite panel |
-| `F7` | Create a directory in the active panel |
-| `F8` | Delete selected item |
-| `F9` | Toggle the terminal dock |
-| `F10` | Quit the application |
+| `Shift+F4` | Create new text file |
+| `F5` | Copy to opposite panel |
+| `Shift+F5` | Copy with rename |
+| `F6` | Move to opposite panel |
+| `Ctrl+C` | Copy selection to the system clipboard (interop with Explorer) |
+| `Ctrl+X` | Cut selection to the system clipboard |
+| `Ctrl+V` | Paste from the system clipboard into the active panel (no confirmation) |
+| `F7` | Create directory (local and SFTP) |
+| `F8` / `Delete` | Delete (recycle bin when enabled) |
+| `Shift+F8` / `Shift+Delete` | Delete permanently |
+| `F9` | Toggle terminal dock |
+| `F10` | Quit |
+| `F11` | Connect remote (SFTP) — also available as SFTP… in the drive list |
+| `Alt+Enter` | Properties (Explorer on Windows local; SFTP: edit permissions; otherwise built-in) |
+
+### Sorting
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+F3` | Sort by name |
+| `Ctrl+F4` | Sort by extension |
+| `Ctrl+F5` | Sort by date |
+| `Ctrl+F6` | Sort by size |
+
+Folder-specific sort remember/forget is available from the View menu.
+
+### Selection and marks
+
+| Key | Action |
+| --- | --- |
+| `Insert` | Toggle mark on the current row |
+| `Space` | Toggle mark, or calculate directory size when on a folder |
+| `*` | Invert marks |
+| `Ctrl+A` | Mark all |
+
+### Tabs and extras
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Tab` / `Ctrl+PageDown` | Next tab |
+| `Ctrl+Shift+Tab` / `Ctrl+PageUp` | Previous tab |
+| `Ctrl+D` | Favorites |
+| `Alt+F7` / `Ctrl+Shift+F` | Find files |
+| `` Ctrl+` `` | Focus terminal |
+| `` Ctrl+Shift+` `` | Restart terminal |
+
+Holding `Alt`, `Ctrl`, or `Shift` also updates the bottom command bar labels to show the matching F-key actions.
+
+### Editor (when open)
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+S` | Save (uploads back over SFTP when editing a remote file) |
+| `Ctrl+Shift+S` | Save As |
+| `Ctrl+F` / `F3` / `Shift+F3` | Find / find next / find previous |
+| `Ctrl+H` | Replace |
+| `Ctrl+G` | Go to line |
+| `Ctrl+Shift+D` | Duplicate line |
+| `Esc` | Close find bar, or close editor after confirm |
 
 ## Technology
 
 RCommander uses a native GTK4 stack through gtk-rs.
 
-The file panels are built with GTK's modern list and column infrastructure instead of a custom table implementation:
+The file panels are built with GTK's modern list and column infrastructure:
 
 - `gio::ListStore`
-- `gtk::MultiSelection`
+- `gtk::SingleSelection`
 - `gtk::ColumnView`
 - `gtk::SignalListItemFactory`
 
-The project currently depends on:
+Main dependencies:
 
-- `gtk4` for the desktop UI
-- `sourceview5` for text viewing/editing support
-- `notify` for filesystem event handling
-- `ssh2` for SSH/SFTP connectivity
-- `zip` for ZIP archive support
-- `unrar` for RAR archive support via the bundled UnRAR library/license
-- `windows-sys` for Windows-specific integration
-- `vte4` for the Linux terminal backend
+- `gtk4` — desktop UI
+- `sourceview5` — text viewing/editing
+- `notify` — filesystem watching
+- `ssh2` — SSH/SFTP
+- `zip` / `sevenz-rust2` / `unrar` — archives
+- `windows-sys` — Windows integration
+- `vte4` — Linux terminal backend
 
 ### UI DSL
 
 The whole interface is composed with a small DSL in `src/ui/dsl`, modelled on [scalajs-ui](https://github.com/anjunar/scalajs-ui): elements nest like the widget tree, reactive `Property` values drive the widgets both ways, and every binding ends with the widgets it belongs to. Labels built with `tr!` follow the locale, so switching the language relabels the running window.
 
-- `src/ui/shell.rs` composes the main window in one block: titlebar, both panels over the terminal dock, the busy overlay, the status line and the command bar.
-- `src/ui/commands.rs` declares every command once; each becomes a window action with its F-key, and the command-bar buttons point at the same actions.
-- `src/ui/file_panel_view.rs` and `src/ui/columns.rs` build the panels on `column_view`, which keeps GTK's virtualised list model underneath.
-- Dialogs, the editor and the viewer are each one `modal` block; `modal` lives in `src/ui/dialogs_base.rs`.
+- `src/ui/shell.rs` composes the main window in one block: titlebar with the menu bar, both panels over the terminal dock, the status line and the command bar.
+- `src/ui/commands.rs` declares every command once; each becomes a window action with its shortcuts, and the command-bar buttons and menu items point at the same actions. Which command a button runs follows the modifier held.
+- `src/ui/file_panel_view.rs` and `src/ui/columns.rs` build the panels on `column_view`, which keeps GTK's virtualised list model underneath. The selection model holds the cursor; marks live on the row objects, and `Table::refresh_row` redraws a row without touching the model.
+- Dialogs are each one `modal` block. The editor and the viewers are `independent_window` blocks, windows of their own beside the main window. Both live in `src/ui/dialogs_base.rs`; the format viewers (`src/ui/file_viewer_*.rs`) fill that frame with widgets they build by hand.
 
 The module documentation in `src/ui/dsl/mod.rs` has the counter example and the mapping to scalajs-ui names.
 
@@ -242,12 +288,27 @@ Create the distributable DMG:
 
 ## Archive Support
 
-RCommander currently includes initial archive support for:
+RCommander currently includes archive support for:
 
 - ZIP files
+- 7-Zip (`.7z`) files through `sevenz-rust2`
 - RAR files through `unrar`
+- ISO images
+- Tar-like formats through libarchive on non-Windows platforms
 
-The architecture should grow toward a broader archive adapter layer so additional formats can be added cleanly without hardwiring every compressor or archive backend into the file panel logic.
+Archives can be browsed as a virtual filesystem and extracted to the opposite panel. Additional formats can be added through the archive backend registry.
+
+## SFTP
+
+SFTP is a first-class panel location:
+
+- Browse remote directories in a native commander pane
+- Listing cache for snappy back-navigation; `Ctrl+R` forces a live refresh
+- Upload / download (including recursive directories)
+- Create remote directories with `F7`
+- Edit remote text files (`F4`) with download → edit → upload progress
+- Password and public-key authentication (on Windows Ed25519 keys: use `ssh-add` / SSH agent, an RSA key, or build `ssh2` with OpenSSL)
+- Host-key verification against `~/.ssh/known_hosts`, with an explicit trust dialog for new hosts
 
 ## Design Principles
 
@@ -264,13 +325,11 @@ RCommander follows a few strict design principles:
 
 Planned and possible next steps:
 
-- Broader archive backend architecture
-- Additional archive formats
+- Additional archive formats and richer archive operations
 - Improved large-file viewer behavior
-- Better Windows packaging
 - Native Windows terminal integration
+- Remote move / rename / delete parity with local operations
 - More commander-style power features
-- More polish for keyboard navigation and selection behavior
 - Better file operation reporting and error recovery
 
 ## License

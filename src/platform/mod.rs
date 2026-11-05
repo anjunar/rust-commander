@@ -13,9 +13,11 @@ pub mod x11_window_icon;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
+#[cfg(target_os = "windows")]
+pub mod windows_file_clipboard;
 
 pub use context_menu::{show_context_menu, ContextMenuRequest};
-pub use icons::icon_for_entry;
+pub use icons::{fallback_icon_name_for_row, icon_for_listing_entry, set_icon_style};
 pub use open::open_path;
 pub use terminal::open_console;
 pub use window_geometry::current_window_placement;
@@ -26,6 +28,14 @@ pub use window_geometry::restore_window_placement;
 pub use windows::apply_runtime_window_icon;
 #[cfg(target_os = "windows")]
 pub use windows::available_roots;
+#[cfg(target_os = "windows")]
+pub use windows::force_foreground_gtk_window;
+#[cfg(target_os = "windows")]
+pub use windows::force_foreground_window;
+#[cfg(target_os = "windows")]
+pub use windows::show_file_properties;
+#[cfg(target_os = "windows")]
+pub use windows_file_clipboard as file_clipboard;
 
 #[cfg(not(target_os = "windows"))]
 pub use unix::available_roots;

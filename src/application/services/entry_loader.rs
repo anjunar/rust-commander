@@ -17,6 +17,7 @@ pub struct EntryLoader {
     remote_service: RemoteService,
     session_store: SessionStore,
     show_hidden_files: bool,
+    force_refresh: bool,
 }
 
 impl EntryLoader {
@@ -25,12 +26,14 @@ impl EntryLoader {
         remote_service: RemoteService,
         session_store: SessionStore,
         show_hidden_files: bool,
+        force_refresh: bool,
     ) -> Self {
         Self {
             archive_service,
             remote_service,
             session_store,
             show_hidden_files,
+            force_refresh,
         }
     }
 
@@ -48,20 +51,22 @@ impl EntryLoader {
     fn load_entries(&self, location: &PanelLocation) -> Result<Vec<Entry>, Box<NavigationError>> {
         match location {
             PanelLocation::Filesystem(path) => {
-                crate::fs::reader::read_entries(path, self.show_hidden_files).map_err(|error| Box::new(
-                    NavigationError::ReadFilesystem {
+                crate::fs::reader::read_entries(path, self.show_hidden_files).map_err(|error| {
+                    Box::new(NavigationError::ReadFilesystem {
                         path: path.clone(),
                         detail: error.to_string(),
-                    },
-                ))
+                    })
+                })
             }
             PanelLocation::Archive(view) => {
                 let session = self
                     .session_store
                     .archive(&view.session_key)
-                    .ok_or_else(|| Box::new(NavigationError::MissingArchiveSession {
-                        session_key: view.session_key.clone(),
-                    }))?;
+                    .ok_or_else(|| {
+                        Box::new(NavigationError::MissingArchiveSession {
+                            session_key: view.session_key.clone(),
+                        })
+                    })?;
                 Ok(self
                     .archive_service
                     .entries_for_archive_view(view, &session))
@@ -70,15 +75,30 @@ impl EntryLoader {
                 let session = self
                     .session_store
                     .remote(&location.session_key)
-                    .ok_or_else(|| Box::new(NavigationError::MissingRemoteSession {
-                        session_key: location.session_key.clone(),
-                    }))?;
+                    .ok_or_else(|| {
+                        Box::new(NavigationError::MissingRemoteSession {
+                            session_key: location.session_key.clone(),
+                        })
+                    })?;
                 self.remote_service
-                    .read_entries(&session, &location.current_path, self.show_hidden_files)
-                    .map_err(|error| Box::new(NavigationError::ReadRemote {
-                        location: PanelLocation::Remote(location.clone()),
-                        detail: error.to_string(),
-                    }))
+                    .read_entries(
+                        &location.session_key,
+                        &session,
+                        &location.current_path,
+                        self.show_hidden_files,
+                        self.force_refresh,
+                    )
+                    .map_err(
+                        |error| match error.downcast::<crate::remote::HostKeyUntrusted>() {
+                            Ok(untrusted) => Box::new(NavigationError::HostKeyTrustRequired {
+                                offer: untrusted.0,
+                            }),
+                            Err(error) => Box::new(NavigationError::ReadRemote {
+                                location: PanelLocation::Remote(location.clone()),
+                                detail: error.to_string(),
+                            }),
+                        },
+                    )
             }
         }
     }

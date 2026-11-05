@@ -72,16 +72,21 @@ impl ViewUpdate {
     }
 
     pub fn selection(panel: ActivePanel) -> Self {
-        let mut update = Self {
-            selection: true,
-            active_panel: true,
-            status: true,
-            ..Self::default()
-        };
+        // Refresh panel entries so the ColumnView selection follows the domain cursor.
+        // Do not set active_panel — that re-grabs focus and can jerk the scroll position.
         match panel {
-            ActivePanel::Left => update.left_entries = false,
-            ActivePanel::Right => update.right_entries = false,
+            ActivePanel::Left => Self {
+                left_entries: true,
+                selection: true,
+                status: true,
+                ..Self::default()
+            },
+            ActivePanel::Right => Self {
+                right_entries: true,
+                selection: true,
+                status: true,
+                ..Self::default()
+            },
         }
-        update
     }
 }

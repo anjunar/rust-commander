@@ -9,7 +9,10 @@ use crate::{
     application::ActivePanel,
     domain::sorting::{SortColumn, SortDirection},
     presentation,
-    ui::{commands::Command, shell::ShellEvents, terminal_controller::TerminalAction},
+    ui::{
+        commands::Command, file_panel_view::PanelKeyNavigation, shell::ShellEvents,
+        terminal_controller::TerminalAction,
+    },
 };
 
 use super::MainWindow;
@@ -55,20 +58,19 @@ impl ShellEvents for WindowEvents {
 
     fn panel_focused(&self, panel: ActivePanel) {
         self.with(|window| {
-            let update = {
-                let mut commander = window.commander.borrow_mut();
-                if commander.state().active_panel == panel {
-                    return;
-                }
-                commander.set_active_panel(panel)
-            };
+            // Focus also moves while the state is being applied; that must
+            // not ask for the commander mutably.
+            if window.commander.borrow().state().active_panel == panel {
+                return;
+            }
+            let update = window.commander.borrow_mut().set_active_panel(panel);
             window.apply_update(update);
         });
     }
 
-    fn selection_changed(&self, panel: ActivePanel, indices: Vec<usize>) {
+    fn cursor_changed(&self, panel: ActivePanel, index: usize) {
         self.with(move |window| {
-            let update = window.commander.borrow_mut().select_indices(panel, indices);
+            let update = window.commander.borrow_mut().set_cursor(panel, index);
             window.apply_update(update);
         });
     }
@@ -81,11 +83,89 @@ impl ShellEvents for WindowEvents {
         });
     }
 
-    fn open_requested(&self, panel: ActivePanel) {
+    fn panel_key(&self, panel: ActivePanel, action: PanelKeyNavigation) {
+        match action {
+            PanelKeyNavigation::ToggleMark => self.with(|window| {
+                let _ = window.commander.borrow_mut().toggle_mark(panel);
+                window.apply_panel_selection(panel);
+            }),
+            PanelKeyNavigation::InvertMarks => self.with(|window| {
+                let _ = window.commander.borrow_mut().invert_marks(panel);
+                window.apply_panel_selection(panel);
+            }),
+            PanelKeyNavigation::SpaceAction => {
+                self.with(|window| window.navigation_controller().handle_space_action(panel));
+            }
+            PanelKeyNavigation::ContextMenu => self.later(move |window| {
+                let index = window
+                    .commander
+                    .borrow()
+                    .state()
+                    .panel(panel)
+                    .cursor_index();
+                let anchor = window.view.panel(panel).table_widget();
+                window
+                    .context_menu_controller()
+                    .handle_panel_context_menu(panel, index, &anchor, 32.0, 48.0);
+            }),
+            PanelKeyNavigation::ActivateSelected => self.later(move |window| {
+                window
+                    .navigation_controller()
+                    .start_selected_navigation(panel)
+            }),
+            PanelKeyNavigation::EnterSelected => self.later(move |window| {
+                window
+                    .navigation_controller()
+                    .start_enter_selected_directory(panel)
+            }),
+            PanelKeyNavigation::GoParent => self.later(move |window| {
+                window
+                    .navigation_controller()
+                    .start_parent_navigation(panel)
+            }),
+        }
+    }
+
+    fn quick_search(&self, panel: ActivePanel, query: &str) -> bool {
+        let Some(window) = ready(&self.window) else {
+            return false;
+        };
+        if query.is_empty() {
+            let update = window
+                .commander
+                .borrow_mut()
+                .set_status(t!("status.ready").into_owned());
+            window.apply_update(update);
+            return false;
+        }
+        let (update, matched) = window.commander.borrow_mut().quick_search(panel, query);
+        if matched {
+            window.apply_update(update);
+        }
+        matched
+    }
+
+    // Both rebuild the tab strip, which holds the button being clicked.
+    fn tab_activated(&self, panel: ActivePanel, index: usize) {
         self.later(move |window| {
-            window
-                .navigation_controller()
-                .start_selected_navigation(panel)
+            let (update, needs_load) = {
+                let mut commander = window.commander.borrow_mut();
+                let update = commander.activate_tab(panel, index);
+                let needs_load = commander.state().panel(panel).entries.is_empty();
+                (update, needs_load)
+            };
+            window.apply_update(update);
+            if needs_load {
+                window.load_panel(panel);
+            }
+        });
+    }
+
+    fn tab_new(&self, panel: ActivePanel) {
+        self.later(move |window| {
+            let update = window.commander.borrow_mut().open_tab(panel);
+            window.apply_update(update);
+            window.load_panel(panel);
         });
     }
 
@@ -129,6 +209,7 @@ impl ShellEvents for WindowEvents {
                 .borrow_mut()
                 .sort_panel(panel, column, direction, status);
             window.apply_update(update);
+            window.window_state_controller().persist_pane_session();
         });
     }
 

@@ -6,6 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::domain::sorting::{SortColumn, SortDirection};
 use crate::remote::RemoteConfig;
 
 const APP_DIR_NAME: &str = "rust-commander";
@@ -30,14 +31,69 @@ pub struct AppConfig {
     #[serde(default)]
     pub viewer: ViewerConfig,
     #[serde(default)]
+    pub editor: EditorConfig,
+    #[serde(default)]
     pub remote: RemoteConfig,
+    #[serde(default)]
+    pub favorites: Vec<FavoriteEntry>,
+    #[serde(default)]
+    pub folder_sort: Vec<FolderSortPreference>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FavoriteEntry {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FolderSortPreference {
+    pub path: PathBuf,
+    pub sort_column: SortColumn,
+    pub sort_direction: SortDirection,
+}
+
+impl FolderSortPreference {
+    pub fn sort_state(&self) -> crate::domain::sorting::SortState {
+        crate::domain::sorting::SortState {
+            column: self.sort_column,
+            direction: self.sort_direction,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PaneTabConfig {
+    pub directory: Option<PathBuf>,
+    pub cursor: Option<String>,
+    pub sort_column: SortColumn,
+    pub sort_direction: SortDirection,
+}
+
+impl Default for PaneTabConfig {
+    fn default() -> Self {
+        Self {
+            directory: None,
+            cursor: None,
+            sort_column: SortColumn::Name,
+            sort_direction: SortDirection::Ascending,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PaneConfig {
+    /// Legacy single-path fields (active tab); kept for older configs.
     pub left_directory: Option<PathBuf>,
     pub right_directory: Option<PathBuf>,
+    pub left_cursor: Option<String>,
+    pub right_cursor: Option<String>,
+    pub left_tabs: Vec<PaneTabConfig>,
+    pub right_tabs: Vec<PaneTabConfig>,
+    pub left_active_tab: usize,
+    pub right_active_tab: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,6 +136,7 @@ pub struct LocaleConfig {
 #[serde(default)]
 pub struct GeneralConfig {
     pub theme: ThemePreference,
+    pub icon_style: IconStyle,
     pub restore_last_session: bool,
 }
 
@@ -87,6 +144,7 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             theme: ThemePreference::System,
+            icon_style: IconStyle::Symbolic,
             restore_last_session: true,
         }
     }
@@ -156,6 +214,35 @@ impl Default for ViewerConfig {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default)]
+pub struct EditorConfig {
+    pub width: i32,
+    pub height: i32,
+    pub maximized: bool,
+    /// Maximum size (MiB) of a file that can be opened in the built-in editor.
+    pub max_edit_size_mb: u64,
+}
+
+impl EditorConfig {
+    pub fn max_edit_size_bytes(&self) -> u64 {
+        self.max_edit_size_mb
+            .saturating_mul(1024)
+            .saturating_mul(1024)
+    }
+}
+
+impl Default for EditorConfig {
+    fn default() -> Self {
+        Self {
+            width: 980,
+            height: 720,
+            maximized: false,
+            max_edit_size_mb: 10,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemePreference {
@@ -163,6 +250,17 @@ pub enum ThemePreference {
     System,
     Light,
     Dark,
+}
+
+/// How file-list icons are rendered.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IconStyle {
+    /// Monochrome GTK symbolic icons (safe; no shell association lookups).
+    #[default]
+    Symbolic,
+    /// Platform/shell icons when available (colorful on Windows).
+    System,
 }
 
 pub fn load_or_default() -> AppConfig {

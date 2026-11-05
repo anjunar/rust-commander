@@ -34,11 +34,14 @@ fn queued_refresh_status_is_reused_until_dirty_panels_are_drained() {
 fn request(panel: ActivePanel) -> NavigationRequest {
     NavigationRequest {
         panel,
+        tab_id: 1,
         generation: 0,
         action: LoadAction::Navigate,
         next_location: PanelLocation::filesystem("C:/tmp".into()),
         selection_intent: None,
         status: "status".into(),
         busy_message: "busy".into(),
+        sort_state: Default::default(),
+        folders_first: true,
     }
 }

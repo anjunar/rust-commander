@@ -18,6 +18,7 @@ use crate::{
     remote::RemoteService,
     ui::{
         dialogs,
+        file_clipboard::FileClipboard,
         shell::{build_shell, default_local_directory, ShellEvents, ShellModel, ShellView},
         terminal_controller::TerminalController as TerminalBackend,
         theme::ThemeController,
@@ -26,6 +27,8 @@ use crate::{
 
 #[path = "main_window_actions.rs"]
 mod actions;
+#[path = "main_window_actions_clipboard.rs"]
+mod actions_clipboard;
 #[path = "main_window_context_menu.rs"]
 mod context_menu;
 #[path = "main_window_controllers.rs"]
@@ -79,6 +82,11 @@ pub struct MainWindow {
     app_config_cache: Rc<RefCell<AppConfig>>,
     platform_port: SharedPlatformPort,
     controllers: RefCell<Option<MainWindowControllers>>,
+    /// While set, `focus_active_panel` does nothing: a panel refresh must not
+    /// take the focus from an editor that is just opening.
+    suppress_panel_focus: Cell<bool>,
+    /// The application's own file clipboard for Ctrl+C, Ctrl+X and Ctrl+V.
+    file_clipboard: RefCell<FileClipboard>,
 }
 
 impl MainWindow {
@@ -167,12 +175,15 @@ impl MainWindow {
                 app_config_cache,
                 platform_port,
                 controllers: RefCell::new(None),
+                suppress_panel_focus: Cell::new(false),
+                file_clipboard: RefCell::new(FileClipboard::default()),
             }
         });
 
         this.initialize_controllers();
 
         this.apply_update(ViewUpdate::all());
+        this.set_toggle_hidden_files_state(this.show_hidden_files_enabled());
         this.navigation_controller().sync_watched_paths();
         this.navigation_controller()
             .install_watcher_poll(watch_event_rx);
@@ -188,21 +199,55 @@ impl MainWindow {
         if present_immediately {
             this.window_state_controller()
                 .restore_window_geometry(window_config);
-            this.window_state_controller().initialize_split_positions();
+            this.schedule_split_positions();
             this.window_state_controller()
                 .install_window_geometry_tracking();
             this.present_window();
         }
+
+        this.restore_panel_session();
         this.navigation_controller().queue_initial_panel_loads();
 
         this
+    }
+
+    /// Brings back the tabs of the last session, or for older configs the
+    /// entry the cursor was on.
+    fn restore_panel_session(&self) {
+        let panes = {
+            let app_config = self.app_config_cache.borrow();
+            if !app_config.general.restore_last_session {
+                return;
+            }
+            app_config.panes.clone()
+        };
+
+        let mut commander = self.commander.borrow_mut();
+        if !panes.left_tabs.is_empty() {
+            commander.restore_tabs(ActivePanel::Left, &panes.left_tabs, panes.left_active_tab);
+        } else if let Some(name) = panes.left_cursor.as_deref().filter(|name| !name.is_empty()) {
+            commander.queue_reveal_name_on_panel(ActivePanel::Left, name);
+        }
+        if !panes.right_tabs.is_empty() {
+            commander.restore_tabs(
+                ActivePanel::Right,
+                &panes.right_tabs,
+                panes.right_active_tab,
+            );
+        } else if let Some(name) = panes
+            .right_cursor
+            .as_deref()
+            .filter(|name| !name.is_empty())
+        {
+            commander.queue_reveal_name_on_panel(ActivePanel::Right, name);
+        }
     }
 
     pub fn present_window(self: &Rc<Self>) {
         if !self.window_state_initialized.replace(true) {
             self.window_state_controller()
                 .restore_window_geometry(self.initial_window_config.clone());
-            self.window_state_controller().initialize_split_positions();
+            self.schedule_split_positions();
             self.window_state_controller()
                 .install_window_geometry_tracking();
         }
@@ -282,14 +327,56 @@ impl MainWindow {
     }
 
     fn apply_entries(&self, state: &AppState, panel: ActivePanel) {
-        let panel_state = state.panel(panel);
+        let tabs = state.tabs(panel);
+        let panel_state = tabs.active();
         let view = self.view.panel(panel);
+        view.set_tabs(
+            tabs.tabs()
+                .iter()
+                .map(|tab| tab.panel.location.tab_title())
+                .collect(),
+            tabs.active_index(),
+        );
         view.set_path(&panel_state.location.display_label());
+        view.set_footer(&presentation::panel_footer_line(panel_state));
+        let size_labels: Vec<String> = panel_state
+            .entries
+            .iter()
+            .map(|entry| panel_state.size_label_for(entry))
+            .collect();
         view.set_entries(
             &panel_state.location,
             &panel_state.entries,
+            panel_state.cursor_index(),
             panel_state.selection_indices(),
+            &size_labels,
         );
+        view.apply_sort(
+            panel_state.sort_state.column,
+            panel_state.sort_state.direction,
+        );
+    }
+
+    /// Moves the cursor and restyles the marks, without rebuilding the list
+    /// or scrolling it.
+    pub(crate) fn apply_panel_selection(&self, panel: ActivePanel) {
+        let commander = self.commander.borrow();
+        let state = commander.state();
+        let panel_state = state.panel(panel);
+        let view = self.view.panel(panel);
+        view.apply_cursor_and_marks(panel_state.cursor_index(), &panel_state.selection_indices());
+        view.set_footer(&presentation::panel_footer_line(panel_state));
+        self.shell.status.set(presentation::status_line(state));
+    }
+
+    /// Lists the directory of the panel's active tab.
+    pub(crate) fn load_panel(self: &Rc<Self>, panel: ActivePanel) {
+        let request = crate::application::refresh_request(
+            &self.commander.borrow(),
+            panel,
+            t!("status.loading_directory").into_owned(),
+        );
+        self.navigation_controller().start_directory_load(request);
     }
 
     fn apply_root(&self, state: &AppState, panel: ActivePanel) {
@@ -308,9 +395,34 @@ impl MainWindow {
             .unwrap_or_else(default_local_directory)
     }
 
-    fn focus_active_panel(&self) {
+    pub(crate) fn focus_active_panel(&self) {
+        if self.suppress_panel_focus.get() {
+            return;
+        }
         let active_panel = self.commander.borrow().state().active_panel;
         self.view.panel(active_panel).grab_focus();
+    }
+
+    pub(crate) fn clear_panel_focus_suppress_after(self: &Rc<Self>, duration: std::time::Duration) {
+        let this = Rc::clone(self);
+        glib::timeout_add_local_once(duration, move || {
+            this.suppress_panel_focus.set(false);
+        });
+    }
+
+    pub(crate) fn refresh_active_panel_revealing(self: &Rc<Self>, name: &str, status: String) {
+        let navigation = self.navigation_controller();
+        // A rename or create touches the directory; the watcher must not
+        // rebuild the panel in the same moment as this intentional refresh.
+        navigation.trigger_manual_refresh_cooldown();
+        let request = {
+            let mut commander = self.commander.borrow_mut();
+            let panel = commander.state().active_panel;
+            commander.queue_reveal_name_on_active(name);
+            commander.set_status(status.clone());
+            crate::application::refresh_request(&commander, panel, status)
+        };
+        navigation.start_directory_load(request);
     }
 
     fn set_status_message(&self, status: String) {
@@ -327,11 +439,21 @@ impl MainWindow {
         dialogs::show_error(&self.window, &t!("error.command_failed"), &error);
     }
 
-    /// While a directory loads, the panels are disabled and the overlay shows `message`.
-    fn set_navigation_busy(&self, busy: bool, message: &str) {
+    fn schedule_split_positions(self: &Rc<Self>) {
+        let this = Rc::clone(self);
+        self.window_state_controller()
+            .initialize_split_positions(move || {
+                this.view.left.refresh_list_after_resize();
+                this.view.right.refresh_list_after_resize();
+            });
+    }
+
+    /// While a directory loads, only that panel is disabled; the feedback
+    /// stays in the status line.
+    fn set_navigation_busy(&self, panel: ActivePanel, busy: bool, message: &str) {
         self.navigation_runtime.navigation_busy.set(busy);
-        self.shell.busy_message.set(message.to_owned());
         self.shell.busy.set(busy);
+        self.view.panel(panel).set_interaction_enabled(!busy);
         let status = if busy {
             message.to_owned()
         } else {

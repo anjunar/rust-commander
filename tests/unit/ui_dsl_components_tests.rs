@@ -23,6 +23,7 @@ fn dsl_drives_gtk_widgets_and_releases_its_scope() {
     foreach_keeps_children_in_step_with_the_list();
     window_blocks_actions_titlebar_and_timers();
     column_view_declares_typed_columns();
+    refresh_row_rebinds_cells_and_keeps_the_selection();
     popup_menu_items_close_the_menu_and_run();
 
     // Application views last: they queue idle callbacks (presenting dialogs)
@@ -57,14 +58,28 @@ impl crate::ui::shell::ShellEvents for RecordingEvents {
     fn panel_focused(&self, panel: crate::application::ActivePanel) {
         self.record(format!("focus {panel:?}"));
     }
-    fn selection_changed(&self, panel: crate::application::ActivePanel, indices: Vec<usize>) {
-        self.record(format!("select {panel:?} {indices:?}"));
+    fn cursor_changed(&self, panel: crate::application::ActivePanel, index: usize) {
+        self.record(format!("cursor {panel:?} {index}"));
     }
     fn row_activated(&self, panel: crate::application::ActivePanel, index: usize) {
         self.record(format!("activate {panel:?} {index}"));
     }
-    fn open_requested(&self, panel: crate::application::ActivePanel) {
-        self.record(format!("open {panel:?}"));
+    fn panel_key(
+        &self,
+        panel: crate::application::ActivePanel,
+        action: crate::ui::file_panel_view::PanelKeyNavigation,
+    ) {
+        self.record(format!("key {panel:?} {action:?}"));
+    }
+    fn quick_search(&self, panel: crate::application::ActivePanel, query: &str) -> bool {
+        self.record(format!("search {panel:?} {query}"));
+        true
+    }
+    fn tab_activated(&self, panel: crate::application::ActivePanel, index: usize) {
+        self.record(format!("tab {panel:?} {index}"));
+    }
+    fn tab_new(&self, panel: crate::application::ActivePanel) {
+        self.record(format!("new tab {panel:?}"));
     }
     fn root_selected(&self, panel: crate::application::ActivePanel, index: usize) {
         self.record(format!("root {panel:?} {index}"));
@@ -127,7 +142,7 @@ fn shell_composes_the_main_window() {
         config::ThemePreference,
         domain::{Entry, EntryKind, PanelLocation, RootLocation},
         ui::{
-            commands::COMMANDS,
+            commands::{CommandBarMode, COMMANDS},
             shell::{build_shell, ShellModel},
             terminal_controller::TerminalController,
             theme::ThemeController,
@@ -145,8 +160,8 @@ fn shell_composes_the_main_window() {
         events.clone(),
     );
 
-    // Every command is a window action; the labelled ones have a bar button
-    // pointing at it, so button and shortcut run the same command.
+    // Every command is a window action, and the F-key buttons point at them,
+    // so button and shortcut run the same command.
     for command in COMMANDS {
         assert!(
             window.lookup_action(command.action).is_some(),
@@ -155,25 +170,32 @@ fn shell_composes_the_main_window() {
         );
     }
     let bar = with_class::<gtk::Button>(&window, "command-button");
-    assert_eq!(
-        bar.len(),
-        COMMANDS.iter().filter(|c| c.label.is_some()).count()
-    );
+    assert_eq!(bar.len(), 10);
     assert_eq!(bar[4].action_name().as_deref(), Some("win.copy"));
     assert!(bar
         .iter()
-        .all(|button| button.label().is_some_and(|label| !label.is_empty())));
+        .all(|button| !button.has_css_class("command-button-idle")));
     WidgetExt::activate_action(&window, "win.copy", None).expect("copy action");
     assert_eq!(events.take(), vec!["command copy".to_string()]);
 
-    // Status line and busy state follow the model.
+    // Holding a modifier relabels the bar and repoints its buttons. A key
+    // with nothing to do in that mode is idle but keeps its plain action.
+    model.command_mode.set(CommandBarMode::Shift);
+    assert_eq!(
+        bar[4].action_name().as_deref(),
+        Some("win.copy-with-rename")
+    );
+    assert!(!bar[4].has_css_class("command-button-idle"));
+    assert_eq!(bar[0].action_name().as_deref(), Some("win.settings"));
+    assert!(bar[0].has_css_class("command-button-idle"));
+    model.command_mode.set(CommandBarMode::Normal);
+    assert_eq!(bar[4].action_name().as_deref(), Some("win.copy"));
+    assert!(!bar[0].has_css_class("command-button-idle"));
+
+    // The status line follows the model.
     model.status.set("Ready".into());
     let status = with_class::<gtk::Label>(&window, "status-line");
     assert_eq!(status[0].label().as_str(), "Ready");
-    model.busy.set(true);
-    assert!(!view.content.is_sensitive());
-    model.busy.set(false);
-    assert!(view.content.is_sensitive());
 
     // Applying state to a panel is not user input.
     let location = PanelLocation::filesystem(std::env::temp_dir());
@@ -205,27 +227,66 @@ fn shell_composes_the_main_window() {
     view.left.set_entries(
         &location,
         &[Entry::parent_link(), file],
+        Some(1),
         [1].into_iter().collect(),
+        &["-".to_string(), "3 B".to_string()],
     );
     view.left.set_active(true);
+    view.left
+        .set_tabs(vec!["first".to_string(), "second".to_string()], 1);
+    view.left.set_footer("2 items");
+    view.left
+        .apply_cursor_and_marks(Some(0), &std::collections::BTreeSet::new());
     assert!(events.take().is_empty(), "applying state reported events");
 
     let pickers = with_class::<gtk::DropDown>(&window, "root-selector");
     let left_picker = &pickers[0];
     assert_eq!(left_picker.selected(), 0);
-    assert_eq!(left_picker.model().expect("roots model").n_items(), 2);
+    // The roots, then the entry that opens the SFTP dialog.
+    assert_eq!(left_picker.model().expect("roots model").n_items(), 3);
     let paths = with_class::<gtk::Label>(&window, "path-label");
     assert_eq!(paths[0].label().as_str(), "C:\\temp");
+    let footers = with_class::<gtk::Label>(&window, "panel-footer");
+    assert_eq!(footers[0].label().as_str(), "2 items");
     let left_panel = with_class::<gtk::Box>(&window, "file-panel-left");
     assert!(left_panel[0].has_css_class("active-panel"));
     let tables = with_class::<gtk::ColumnView>(&window, "file-table");
     assert_eq!(tables.len(), 2);
     assert_eq!(tables[0].columns().n_items(), 5);
-    assert_eq!(tables[0].model().expect("selection").n_items(), 2);
+    let selection = tables[0]
+        .model()
+        .and_downcast::<gtk::SingleSelection>()
+        .expect("the selection holds the cursor");
+    assert_eq!(selection.n_items(), 2);
+    assert_eq!(selection.selected(), 0);
 
-    // A user choice is reported.
+    // Only the loading panel is gated.
+    view.left.set_interaction_enabled(false);
+    assert!(!tables[0].is_sensitive());
+    assert!(!left_picker.is_sensitive());
+    assert!(tables[1].is_sensitive());
+    view.left.set_interaction_enabled(true);
+    assert!(tables[0].is_sensitive());
+
+    // The tab strip shows the tabs and reports clicks.
+    let tabs = with_class::<gtk::Button>(&left_panel[0], "panel-tab");
+    assert_eq!(tabs.len(), 2);
+    assert!(!tabs[0].has_css_class("active"));
+    assert!(tabs[1].has_css_class("active"));
+    tabs[0].emit_clicked();
+    with_class::<gtk::Button>(&left_panel[0], "panel-tab-add")[0].emit_clicked();
+    assert_eq!(
+        events.take(),
+        vec!["tab Left 0".to_string(), "new tab Left".to_string()]
+    );
+
+    // A user choice is reported: the cursor, a root, and the SFTP entry.
+    selection.set_selected(1);
+    assert_eq!(events.take(), vec!["cursor Left 1".to_string()]);
     left_picker.set_selected(1);
     assert_eq!(events.take(), vec!["root Left 1".to_string()]);
+    left_picker.set_selected(2);
+    assert_eq!(events.take(), vec!["remote Left".to_string()]);
 
     // The dock follows the terminal state. Only the placeholder backend is
     // toggled here; on Linux toggling would start a real shell.
@@ -251,19 +312,54 @@ fn viewer_and_editor_open_files() {
     fs::write(&file, "first line\nsecond line\n").expect("test file");
     let parent = gtk::ApplicationWindow::builder().build();
 
-    let dialog_of = |parent: &gtk::ApplicationWindow| -> gtk::Window {
+    // Viewers and editors are windows of their own, not dialogs over the parent.
+    let window_beside = |parent: &gtk::ApplicationWindow| -> gtk::Window {
         let toplevels = gtk::Window::list_toplevels();
         toplevels
             .into_iter()
             .filter_map(|window| window.downcast::<gtk::Window>().ok())
-            .find(|window| window.transient_for().as_ref() == Some(parent.upcast_ref()))
-            .expect("dialog over the parent")
+            .find(|window| window != parent.upcast_ref::<gtk::Window>())
+            .expect("a window beside the parent")
+    };
+    let archives = crate::archive::ArchiveService::with_default_backends(Default::default());
+    let view_file = |path: &std::path::Path| {
+        crate::ui::file_viewer_dialog::open(
+            &parent,
+            path.to_path_buf(),
+            Default::default(),
+            crate::config::ThemePreference::Dark,
+            &archives,
+            Vec::new(),
+        )
+        .expect("viewer opens");
+        window_beside(&parent)
+    };
+    let shown_text = |window: &gtk::Window| -> String {
+        let view = descendants::<gtk::TextView>(window)
+            .into_iter()
+            .next()
+            .expect("viewer text");
+        let buffer = view.buffer();
+        buffer
+            .text(&buffer.start_iter(), &buffer.end_iter(), false)
+            .to_string()
     };
 
-    // The viewer renders the file into its text view right away.
-    crate::ui::file_viewer_dialog::open(&parent, file.clone(), Default::default())
-        .expect("viewer opens");
-    let viewer = dialog_of(&parent);
+    // Markdown is rendered, not shown as source.
+    let markdown = directory.join("notes.md");
+    fs::write(&markdown, "# Heading\n\nbody text\n").expect("markdown file");
+    let viewer = view_file(&markdown);
+    let shown = shown_text(&viewer);
+    assert!(shown.contains("Heading"), "markdown viewer shows: {shown}");
+    assert!(!shown.contains('#'), "markdown viewer shows: {shown}");
+    WidgetExt::realize(&viewer);
+    viewer.destroy();
+
+    // A file without a known format goes to the streaming viewer, which
+    // renders it into its text view right away.
+    let unknown = directory.join("notes.unknown-format");
+    fs::write(&unknown, "first line\nsecond line\n").expect("unknown file");
+    let viewer = view_file(&unknown);
     let text_view = descendants::<gtk::TextView>(&viewer)
         .into_iter()
         .next()
@@ -278,10 +374,16 @@ fn viewer_and_editor_open_files() {
     let saved = Rc::new(Cell::new(false));
     {
         let saved = Rc::clone(&saved);
-        crate::ui::editor_dialog::edit_file(&parent, file.clone(), move |_| saved.set(true))
-            .expect("editor opens");
+        crate::ui::editor_dialog::edit_file(
+            &parent,
+            file.clone(),
+            crate::config::ThemePreference::Dark,
+            crate::application::ConfigStore::new(Default::default()),
+            move |_| saved.set(true),
+        )
+        .expect("editor opens");
     }
-    let editor = dialog_of(&parent);
+    let editor = window_beside(&parent);
     let source = descendants::<sourceview5::View>(&editor)
         .into_iter()
         .next()
@@ -294,9 +396,8 @@ fn viewer_and_editor_open_files() {
         "first line\nsecond line\n"
     );
     buffer.set_text("changed\n");
-    let save = with_class::<gtk::Button>(&editor, "suggested-action");
     WidgetExt::realize(&editor);
-    save[0].emit_clicked();
+    WidgetExt::activate_action(&editor, "editor.save", None).expect("save action");
     assert!(saved.get());
     assert_eq!(fs::read_to_string(&file).expect("saved file"), "changed\n");
 
@@ -449,6 +550,81 @@ fn column_view_declares_typed_columns() {
     window.destroy();
 }
 
+/// Row objects are updated in place, and `refresh_row` has to reach the cells
+/// without the list model noticing: removing and reinserting a row would
+/// throw the selection back to the first row.
+fn refresh_row_rebinds_cells_and_keeps_the_selection() {
+    let store = gtk::StringList::new(&["a", "b", "c"]);
+    let selection = gtk::SingleSelection::new(Some(store.clone()));
+    selection.set_selected(2);
+
+    let rendered: Rc<std::cell::RefCell<Vec<(String, u32)>>> = Rc::default();
+    let unbound = Rc::new(Cell::new(0));
+    let window = gtk::Window::builder()
+        .default_width(200)
+        .default_height(200)
+        .build();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    window.set_child(Some(&content));
+
+    let mut table = None;
+    render(&content, || {
+        let rendered = Rc::clone(&rendered);
+        let unbound = Rc::clone(&unbound);
+        table = Some(column_view(&selection, move |table| {
+            table.set_vexpand(true);
+            table.column_with(
+                "Name",
+                || text("", |_| {}).widget().clone(),
+                move |label: &gtk::Label, row: &gtk::StringObject, position| {
+                    label.set_label(&row.string());
+                    rendered.borrow_mut().push((row.string().into(), position));
+                },
+                move |_: &gtk::Label, _: &gtk::StringObject| unbound.set(unbound.get() + 1),
+            );
+        }));
+    });
+    let table = table.expect("column view composed");
+
+    window.present();
+    let context = gtk::glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while rendered.borrow().len() < 3 && std::time::Instant::now() < deadline {
+        context.iteration(false);
+    }
+
+    let bound = rendered.borrow().len();
+    if bound == 0 {
+        // Without a real surface GTK binds nothing; there is nothing to refresh.
+        window.destroy();
+        return;
+    }
+    assert!(rendered.borrow().contains(&("c".to_string(), 2)));
+
+    rendered.borrow_mut().clear();
+    table.refresh_row(1);
+    assert_eq!(*rendered.borrow(), vec![("b".to_string(), 1)]);
+    assert_eq!(selection.selected(), 2);
+
+    rendered.borrow_mut().clear();
+    table.refresh_rows();
+    assert_eq!(rendered.borrow().len(), bound);
+    assert_eq!(selection.selected(), 2);
+
+    // A row GTK has no cell for is left alone.
+    rendered.borrow_mut().clear();
+    table.refresh_row(99);
+    assert!(rendered.borrow().is_empty());
+
+    store.remove(0);
+    while unbound.get() == 0 && std::time::Instant::now() < deadline {
+        context.iteration(false);
+    }
+    assert!(unbound.get() > 0, "a removed row is unbound");
+
+    window.destroy();
+}
+
 fn popup_menu_items_close_the_menu_and_run() {
     let opened = Rc::new(Cell::new(0));
     let deleted = Rc::new(Cell::new(0));
@@ -570,6 +746,14 @@ fn bindings_follow_properties_and_the_scope_ends_with_the_window() {
     field.set_text("c");
     assert_eq!(name.get(), "c");
 
+    // Typing must not come back into the entry: the write would move the
+    // cursor to the start, and the next key would land in front.
+    field.set_position(1);
+    let mut at = 1;
+    field.insert_text("d", &mut at);
+    assert_eq!(name.get(), "cd");
+    assert_eq!(field.position(), 1);
+
     assert_eq!(choice.selected(), 1);
     selected.set(2);
     assert_eq!(choice.selected(), 2);
@@ -678,6 +862,13 @@ fn controls_bind_both_ways_and_slots_place_children() {
     assert_eq!(secret_entry.text().as_str(), "t");
     secret_entry.set_text("u");
     assert_eq!(secret.get(), "u");
+
+    // As with the plain entry, typing keeps the cursor where it is.
+    secret_entry.set_position(1);
+    let mut at = 1;
+    secret_entry.insert_text("v", &mut at);
+    assert_eq!(secret.get(), "uv");
+    assert_eq!(secret_entry.position(), 1);
 
     assert!(!agree.is_active());
     agreed.set(true);

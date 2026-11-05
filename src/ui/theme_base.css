@@ -1,6 +1,28 @@
 .app-title {
     font-weight: 700;
     letter-spacing: 0.06em;
+    font-size: 0.95em;
+}
+
+headerbar {
+    min-height: 30px;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 4px;
+    padding-right: 2px;
+}
+
+headerbar > windowhandle,
+headerbar > windowhandle > box {
+    min-height: 30px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+headerbar button {
+    min-height: 24px;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
 .path-row {
@@ -40,16 +62,46 @@ columnview columnheader button {
     font-style: italic;
 }
 
+/* Compact inline rename so replacing a Label does not stretch the row. */
+.file-table entry.inline-rename-entry,
+columnview entry.inline-rename-entry {
+    min-height: 0;
+    min-width: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.file-table entry.inline-rename-entry > text,
+columnview entry.inline-rename-entry > text {
+    min-height: 0;
+}
+
+.file-panel {
+    /* Let GtkPaned keep the user-set split; content must not force min width. */
+    min-width: 0;
+}
+
 .file-panel-left {
-    margin-right: 4px;
+    margin-right: 2px;
 }
 
 .file-panel-right {
-    margin-left: 4px;
+    margin-left: 2px;
+}
+
+.panel-tab-bar,
+.panel-scroller,
+.panel-scroller > viewport,
+.path-row {
+    min-width: 0;
 }
 
 paned.horizontal > separator {
-    min-width: 10px;
+    min-width: 6px;
     background: transparent;
 }
 
@@ -84,6 +136,13 @@ paned.horizontal > separator {
     letter-spacing: 0.04em;
 }
 
+.help-hint {
+    font-size: 0.85em;
+    opacity: 0.55;
+    padding: 0 2px;
+    letter-spacing: 0;
+}
+
 scrollbar slider {
     border-radius: 999px;
     min-width: 10px;
@@ -102,12 +161,36 @@ switch slider {
 }
 
 .command-bar {
-    padding-top: 2px;
+    padding-top: 1px;
+    padding-bottom: 0;
 }
 
 .command-button {
-    border-radius: 8px;
-    padding: 10px 14px;
+    border-radius: 5px;
+    padding: 2px 6px;
+    min-height: 28px;
+}
+
+.command-button label {
+    padding: 0;
+}
+
+.command-key {
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    min-width: 1.5em;
+}
+
+.command-caption {
+    font-size: 0.82em;
+    font-weight: 500;
+}
+
+.command-button-idle {
+    opacity: 0.35;
 }
 
 .dialog-action-area button,
@@ -123,21 +206,21 @@ dialog .button {
 }
 
 .window-controls {
-    margin-right: 4px;
-    margin-top: 2px;
-    margin-bottom: 2px;
+    margin-right: 2px;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .window-control-button {
-    min-width: 36px;
-    min-height: 26px;
+    min-width: 32px;
+    min-height: 24px;
     padding-top: 0;
     padding-bottom: 0;
     padding-left: 0;
     padding-right: 0;
     padding: 0;
     margin: 0;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid transparent;
     background: transparent;
     background-color: transparent;
@@ -149,20 +232,69 @@ dialog .button {
     font-weight: 700;
 }
 
-.navigation-overlay {
-    padding: 18px 22px;
-    border-radius: 16px;
-    border: 1px solid;
-    min-width: 220px;
+.app-menubar {
+    margin-left: 2px;
 }
 
-.navigation-overlay-spinner {
-    min-width: 32px;
-    min-height: 32px;
+.app-menubar > menuitem,
+.app-menubar label {
+    padding: 0 6px;
+    min-height: 24px;
 }
 
-.navigation-overlay-label {
-    font-family: 'Cascadia Code', 'Consolas', monospace;
+
+.panel-tab-bar {
+    padding: 0;
+    margin: 0 0 -1px 0;
+    border-bottom: 1px solid;
+}
+
+.panel-tab,
+.panel-tab-add {
+    min-height: 0;
+    min-width: 0;
+    padding: 5px 12px 4px 12px;
+    margin: 0 1px 0 0;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    box-shadow: none;
+    outline: none;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.panel-tab:hover,
+.panel-tab-add:hover,
+.panel-tab:active,
+.panel-tab-add:active,
+.panel-tab:focus,
+.panel-tab-add:focus,
+.panel-tab:focus-visible,
+.panel-tab-add:focus-visible {
+    box-shadow: none;
+    outline: none;
+}
+
+.panel-tab.active {
     font-weight: 700;
-    letter-spacing: 0.04em;
+    border-style: solid;
+    /* Sit on top of the tab-bar baseline so the tab merges with the panel body. */
+    margin-bottom: -1px;
+    padding-bottom: 5px;
+}
+
+.panel-tab-add {
+    padding-left: 10px;
+    padding-right: 10px;
+    opacity: 0.75;
+}
+
+.panel-tab-add:hover {
+    opacity: 1;
+}
+
+.panel-footer {
+    padding: 4px 6px 0 6px;
+    font-size: 0.85em;
 }

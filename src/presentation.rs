@@ -35,8 +35,16 @@ pub fn sort_column_label(column: SortColumn) -> String {
 }
 
 pub fn entry_size_label(entry: &Entry) -> String {
-    if entry.is_parent_link || entry.is_dir {
+    entry_size_label_with_calculated(entry, None)
+}
+
+pub fn entry_size_label_with_calculated(entry: &Entry, calculated_dir_size: Option<u64>) -> String {
+    if entry.is_parent_link {
         "-".into()
+    } else if entry.is_dir {
+        calculated_dir_size
+            .map(crate::fs::reader::format_bytes)
+            .unwrap_or_else(|| "-".into())
     } else {
         crate::fs::reader::format_bytes(entry.size_bytes)
     }
@@ -87,31 +95,44 @@ pub fn entry_attributes_label(entry: &Entry) -> String {
 }
 
 pub fn status_line(state: &AppState) -> String {
-    let active = state.active_panel();
-    let inactive = state.inactive_panel();
-    let active_selected = active.selected_count();
-    let inactive_selected = inactive.selected_count();
+    state.status.clone()
+}
 
-    match (active_selected, inactive_selected) {
-        (0, 0) => state.status.clone(),
-        (active_count, 0) => t!(
-            "status.selected_active",
-            status = state.status.as_str(),
-            count = active_count
-        )
-        .into_owned(),
-        (0, inactive_count) => t!(
-            "status.selected_inactive",
-            status = state.status.as_str(),
-            count = inactive_count
-        )
-        .into_owned(),
-        (active_count, inactive_count) => t!(
-            "status.selected_both",
-            status = state.status.as_str(),
-            active = active_count,
-            inactive = inactive_count
-        )
-        .into_owned(),
+/// Per-panel footer: marked files/folders counts and total size.
+pub fn panel_footer_line(panel: &crate::domain::Panel) -> String {
+    let marks: Vec<_> = panel
+        .selection_indices()
+        .into_iter()
+        .filter_map(|index| panel.entries.get(index))
+        .filter(|entry| !entry.is_parent_link)
+        .collect();
+    if marks.is_empty() {
+        let total = panel
+            .entries
+            .len()
+            .saturating_sub(panel.entries.iter().filter(|e| e.is_parent_link).count());
+        return t!("panel.footer_ready", count = total).into_owned();
     }
+
+    let folders = marks.iter().filter(|entry| entry.is_dir).count();
+    let files = marks.len().saturating_sub(folders);
+    let bytes: u64 = marks
+        .iter()
+        .map(|entry| {
+            if entry.is_dir {
+                panel
+                    .calculated_dir_size(&entry.key())
+                    .unwrap_or(entry.size_bytes)
+            } else {
+                entry.size_bytes
+            }
+        })
+        .sum();
+    t!(
+        "panel.footer_selected",
+        folders = folders,
+        files = files,
+        size = crate::fs::reader::format_bytes(bytes)
+    )
+    .into_owned()
 }

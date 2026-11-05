@@ -28,11 +28,15 @@ use super::{
 
 type RowIndex = Rc<RefCell<HashMap<usize, u32>>>;
 
+/// Binds a column's cells again: those of one row, or all of them.
+type Refresher = Rc<dyn Fn(Option<u32>)>;
+
 /// A mounted column view plus the bookkeeping that maps widgets to rows.
 #[derive(Clone)]
 pub struct Table {
     ctx: Ctx<gtk::ColumnView>,
     rows: RowIndex,
+    refreshers: Rc<RefCell<Vec<Refresher>>>,
 }
 
 impl Deref for Table {
@@ -49,6 +53,7 @@ pub fn column_view(model: &impl IsA<gtk::SelectionModel>, body: impl FnOnce(&Tab
     let table = Table {
         ctx,
         rows: Rc::new(RefCell::new(HashMap::new())),
+        refreshers: Rc::new(RefCell::new(Vec::new())),
     };
     body(&table);
     table
@@ -63,6 +68,7 @@ impl Host for ListItemSlot {
 }
 
 struct CellState<C> {
+    item: gtk::ListItem,
     handles: C,
     scope: Scope,
 }
@@ -86,6 +92,29 @@ impl Table {
         T: IsA<glib::Object>,
         C: 'static,
     {
+        self.column_with(
+            title,
+            setup,
+            move |cell, row, _position| bind(cell, row),
+            |_, _| {},
+        )
+    }
+
+    /// Like [`column`](Self::column), for cells that care about their place:
+    /// `bind` also gets the row's position, and `unbind` runs when a cell
+    /// stops showing a row, before GTK recycles it for another one.
+    pub fn column_with<T, C>(
+        &self,
+        title: impl IntoText,
+        setup: impl Fn() -> C + 'static,
+        bind: impl Fn(&C, &T, u32) + 'static,
+        unbind: impl Fn(&C, &T) + 'static,
+    ) -> gtk::ColumnViewColumn
+    where
+        T: IsA<glib::Object>,
+        C: 'static,
+    {
+        let bind = Rc::new(bind);
         let factory = gtk::SignalListItemFactory::new();
         let cells: Cells<C> = Rc::new(RefCell::new(HashMap::new()));
 
@@ -98,14 +127,20 @@ impl Table {
                 let scope: Scope = Rc::new(CompositeDisposable::new());
                 let handles =
                     scope::compose_into(Rc::new(ListItemSlot(item.clone())), &scope, &setup);
-                cells
-                    .borrow_mut()
-                    .insert(key(item), CellState { handles, scope });
+                cells.borrow_mut().insert(
+                    key(item),
+                    CellState {
+                        item: item.clone(),
+                        handles,
+                        scope,
+                    },
+                );
             });
         }
         {
             let cells = Rc::clone(&cells);
             let rows = Rc::clone(&self.rows);
+            let bind = Rc::clone(&bind);
             factory.connect_bind(move |_, object| {
                 let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
                     return;
@@ -114,7 +149,7 @@ impl Table {
                     return;
                 };
                 if let Some(cell) = cells.borrow().get(&key(item)) {
-                    bind(&cell.handles, &row);
+                    bind(&cell.handles, &row, item.position());
                 }
                 if let Some(child) = item.child() {
                     rows.borrow_mut().insert(key(&child), item.position());
@@ -122,11 +157,17 @@ impl Table {
             });
         }
         {
+            let cells = Rc::clone(&cells);
             let rows = Rc::clone(&self.rows);
             factory.connect_unbind(move |_, object| {
                 let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
                     return;
                 };
+                if let Some(row) = item.item().and_then(|row| row.downcast::<T>().ok()) {
+                    if let Some(cell) = cells.borrow().get(&key(item)) {
+                        unbind(&cell.handles, &row);
+                    }
+                }
                 if let Some(child) = item.child() {
                     rows.borrow_mut().remove(&key(&child));
                 }
@@ -143,6 +184,23 @@ impl Table {
                     cell.scope.dispose();
                 }
             });
+        }
+        {
+            let cells = Rc::clone(&cells);
+            self.refreshers
+                .borrow_mut()
+                .push(Rc::new(move |position: Option<u32>| {
+                    for cell in cells.borrow().values() {
+                        let current = cell.item.position();
+                        if position.is_some_and(|position| position != current) {
+                            continue;
+                        }
+                        let row = cell.item.item().and_then(|row| row.downcast::<T>().ok());
+                        if let Some(row) = row {
+                            bind(&cell.handles, &row, current);
+                        }
+                    }
+                }));
         }
         self.add_disposable(Disposable::new(move || {
             let released = std::mem::take(&mut *cells.borrow_mut());
@@ -162,6 +220,24 @@ impl Table {
         }
         self.widget().append_column(&column);
         column
+    }
+
+    /// Binds the cells of one row again, after its object changed in place.
+    ///
+    /// The list model stays untouched, so the selection and the scroll
+    /// position survive. Rows GTK has no cell for are left alone: they are
+    /// bound when they scroll into view.
+    pub fn refresh_row(&self, position: u32) {
+        for refresh in self.refreshers.borrow().iter() {
+            refresh(Some(position));
+        }
+    }
+
+    /// Binds every cell on screen again.
+    pub fn refresh_rows(&self) {
+        for refresh in self.refreshers.borrow().iter() {
+            refresh(None);
+        }
     }
 
     /// The row under a point given in the view's coordinates.

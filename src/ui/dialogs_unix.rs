@@ -64,6 +64,7 @@ fn prompt_unix_value<F>(
             text(prompt, |_| {});
             hint(selected_paths_summary(&selected_paths));
             let value_entry = field(placeholder, &value);
+            value_entry.set_activates_default(true);
             switch_row(t!("dialog.recursive_apply"), &recursive);
             value_entry
         });

@@ -19,6 +19,8 @@ pub struct LocalOperationRequest {
     pub kind: FileOperationKind,
     pub sources: Vec<PathBuf>,
     pub target_directory: Option<PathBuf>,
+    /// Explicit full target path for a single-source copy/move (directory + name).
+    pub target_path: Option<PathBuf>,
     pub use_recycle_bin: bool,
 }
 
@@ -34,6 +36,8 @@ pub struct RemoteDownloadRequest {
     pub session: RemoteSession,
     pub entry_paths: Vec<String>,
     pub target_directory: PathBuf,
+    /// When true, existing local targets are overwritten without prompting.
+    pub force_overwrite: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +45,8 @@ pub struct RemoteUploadRequest {
     pub sources: Vec<PathBuf>,
     pub session: RemoteSession,
     pub target_directory: String,
+    /// When true, existing remote targets are overwritten without prompting.
+    pub force_overwrite: bool,
 }
 
 #[derive(Clone, Debug)]

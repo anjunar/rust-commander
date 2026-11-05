@@ -24,21 +24,68 @@ pub enum ArchiveFormat {
     Dmg,
     Chm,
     Msi,
+    SevenZip,
 }
 
 pub struct ArchiveFormatDetector;
 
 impl ArchiveFormatDetector {
     pub fn detect(path: &Path) -> Option<ArchiveFormat> {
-        if path.is_file() {
-            if let Some(format) = Self::detect_from_file_contents(path) {
-                return Some(format);
-            }
-
-            return Self::detect_from_extension_fallback(path);
+        // Prefer extension so known archive types (especially `.7z` on Windows)
+        // are never opened just for format detection.
+        if let Some(format) = Self::detect_from_extension(path) {
+            return Some(format);
         }
 
-        Self::detect_from_extension(path)
+        if path.is_file() {
+            return Self::detect_from_file_contents(path);
+        }
+
+        None
+    }
+
+    /// Extension-only detection — no filesystem reads.
+    pub fn detect_from_extension(path: &Path) -> Option<ArchiveFormat> {
+        let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+
+        for (suffix, format) in [
+            (".tar.gz", ArchiveFormat::TarGz),
+            (".tgz", ArchiveFormat::TarGz),
+            (".tar.bz2", ArchiveFormat::TarBz2),
+            (".tbz2", ArchiveFormat::TarBz2),
+            (".tar.xz", ArchiveFormat::TarXz),
+            (".txz", ArchiveFormat::TarXz),
+            (".zip", ArchiveFormat::Zip),
+            (".rar", ArchiveFormat::Rar),
+            (".7z", ArchiveFormat::SevenZip),
+            (".tar", ArchiveFormat::Tar),
+            (".gz", ArchiveFormat::Gz),
+            (".bz2", ArchiveFormat::Bz2),
+            (".xz", ArchiveFormat::Xz),
+            (".cab", ArchiveFormat::Cab),
+            (".iso", ArchiveFormat::Iso),
+            (".wim", ArchiveFormat::Wim),
+            (".arj", ArchiveFormat::Arj),
+            (".lha", ArchiveFormat::Lha),
+            (".lzh", ArchiveFormat::Lha),
+            (".cpio", ArchiveFormat::Cpio),
+            (".dmg", ArchiveFormat::Dmg),
+            (".chm", ArchiveFormat::Chm),
+            (".msi", ArchiveFormat::Msi),
+        ] {
+            if file_name.ends_with(suffix) {
+                return Some(format);
+            }
+        }
+
+        None
+    }
+
+    pub fn is_seven_zip_path(path: &Path) -> bool {
+        matches!(
+            Self::detect_from_extension(path),
+            Some(ArchiveFormat::SevenZip)
+        )
     }
 
     fn detect_from_file_contents(path: &Path) -> Option<ArchiveFormat> {
@@ -59,6 +106,10 @@ impl ArchiveFormatDetector {
 
         if header.starts_with(b"Rar!\x1A\x07\x00") || header.starts_with(b"Rar!\x1A\x07\x01\x00") {
             return Some(ArchiveFormat::Rar);
+        }
+
+        if header.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+            return Some(ArchiveFormat::SevenZip);
         }
 
         if header.starts_with(&[0x1F, 0x8B]) {
@@ -104,7 +155,7 @@ impl ArchiveFormatDetector {
             return Some(ArchiveFormat::Iso);
         }
 
-        Self::detect_from_extension_fallback(path)
+        None
     }
 
     fn detect_compound_document_format(path: &Path) -> Option<ArchiveFormat> {
@@ -130,58 +181,6 @@ impl ArchiveFormatDetector {
         file.read_exact(&mut buffer)?;
         Ok(buffer == expected)
     }
-
-    fn detect_from_extension_fallback(path: &Path) -> Option<ArchiveFormat> {
-        match Self::detect_from_extension(path) {
-            Some(
-                format @ (ArchiveFormat::TarGz
-                | ArchiveFormat::TarBz2
-                | ArchiveFormat::TarXz
-                | ArchiveFormat::Iso
-                | ArchiveFormat::Dmg
-                | ArchiveFormat::Arj
-                | ArchiveFormat::Lha
-                | ArchiveFormat::Msi),
-            ) => Some(format),
-            _ => None,
-        }
-    }
-
-    fn detect_from_extension(path: &Path) -> Option<ArchiveFormat> {
-        let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
-
-        for (suffix, format) in [
-            (".tar.gz", ArchiveFormat::TarGz),
-            (".tgz", ArchiveFormat::TarGz),
-            (".tar.bz2", ArchiveFormat::TarBz2),
-            (".tbz2", ArchiveFormat::TarBz2),
-            (".tar.xz", ArchiveFormat::TarXz),
-            (".txz", ArchiveFormat::TarXz),
-            (".zip", ArchiveFormat::Zip),
-            (".rar", ArchiveFormat::Rar),
-            (".tar", ArchiveFormat::Tar),
-            (".gz", ArchiveFormat::Gz),
-            (".bz2", ArchiveFormat::Bz2),
-            (".xz", ArchiveFormat::Xz),
-            (".cab", ArchiveFormat::Cab),
-            (".iso", ArchiveFormat::Iso),
-            (".wim", ArchiveFormat::Wim),
-            (".arj", ArchiveFormat::Arj),
-            (".lha", ArchiveFormat::Lha),
-            (".lzh", ArchiveFormat::Lha),
-            (".cpio", ArchiveFormat::Cpio),
-            (".dmg", ArchiveFormat::Dmg),
-            (".chm", ArchiveFormat::Chm),
-            (".msi", ArchiveFormat::Msi),
-        ] {
-            if file_name.ends_with(suffix) {
-                return Some(format);
-            }
-        }
-
-        None
-    }
-
 }
 
 #[cfg(test)]

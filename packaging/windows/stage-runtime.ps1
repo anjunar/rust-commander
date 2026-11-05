@@ -60,10 +60,97 @@ function Copy-DirectoryContentIfPresent {
     }
 }
 
-function Get-PeDependencies {
-    param([string]$BinaryPath)
+function Test-GtkSourceViewDataRoot {
+    param([string]$CandidatePath)
 
-    $lines = & objdump -p $BinaryPath 2>$null
+    if (-not (Test-Path $CandidatePath)) {
+        return $false
+    }
+
+    $langDir = Join-Path $CandidatePath "language-specs"
+    $styleDir = Join-Path $CandidatePath "styles"
+
+    if (-not (Test-Path $langDir) -or -not (Test-Path $styleDir)) {
+        return $false
+    }
+
+    $langCount = (Get-ChildItem -Path $langDir -Filter "*.lang" -ErrorAction SilentlyContinue |
+        Measure-Object).Count
+    $styleCount = (Get-ChildItem -Path $styleDir -Filter "*.xml" -ErrorAction SilentlyContinue |
+        Measure-Object).Count
+    return ($langCount -gt 0) -and ($styleCount -gt 0)
+}
+
+function Get-GtkSourceViewDataRoot {
+    param([string]$MingwRoot)
+
+    $candidates = @(
+        (Join-Path $MingwRoot "share\gtksourceview-5"),
+        # gvsbuild keeps language-specs in the build tree when the install prefix is incomplete
+        (Join-Path $MingwRoot "..\..\..\build\x64\release\gtksourceview5\data"),
+        (Join-Path $MingwRoot "..\..\build\x64\release\gtksourceview5\data")
+    )
+
+    foreach ($candidate in $candidates) {
+        try {
+            $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).Path
+        }
+        catch {
+            continue
+        }
+
+        if (Test-GtkSourceViewDataRoot -CandidatePath $resolved) {
+            return $resolved
+        }
+    }
+
+    throw "GtkSourceView data not found under $MingwRoot. Expected share\gtksourceview-5 with language-specs (*.lang) and styles (*.xml)."
+}
+
+function Resolve-Objdump {
+    param([string]$MingwRoot)
+
+    $candidates = @(
+        (Join-Path $MingwRoot "bin\objdump.exe"),
+        (Join-Path $MingwRoot "bin\llvm-objdump.exe")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    foreach ($name in @("objdump", "llvm-objdump")) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command -and $command.Source) {
+            return $command.Source
+        }
+    }
+
+    $fallbacks = @(
+        "C:\msys64\mingw64\bin\objdump.exe",
+        "C:\msys64\ucrt64\bin\objdump.exe",
+        "C:\msys64\clang64\bin\objdump.exe",
+        "C:\LLVM\bin\llvm-objdump.exe"
+    )
+
+    foreach ($candidate in $fallbacks) {
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "objdump not found. Install MinGW/MSYS2 binutils or LLVM and ensure objdump/llvm-objdump is on PATH, or pass -MingwRoot that contains bin\objdump.exe."
+}
+
+function Get-PeDependencies {
+    param(
+        [string]$BinaryPath,
+        [string]$ObjdumpPath
+    )
+
+    $lines = & $ObjdumpPath -p $BinaryPath 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "objdump failed for $BinaryPath"
     }
@@ -78,7 +165,8 @@ function Copy-RuntimeClosure {
     param(
         [string]$EntryBinary,
         [string]$BinSource,
-        [string]$BinDestination
+        [string]$BinDestination,
+        [string]$ObjdumpPath
     )
 
     $ignoredPrefixes = @(
@@ -122,7 +210,7 @@ function Copy-RuntimeClosure {
 
     while ($queue.Count -gt 0) {
         $current = $queue.Dequeue()
-        foreach ($dependency in Get-PeDependencies -BinaryPath $current) {
+        foreach ($dependency in Get-PeDependencies -BinaryPath $current -ObjdumpPath $ObjdumpPath) {
             $dependencyLower = $dependency.ToLowerInvariant()
 
             if ($ignoredNames -contains $dependencyLower) {
@@ -212,16 +300,22 @@ Copy-Item -LiteralPath (Join-Path $mingwBin "gdbus.exe") -Destination $stageBinP
 Copy-Item -LiteralPath (Join-Path $mingwBin "gspawn-win64-helper.exe") -Destination $stageBinPath -Force
 Copy-Item -LiteralPath (Join-Path $mingwBin "gspawn-win64-helper-console.exe") -Destination $stageBinPath -Force
 
-Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "rcommander.exe") -BinSource $mingwBin -BinDestination $stageBinPath
-Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gdbus.exe") -BinSource $mingwBin -BinDestination $stageBinPath
-Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper.exe") -BinSource $mingwBin -BinDestination $stageBinPath
-Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper-console.exe") -BinSource $mingwBin -BinDestination $stageBinPath
+$objdumpPath = Resolve-Objdump -MingwRoot $MingwRoot
+Write-Host "Using objdump: $objdumpPath"
+
+Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "rcommander.exe") -BinSource $mingwBin -BinDestination $stageBinPath -ObjdumpPath $objdumpPath
+Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gdbus.exe") -BinSource $mingwBin -BinDestination $stageBinPath -ObjdumpPath $objdumpPath
+Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper.exe") -BinSource $mingwBin -BinDestination $stageBinPath -ObjdumpPath $objdumpPath
+Copy-RuntimeClosure -EntryBinary (Join-Path $stageBinPath "gspawn-win64-helper-console.exe") -BinSource $mingwBin -BinDestination $stageBinPath -ObjdumpPath $objdumpPath
+
+$gtkSourceViewDataRoot = Get-GtkSourceViewDataRoot -MingwRoot $MingwRoot
 
 Copy-DirectoryContent -SourcePath (Join-Path $repoRoot "assets") -DestinationPath (Join-Path $stagePath "assets")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwLib "gdk-pixbuf-2.0") -DestinationPath (Join-Path $stagePath "lib\gdk-pixbuf-2.0")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwLib "gio\modules") -DestinationPath (Join-Path $stagePath "lib\gio\modules")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwShare "glib-2.0\schemas") -DestinationPath (Join-Path $stagePath "share\glib-2.0\schemas")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwShare "gtk-4.0") -DestinationPath (Join-Path $stagePath "share\gtk-4.0")
+Copy-DirectoryContent -SourcePath $gtkSourceViewDataRoot -DestinationPath (Join-Path $stagePath "share\gtksourceview-5")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwShare "icons\Adwaita") -DestinationPath (Join-Path $stagePath "share\icons\Adwaita")
 Copy-DirectoryContentIfPresent -SourcePath (Join-Path $mingwShare "icons\AdwaitaLegacy") -DestinationPath (Join-Path $stagePath "share\icons\AdwaitaLegacy")
 Copy-DirectoryContent -SourcePath (Join-Path $mingwShare "icons\hicolor") -DestinationPath (Join-Path $stagePath "share\icons\hicolor")
@@ -235,9 +329,11 @@ $manifest = [ordered]@{
     Executable = "bin\rcommander.exe"
     GeneratedAtUtc = [DateTime]::UtcNow.ToString("o")
     MingwRoot = $MingwRoot
+    GtkSourceViewDataRoot = $gtkSourceViewDataRoot
 }
 
 $manifestPath = Join-Path $stagePath "stage-manifest.json"
 $manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
 
 Write-Host "Staged RCommander runtime in $stagePath"
+Write-Host "GtkSourceView data copied from $gtkSourceViewDataRoot"

@@ -1,9 +1,13 @@
 use std::cmp::Ordering;
 
+use serde::{Deserialize, Serialize};
+
 use crate::domain::entry::Entry;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SortColumn {
+    #[default]
     Name,
     Size,
     Type,
@@ -11,8 +15,10 @@ pub enum SortColumn {
     Attributes,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SortDirection {
+    #[default]
     Ascending,
     Descending,
 }

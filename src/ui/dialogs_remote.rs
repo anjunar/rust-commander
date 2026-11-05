@@ -1,16 +1,22 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::prelude::*;
+use gtk::{glib, prelude::*};
+use rust_i18n::t;
 
 use crate::{
     remote::{
-        RemoteAuthConfig, RemoteConfig, RemotePath, RemoteProfile, RemoteRuntimeSecret,
-        RemoteSession,
+        HostKeyTrustOffer, RemoteAuthConfig, RemoteConfig, RemotePath, RemoteProfile,
+        RemoteRuntimeSecret, RemoteSession,
     },
-    ui::dsl::{button, dropdown, dropdown_list, password, spin, ListProperty, Property},
+    ui::dsl::{
+        button, dropdown, dropdown_list, hbox, password, spin, switch, text, IntoText,
+        ListProperty, Property,
+    },
 };
 
-use super::dialogs_base::{field, hint, modal, present_and_focus, row, switch_row};
+use super::dialogs_base::{
+    field, hint, modal, paragraph, present_and_focus, row, switch_row, Once,
+};
 
 #[derive(Clone)]
 pub struct RemoteConnectionDialogResult {
@@ -55,7 +61,7 @@ pub fn prompt_remote_connection<F>(
         move || {
             let (names, selected) = {
                 let state = state.borrow();
-                let mut names = vec!["New connection".to_string()];
+                let mut names = vec![t!("dialog.remote_new_connection").into_owned()];
                 names.extend(state.profiles.iter().map(|profile| profile.name.clone()));
                 let selected = state
                     .last_used_profile
@@ -77,12 +83,14 @@ pub fn prompt_remote_connection<F>(
 
     let uses_key_file = form.auth_method.map(|method| *method == AUTH_KEY_FILE);
     let has_saved_profile = form.selected_profile.map(|index| *index != 0);
+    let auth_options = [
+        t!("dialog.remote_auth_password").into_owned(),
+        t!("dialog.remote_auth_key_file").into_owned(),
+    ];
+    let auth_option_refs = auth_options.iter().map(String::as_str).collect::<Vec<_>>();
 
-    let (window, (host_entry, connect_button)) = modal(
-        parent,
-        "Connect To Remote",
-        (520, 470),
-        |dialog| {
+    let (window, (host_entry, connect_button)) =
+        modal(parent, &t!("dialog.remote_title"), (520, 470), |dialog| {
             // Picking a saved profile loads it into the form; "New connection" clears it.
             {
                 let state = Rc::clone(&state);
@@ -97,37 +105,38 @@ pub fn prompt_remote_connection<F>(
             }
 
             let host_entry = dialog.content(|| {
-                row("Saved profile", || {
+                row(t!("dialog.remote_saved_profile"), || {
                     dropdown_list(&form.profile_names, &form.selected_profile, |_| {});
                 });
-                field("Profile name", &form.profile_name);
-                let host_entry = field("Host", &form.host);
-                row("Port", || {
+                field(&t!("dialog.remote_profile_name"), &form.profile_name);
+                let host_entry = field(&t!("dialog.remote_host"), &form.host);
+                row(t!("dialog.remote_port"), || {
                     spin(&form.port, 1.0, 65535.0, 1.0, |_| {});
                 });
-                field("Username", &form.username);
-                field("Start directory", &form.start_directory);
+                field(&t!("dialog.remote_username"), &form.username);
+                field(&t!("dialog.remote_start_directory"), &form.start_directory);
                 switch_row(
-                    "Insecure: skip host key verification",
+                    t!("dialog.remote_skip_host_key"),
                     &form.skip_host_key_verification,
                 );
-                hint("Only use this for test or demo servers. This disables known_hosts validation and allows man-in-the-middle attacks.");
+                hint(t!("dialog.remote_skip_host_key_warning"));
 
-                row("Authentication", || {
-                    dropdown(&["Password", "Key file"], &form.auth_method, |_| {});
+                row(t!("dialog.remote_authentication"), || {
+                    dropdown(&auth_option_refs, &form.auth_method, |_| {});
                 });
                 password(&form.secret, |entry| {
-                    entry.set_placeholder_text(Some("Password or passphrase"));
+                    entry.set_placeholder_text(Some(&t!("dialog.remote_password_placeholder")));
                 });
-                let private_key = field("Private key path", &form.private_key_path);
+                let private_key = field(&t!("dialog.remote_private_key"), &form.private_key_path);
                 private_key.bind_visible(&uses_key_file);
                 private_key.bind_sensitive(&uses_key_file);
-                let public_key = field("Public key path (optional)", &form.public_key_path);
-                public_key.bind_visible(&uses_key_file);
-                public_key.bind_sensitive(&uses_key_file);
 
-                switch_row("Save profile without secret", &form.save_profile);
-                button("Delete profile", |button| {
+                switch_row_with_help(
+                    t!("dialog.remote_save_profile_label"),
+                    &t!("dialog.remote_save_profile_tooltip"),
+                    &form.save_profile,
+                );
+                button(t!("dialog.remote_delete_profile"), |button| {
                     button.css("destructive-action");
                     button.bind_sensitive(&has_saved_profile);
                     let state = Rc::clone(&state);
@@ -141,8 +150,8 @@ pub fn prompt_remote_connection<F>(
             });
 
             let connect_button = dialog.actions(|| {
-                dialog.close_button("Cancel");
-                button("Save", |button| {
+                dialog.close_button(t!("common.cancel"));
+                button(t!("common.save"), |button| {
                     button.css("accent");
                     let state = Rc::clone(&state);
                     let form = Rc::clone(&form);
@@ -150,7 +159,7 @@ pub fn prompt_remote_connection<F>(
                     let refresh = Rc::clone(&refresh);
                     button.on_click(move || save_profile(&state, &form, &callback, &refresh));
                 });
-                button("Connect", |button| {
+                button(t!("dialog.remote_connect"), |button| {
                     button.css("suggested-action");
                     let state = Rc::clone(&state);
                     let form = Rc::clone(&form);
@@ -161,12 +170,74 @@ pub fn prompt_remote_connection<F>(
             });
 
             (host_entry, connect_button)
-        },
-    );
+        });
     window.set_default_widget(Some(connect_button.widget()));
 
     refresh();
     present_and_focus(&window, host_entry.widget());
+}
+
+/// Asks whether to trust a host key that `known_hosts` does not list yet.
+pub fn confirm_ssh_host_key<F>(
+    parent: &gtk::ApplicationWindow,
+    offer: &HostKeyTrustOffer,
+    on_trust: F,
+) where
+    F: FnOnce() + 'static,
+{
+    let on_trust = Once::new(move |()| on_trust());
+    let (window, trust) = modal(
+        parent,
+        &t!("dialog.ssh_host_key_title"),
+        (520, 220),
+        |dialog| {
+            dialog.content(|| {
+                text(t!("dialog.ssh_host_key_heading"), |label| {
+                    label.css("title-2");
+                });
+                paragraph(t!(
+                    "dialog.ssh_host_key_detail",
+                    host = offer.host.as_str(),
+                    port = offer.port,
+                    key_type = offer.key_type.label(),
+                    fingerprint = offer.fingerprint_sha256.as_str()
+                ));
+                hint(t!("dialog.ssh_host_key_warning"));
+            });
+            dialog.actions(|| {
+                dialog.close_button(t!("common.cancel"));
+                button(t!("dialog.ssh_host_key_trust"), |button| {
+                    button.css("suggested-action");
+                    let window = dialog.window().widget().clone();
+                    let on_trust = on_trust.clone();
+                    button.on_click(move || {
+                        window.close();
+                        let on_trust = on_trust.clone();
+                        glib::idle_add_local_once(move || on_trust.call(()));
+                    });
+                })
+            })
+        },
+    );
+    window.set_default_widget(Some(trust.widget()));
+    present_and_focus(&window, trust.widget());
+}
+
+/// A switch row whose label explains itself in a tooltip.
+fn switch_row_with_help(label: impl IntoText, tooltip: &str, value: &Property<bool>) {
+    hbox(8, |_| {
+        hbox(4, |labels| {
+            labels.set_hexpand(true);
+            labels.set_valign(gtk::Align::Center);
+            labels.set_tooltip_text(Some(tooltip));
+            text(label, |_| {});
+            text("ⓘ", |help| {
+                help.css("help-hint");
+                help.set_valign(gtk::Align::Center);
+            });
+        });
+        switch(value, |_| {});
+    });
 }
 
 /// The editable state of the connection form.
@@ -182,7 +253,6 @@ struct RemoteForm {
     auth_method: Property<u32>,
     secret: Property<String>,
     private_key_path: Property<String>,
-    public_key_path: Property<String>,
     save_profile: Property<bool>,
 }
 
@@ -200,7 +270,6 @@ impl RemoteForm {
             auth_method: Property::new(AUTH_PASSWORD),
             secret: Property::new(String::new()),
             private_key_path: Property::new(String::new()),
-            public_key_path: Property::new(String::new()),
             save_profile: Property::new(false),
         }
     }
@@ -224,22 +293,13 @@ impl RemoteForm {
             RemoteAuthConfig::Password { .. } => {
                 self.auth_method.set(AUTH_PASSWORD);
                 self.private_key_path.set(String::new());
-                self.public_key_path.set(String::new());
             }
             RemoteAuthConfig::KeyFile {
-                private_key_path,
-                public_key_path,
-                ..
+                private_key_path, ..
             } => {
                 self.auth_method.set(AUTH_KEY_FILE);
                 self.private_key_path
                     .set(private_key_path.display().to_string());
-                self.public_key_path.set(
-                    public_key_path
-                        .as_ref()
-                        .map(|path| path.display().to_string())
-                        .unwrap_or_default(),
-                );
             }
         }
         self.secret.set(String::new());
@@ -256,7 +316,6 @@ impl RemoteForm {
         self.auth_method.set(AUTH_PASSWORD);
         self.secret.set(String::new());
         self.private_key_path.set(String::new());
-        self.public_key_path.set(String::new());
         self.save_profile.set(false);
     }
 
@@ -275,14 +334,10 @@ impl RemoteForm {
             if private_key.is_empty() {
                 return None;
             }
-            let public_key = self.public_key_path.get();
             RemoteAuthConfig::KeyFile {
                 username,
                 private_key_path: private_key.into(),
-                public_key_path: match public_key.trim() {
-                    "" => None,
-                    value => Some(value.into()),
-                },
+                public_key_path: None,
             }
         };
 

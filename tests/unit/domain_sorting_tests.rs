@@ -80,6 +80,28 @@ fn sorting_by_type_groups_files_by_extension() {
 }
 
 #[test]
+fn type_column_sorts_by_file_extension() {
+    let mut entries = vec![
+        file("readme.md", false),
+        file("notes.txt", false),
+        file("archive.zip", false),
+    ];
+
+    sort_entries(
+        &mut entries,
+        SortState {
+            column: SortColumn::Type,
+            direction: SortDirection::Ascending,
+        },
+        false,
+    );
+
+    assert_eq!(entries[0].name, "readme.md");
+    assert_eq!(entries[1].name, "notes.txt");
+    assert_eq!(entries[2].name, "archive.zip");
+}
+
+#[test]
 fn sorting_by_type_descending_keeps_folders_first_when_asked() {
     let mut entries = vec![
         file("app.exe", false),

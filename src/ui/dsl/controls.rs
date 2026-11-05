@@ -37,7 +37,10 @@ impl Ctx<gtk::PasswordEntry> {
         {
             let guard = guard.clone();
             self.bind(value, move |entry, text| {
-                guard.run(|| entry.set_text(text));
+                // See `Ctx<gtk::Entry>::bind_text`: no echo of what was typed.
+                if entry.text().as_str() != text.as_str() {
+                    guard.run(|| entry.set_text(text));
+                }
             });
         }
         let value = value.clone();
@@ -158,6 +161,18 @@ pub fn icon_button(name: &str, body: impl FnOnce(&Ctx<gtk::Button>)) -> Ctx<gtk:
 
 pub fn frame(label: Option<&str>, body: impl FnOnce(&Ctx<gtk::Frame>)) -> Ctx<gtk::Frame> {
     container(gtk::Frame::new(label), body)
+}
+
+impl Host for gtk::Button {
+    fn attach(&self, child: &gtk::Widget) {
+        self.set_child(Some(child));
+    }
+}
+
+impl Host for gtk::Revealer {
+    fn attach(&self, child: &gtk::Widget) {
+        self.set_child(Some(child));
+    }
 }
 
 impl Host for gtk::Overlay {

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Vue Single-File Component highlighting for GtkSourceView.
+  Bundled with RCommander; not part of upstream GtkSourceView.
+
+  Highlights:
+  - <template> via HTML
+  - <script> as JavaScript; lang="ts"/"typescript" as TypeScript
+  - <style> as CSS; lang="scss" as SCSS
+  - {{ ... }} interpolations
+-->
+<language id="vue" _name="Vue" version="2.0" _section="Markup">
+  <metadata>
+    <property name="mimetypes">text/x-vue;text/vue</property>
+    <property name="globs">*.vue</property>
+    <property name="block-comment-start">&lt;!--</property>
+    <property name="block-comment-end">--&gt;</property>
+  </metadata>
+
+  <styles>
+    <style id="tag" _name="Tag" map-to="xml:element-name"/>
+    <style id="interpolation" _name="Interpolation" map-to="def:special-constant"/>
+  </styles>
+
+  <definitions>
+    <!-- Prevent HTML's built-in script/style from stealing Vue SFC blocks. -->
+    <context id="disabled-html-block">
+      <match>\%{def:never-match}</match>
+    </context>
+    <replace id="html:script" ref="disabled-html-block"/>
+    <replace id="html:style" ref="disabled-html-block"/>
+
+    <context id="interpolation" style-ref="interpolation" class="no-spell-check">
+      <start>\{\{</start>
+      <end>\}\}</end>
+      <include>
+        <context ref="js:js"/>
+      </include>
+    </context>
+
+    <context id="vue-in-html-content">
+      <include>
+        <context ref="interpolation"/>
+      </include>
+    </context>
+    <replace id="html:embedded-lang-hook-content" ref="vue-in-html-content"/>
+
+    <context id="script-ts" class="no-spell-check">
+      <start>&lt;script(?=[^&gt;]*\blang\s*=\s*["'](?:ts|typescript)["'])\%]</start>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="tag"/>
+        <context ref="html:generic-tag"/>
+
+        <context end-parent="true" style-ref="tag">
+          <match>/&gt;</match>
+        </context>
+
+        <context id="ts-code" end-parent="true">
+          <start>&gt;</start>
+          <end>&lt;/script\s*&gt;</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="tag"/>
+            <context sub-pattern="0" where="end" style-ref="tag"/>
+            <context ref="typescript:typescript"/>
+          </include>
+        </context>
+      </include>
+    </context>
+
+    <context id="script-js" class="no-spell-check">
+      <start>&lt;script\%]</start>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="tag"/>
+        <context ref="html:generic-tag"/>
+
+        <context end-parent="true" style-ref="tag">
+          <match>/&gt;</match>
+        </context>
+
+        <context id="js-code" end-parent="true">
+          <start>&gt;</start>
+          <end>&lt;/script\s*&gt;</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="tag"/>
+            <context sub-pattern="0" where="end" style-ref="tag"/>
+            <context ref="js:js"/>
+          </include>
+        </context>
+      </include>
+    </context>
+
+    <context id="style-scss" class="no-spell-check">
+      <start>&lt;style(?=[^&gt;]*\blang\s*=\s*["']scss["'])\%]</start>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="tag"/>
+        <context ref="html:generic-tag"/>
+
+        <context end-parent="true" style-ref="tag">
+          <match>/&gt;</match>
+        </context>
+
+        <context id="scss-code" end-parent="true">
+          <start>&gt;</start>
+          <end>&lt;/style\s*&gt;</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="tag"/>
+            <context sub-pattern="0" where="end" style-ref="tag"/>
+            <context ref="scss:scss"/>
+          </include>
+        </context>
+      </include>
+    </context>
+
+    <context id="style-css" class="no-spell-check">
+      <start>&lt;style\%]</start>
+      <include>
+        <context sub-pattern="0" where="start" style-ref="tag"/>
+        <context ref="html:generic-tag"/>
+
+        <context end-parent="true" style-ref="tag">
+          <match>/&gt;</match>
+        </context>
+
+        <context id="css-code" end-parent="true">
+          <start>&gt;</start>
+          <end>&lt;/style\s*&gt;</end>
+          <include>
+            <context sub-pattern="0" where="start" style-ref="tag"/>
+            <context sub-pattern="0" where="end" style-ref="tag"/>
+            <context ref="css:css"/>
+          </include>
+        </context>
+      </include>
+    </context>
+
+    <!-- Exit embedded JS/TS when the script close tag is ahead. -->
+    <context id="js-embedded-lang-hooks">
+      <include>
+        <context end-parent="true">
+          <start>(?=&lt;/script(?:&gt;|\s|$))</start>
+          <end>\%{def:always-match}</end>
+        </context>
+        <context ref="js:embedded-lang-hooks" original="true"/>
+      </include>
+    </context>
+    <replace id="js:embedded-lang-hooks" ref="js-embedded-lang-hooks"/>
+
+    <!-- Exit embedded CSS/SCSS when the style close tag is ahead. -->
+    <context id="css-embedded-lang-hook">
+      <include>
+        <context end-parent="true">
+          <start>(?=&lt;/style(?:&gt;|\s|$))</start>
+          <end>\%{def:always-match}</end>
+        </context>
+        <context ref="css:embedded-lang-hook" original="true"/>
+      </include>
+    </context>
+    <replace id="css:embedded-lang-hook" ref="css-embedded-lang-hook"/>
+
+    <context id="vue">
+      <include>
+        <context ref="script-ts"/>
+        <context ref="script-js"/>
+        <context ref="style-scss"/>
+        <context ref="style-css"/>
+        <context ref="interpolation"/>
+        <context ref="html:html"/>
+      </include>
+    </context>
+  </definitions>
+</language>

@@ -4,9 +4,9 @@ use rust_i18n::t;
 
 use crate::{
     application::{
-        prepare_operation, start_operation_task, ActiveOperationHandle, Commander,
-        FileOperationKind, OperationPlan, PreparedOperation, SessionStore, StartedOperation,
-        TaskSpawner,
+        prepare_operation_with_options, start_operation_task, ActiveOperationHandle, Commander,
+        DeleteMode, FileOperationKind, OperationPlan, PreparedOperation, SessionStore,
+        StartedOperation, TaskSpawner,
     },
     archive::ArchiveService,
     config::AppConfig,
@@ -78,6 +78,18 @@ impl OperationsController {
     }
 
     pub fn handle_operation(&self, kind: FileOperationKind) {
+        self.handle_operation_with_delete_mode(kind, DeleteMode::Default);
+    }
+
+    pub fn handle_delete_permanent(&self) {
+        self.handle_operation_with_delete_mode(FileOperationKind::Delete, DeleteMode::Permanent);
+    }
+
+    /// Start a prepared plan immediately (clipboard paste — no confirmation).
+    pub fn start_prepared_operation<F>(&self, request: OperationPlan, on_finished: F)
+    where
+        F: FnOnce(Result<(), String>) + 'static,
+    {
         if self.runtime.active_operation.borrow().is_some() {
             dialogs::show_error(
                 &self.window,
@@ -87,11 +99,25 @@ impl OperationsController {
             return;
         }
 
-        let prepared = match prepare_operation(
+        self.start_file_operation_with_finish(request, on_finished);
+    }
+
+    fn handle_operation_with_delete_mode(&self, kind: FileOperationKind, delete_mode: DeleteMode) {
+        if self.runtime.active_operation.borrow().is_some() {
+            dialogs::show_error(
+                &self.window,
+                &t!("error.file_operation_running"),
+                &t!("error.cancel_or_finish_current_operation"),
+            );
+            return;
+        }
+
+        let prepared = match prepare_operation_with_options(
             &self.commander.borrow(),
             Rc::clone(&self.session_store),
             &self.app_config_cache.borrow().file_operations,
             kind,
+            delete_mode,
         ) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -162,6 +188,84 @@ impl OperationsController {
                     .borrow_mut()
                     .replace(ActiveOperationHandle::Remote(handle.clone()));
                 self.poll_transfer_operation(request, receiver);
+            }
+        }
+    }
+
+    fn start_file_operation_with_finish<F>(&self, request: OperationPlan, on_finished: F)
+    where
+        F: FnOnce(Result<(), String>) + 'static,
+    {
+        let started = match start_operation_task(
+            self.task_spawner.clone(),
+            &self.archive_service.borrow(),
+            &self.remote_service,
+            request,
+        ) {
+            Ok(started) => started,
+            Err(error) => {
+                let detail = error.detail().to_string();
+                dialogs::show_error(&self.window, &t!("error.operation_unavailable"), &detail);
+                on_finished(Err(detail));
+                return;
+            }
+        };
+
+        match started {
+            StartedOperation::File {
+                handle,
+                receiver,
+                request,
+            } => {
+                self.runtime
+                    .active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::File(handle.clone()));
+                let title = t!(
+                    "progress.operation_title",
+                    kind = crate::presentation::file_operation_label(&request.kind())
+                )
+                .into_owned();
+                self.poll_transfer_operation_with_hooks(
+                    request,
+                    receiver,
+                    &title,
+                    false,
+                    false,
+                    Some(Box::new(on_finished)),
+                );
+            }
+            StartedOperation::Archive { handle, receiver } => {
+                self.runtime
+                    .active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::Archive(handle.clone()));
+                // Clipboard paste never starts archive extract.
+                let _ = on_finished;
+                self.poll_archive_extract_operation(receiver);
+            }
+            StartedOperation::Remote {
+                handle,
+                receiver,
+                request,
+            } => {
+                self.runtime
+                    .active_operation
+                    .borrow_mut()
+                    .replace(ActiveOperationHandle::Remote(handle.clone()));
+                let title = t!(
+                    "progress.operation_title",
+                    kind = crate::presentation::file_operation_label(&request.kind())
+                )
+                .into_owned();
+                self.poll_transfer_operation_with_hooks(
+                    request,
+                    receiver,
+                    &title,
+                    false,
+                    false,
+                    Some(Box::new(on_finished)),
+                );
             }
         }
     }

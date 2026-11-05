@@ -4,7 +4,7 @@ use gtk::prelude::*;
 use rust_i18n::t;
 
 use crate::{
-    config::{AppConfig, ThemePreference},
+    config::{AppConfig, IconStyle, ThemePreference},
     i18n,
     ui::dsl::{button, dropdown, spin, Property},
 };
@@ -28,6 +28,14 @@ where
         t!("settings.theme_dark").into_owned(),
     ];
     let theme_option_refs = theme_options.iter().map(String::as_str).collect::<Vec<_>>();
+    let icon_style_options = [
+        t!("settings.icon_style_symbolic").into_owned(),
+        t!("settings.icon_style_system").into_owned(),
+    ];
+    let icon_style_option_refs = icon_style_options
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let on_save = Once::new(on_save);
 
     let (window, save_button) = modal(parent, &t!("settings.title"), (620, 520), |dialog| {
@@ -42,6 +50,9 @@ where
             });
             row(t!("settings.theme"), || {
                 dropdown(&theme_option_refs, &model.theme, |_| {});
+            });
+            row(t!("settings.icon_style"), || {
+                dropdown(&icon_style_option_refs, &model.icon_style, |_| {});
             });
 
             heading(t!("settings.section_view"));
@@ -59,6 +70,11 @@ where
             });
             switch_row(t!("settings.line_wrap"), &model.line_wrap);
             switch_row(t!("settings.show_line_numbers"), &model.show_line_numbers);
+
+            heading(t!("settings.section_editor"));
+            row(t!("settings.max_edit_size_mb"), || {
+                spin(&model.max_edit_size_mb, 1.0, 512.0, 1.0, |_| {});
+            });
         });
 
         dialog.actions(|| {
@@ -92,6 +108,7 @@ where
 struct SettingsModel {
     language: Property<u32>,
     theme: Property<u32>,
+    icon_style: Property<u32>,
     show_hidden_files: Property<bool>,
     folders_first: Property<bool>,
     use_recycle_bin: Property<bool>,
@@ -100,6 +117,7 @@ struct SettingsModel {
     streaming_threshold_mb: Property<f64>,
     line_wrap: Property<bool>,
     show_line_numbers: Property<bool>,
+    max_edit_size_mb: Property<f64>,
 }
 
 impl SettingsModel {
@@ -110,6 +128,10 @@ impl SettingsModel {
             theme: Property::with_default(
                 theme_to_index(config.general.theme),
                 theme_to_index(defaults.general.theme),
+            ),
+            icon_style: Property::with_default(
+                icon_style_to_index(config.general.icon_style),
+                icon_style_to_index(defaults.general.icon_style),
             ),
             show_hidden_files: Property::with_default(
                 config.panels.show_hidden_files,
@@ -140,12 +162,17 @@ impl SettingsModel {
                 config.viewer.show_line_numbers,
                 defaults.viewer.show_line_numbers,
             ),
+            max_edit_size_mb: Property::with_default(
+                config.editor.max_edit_size_mb as f64,
+                defaults.editor.max_edit_size_mb as f64,
+            ),
         }
     }
 
     fn reset(&self) {
         self.language.reset();
         self.theme.reset();
+        self.icon_style.reset();
         self.show_hidden_files.reset();
         self.folders_first.reset();
         self.use_recycle_bin.reset();
@@ -154,6 +181,7 @@ impl SettingsModel {
         self.streaming_threshold_mb.reset();
         self.line_wrap.reset();
         self.show_line_numbers.reset();
+        self.max_edit_size_mb.reset();
     }
 
     fn apply_to(&self, config: &mut AppConfig) {
@@ -161,6 +189,7 @@ impl SettingsModel {
             .get(self.language.get() as usize)
             .map(|locale| (*locale).to_string());
         config.general.theme = index_to_theme(self.theme.get());
+        config.general.icon_style = index_to_icon_style(self.icon_style.get());
         config.panels.show_hidden_files = self.show_hidden_files.get();
         config.panels.folders_first = self.folders_first.get();
         config.file_operations.use_recycle_bin = self.use_recycle_bin.get();
@@ -169,6 +198,7 @@ impl SettingsModel {
         config.viewer.streaming_threshold_mb = self.streaming_threshold_mb.get() as u64;
         config.viewer.line_wrap = self.line_wrap.get();
         config.viewer.show_line_numbers = self.show_line_numbers.get();
+        config.editor.max_edit_size_mb = self.max_edit_size_mb.get().max(1.0) as u64;
     }
 }
 
@@ -205,5 +235,19 @@ fn index_to_theme(index: u32) -> ThemePreference {
         1 => ThemePreference::Light,
         2 => ThemePreference::Dark,
         _ => ThemePreference::System,
+    }
+}
+
+fn icon_style_to_index(style: IconStyle) -> u32 {
+    match style {
+        IconStyle::Symbolic => 0,
+        IconStyle::System => 1,
+    }
+}
+
+fn index_to_icon_style(index: u32) -> IconStyle {
+    match index {
+        1 => IconStyle::System,
+        _ => IconStyle::Symbolic,
     }
 }

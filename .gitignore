@@ -1,3 +1,9 @@
 /.idea
 /target
 /dist
+/target-fix-7z
+
+# Cursor — local IDE settings (shared project rules stay in .cursor/rules/)
+.cursor/*
+
+.ucn-cache/

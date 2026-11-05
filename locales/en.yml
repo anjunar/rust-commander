@@ -1,6 +1,9 @@
 panel:
+  footer_ready: "%{count} item(s)"
+  footer_selected: "%{folders} folder(s), %{files} file(s) · %{size}"
   left: left
   right: right
+  root_sftp: SFTP…
 
 column:
   name: Name
@@ -32,22 +35,77 @@ common:
   rename: Rename
   create: Create
   save: Save
+  ok: OK
   skip: Skip
   overwrite: Overwrite
   clear: Clear
+  delete_permanent: Delete permanently
   items_count: "%{count} items"
 
 command:
   settings: F1 Settings
   rename: F2 Rename
+  drive_left: F1 Left Drive
+  drive_right: F2 Right Drive
   view: F3 View
   edit: F4 Edit
   copy: F5 Copy
   move: F6 Move
+  sort_name: F3 Name
+  sort_extension: F4 Ext
+  sort_date: F5 Date
+  sort_size: F6 Size
+  new_file: F4 New File
+  copy_as: F5 Copy As
   mkdir: F7 MkDir
   delete: F8 Delete
+  delete_permanent: F8 Wipe
   terminal: F9 Terminal
   quit: F10 Quit
+
+menu:
+  files: Files
+  commands: Commands
+  view: View
+  help: Help
+  open: Open
+  view_file: View
+  edit_file: Edit
+  properties: Properties
+  rename: Rename
+  new_file: New text file
+  mkdir: Make directory
+  new_tab: New tab
+  close_tab: Close tab
+  favorites: Favorites
+  connect_remote: SFTP…
+  find_files: Find files…
+  quit: Quit
+  copy: Copy
+  copy_as: Copy as…
+  move: Move
+  delete: Delete
+  delete_permanent: Delete permanently
+  clipboard_cut: Cut
+  clipboard_copy: Copy to clipboard
+  clipboard_paste: Paste
+  mark_all: Mark all
+  switch_panel: Switch panel
+  swap_panels: Swap panels
+  terminal: Terminal
+  sort_name: Sort by name
+  sort_extension: Sort by extension
+  sort_date: Sort by date
+  sort_size: Sort by size
+  remember_folder_sort: Remember sort for this folder
+  forget_folder_sort: Forget sort for this folder
+  drive_left: Left drive
+  drive_right: Right drive
+  go_root: Go to location root
+  refresh: Refresh
+  toggle_hidden_files: Show hidden/system files
+  settings: Settings
+  about: About
 
 context:
   open: Open
@@ -60,22 +118,26 @@ context:
 settings:
   title: Application settings
   description: Minimal settings for language, view, file operations, and the viewer.
-  archive_info: "Current stage: built-in ZIP/ISO support plus native backends for libarchive and UnRAR."
   language: Language
   theme: Theme
   theme_system: System
   theme_light: Light
   theme_dark: Dark
+  icon_style: File icons
+  icon_style_symbolic: Symbolic (theme)
+  icon_style_system: System (colorful)
   section_general: General
   section_view: View
   section_file_operations: File operations
   section_viewer: Viewer
+  section_editor: Editor
   show_hidden_files: Show hidden files
   folders_first: Keep folders on top
   use_recycle_bin: Use recycle bin
   confirm_delete: Confirm before delete
   confirm_overwrite: Confirm before overwrite
   streaming_threshold_mb: Stream from file size in MB
+  max_edit_size_mb: Max editable file size in MB
   line_wrap: Wrap lines
   show_line_numbers: Show line numbers
   reset_defaults: Reset to defaults
@@ -83,20 +145,64 @@ settings:
   restart_notice: Some changes only take effect after restarting the application.
 
 dialog:
+  about_comments: A clean GTK4 two-pane file commander.
   copy_confirmation_title: Copy confirmation
-  copy_confirmation_detail: "Copy %{source} to %{target}?"
-  archive_open_title: Open archive
-  archive_open_detail: "How should this archive be opened?\n\n%{path}"
-  archive_open_internal: Open as archive
-  archive_open_external: Open or run externally
+  copy_confirmation_detail: "Copy %{source} to:"
+  archive_unsupported_title: Archive format not supported
+  archive_unsupported_detail: "%{reason}.\n\n%{path}"
+  ssh_host_key_title: Unknown SSH host
+  ssh_host_key_heading: Trust this SSH host key?
+  ssh_host_key_detail: "The authenticity of host %{host}:%{port} cannot be established.\nKey type: %{key_type}\nFingerprint (SHA256): %{fingerprint}\n\nIf you trust this host, the key will be saved to ~/.ssh/known_hosts."
+  ssh_host_key_warning: Only trust this key if you expected this host. An unexpected key can indicate a man-in-the-middle attack.
+  ssh_host_key_trust: Trust and continue
+  remote_save_profile_label: Save profile on connect
+  remote_save_profile_tooltip: "When enabled, Connect also saves this profile (host, port, username, key paths). Passwords and passphrases are never written to disk — they stay in memory only for the current session."
+  remote_title: Connect to remote
+  remote_saved_profile: Saved profile
+  remote_new_connection: New connection
+  remote_profile_name: Profile name
+  remote_host: Host
+  remote_port: Port
+  remote_username: Username
+  remote_start_directory: Start directory
+  remote_skip_host_key: "Insecure: skip host key verification"
+  remote_skip_host_key_warning: Only use this for test or demo servers. This disables known_hosts validation and allows man-in-the-middle attacks.
+  remote_authentication: Authentication
+  remote_auth_password: Password
+  remote_auth_key_file: Key file
+  remote_password_placeholder: Password or passphrase
+  remote_private_key: Private key path
+  remote_delete_profile: Delete profile
+  remote_connect: Connect
   move_confirmation_title: Move confirmation
-  move_confirmation_detail: "Move %{source} to %{target}?"
+  move_confirmation_detail: "Move %{source} to:"
   delete_confirmation_title: Delete confirmation
   delete_confirmation_detail: "Delete %{source}?"
-  rename_title: Rename
-  rename_prompt: "Enter a new name:"
+  delete_permanent_confirmation_title: Permanent delete
+  delete_permanent_confirmation_detail: "Permanently delete %{source}?\n\nThis bypasses the recycle bin and cannot be undone."
   mkdir_title: Create directory
   mkdir_prompt: "Enter a name for the new directory:"
+  properties_title: Properties
+  properties_name: Name
+  properties_location: Location
+  properties_type: Type
+  properties_size: Size
+  properties_size_folder: Folder
+  properties_created: Created
+  properties_modified: Modified
+  properties_attributes: Attributes
+  properties_permissions: Permissions
+  properties_mode_octal: "Mode (octal):"
+  properties_perm_read: Read
+  properties_perm_write: Write
+  properties_perm_execute: Execute
+  properties_perm_owner: Owner
+  properties_perm_group: Group
+  properties_perm_other: Other
+  new_file_title: Create text file
+  new_file_prompt: "Enter a name for the new text file:"
+  copy_as_title: Copy with new name
+  copy_as_prompt: "Enter a name for the copy:"
   chmod_title: Chmod
   chmod_prompt: "Set file mode:"
   chmod_placeholder: "Example: 755 or u+rwX"
@@ -106,16 +212,82 @@ dialog:
   recursive_apply: Apply recursively
   conflict_title: "%{kind} conflict"
   conflict_detail: "The target already exists.\n\nSource: %{source}\nTarget: %{target}"
+  favorites_title: Favorites
+  favorites_hint: "Select a favorite folder, or add the current directory."
+  favorites_add: Add current
+  favorites_edit: Edit
+  favorites_delete: Delete
+  favorites_move_up: Move up
+  favorites_move_down: Move down
+  favorites_go: Go
+  favorites_add_title: Add favorite
+  favorites_edit_title: Edit favorite
+  favorites_name_prompt: "Name:"
+  favorites_path_prompt: "Path:"
+
+search:
+  title: Find files
+  description: Search by name. Use wildcards (* ?) or enable Regular expression. Exclude skips matching names and folders.
+  name_label: "Name:"
+  name_placeholder: "*.rs"
+  exclude_label: "Exclude:"
+  exclude_placeholder: "node_modules;target;.git"
+  location_label: "Search in:"
+  include_subfolders: Include subfolders
+  case_sensitive: Case sensitive
+  use_regex: Regular expression
+  start: Start
+  stop: Stop
+  column_path: Path
+  status_idle: Ready
+  status_searching: "Found: %{count} · Searching: %{path}"
+  status_done: "Found: %{count}"
+  status_done_with_errors: "Found: %{count} · %{errors} folder(s) skipped"
+  status_cancelled: "Stopped · Found: %{count}"
+  status_opened: "Opened search result: %{path}"
+  not_local: Find files works only in a local folder. Open a local directory in the active panel and try again.
+  invalid_location: Enter an existing local directory to search.
+  invalid_pattern: "Invalid pattern: %{error}"
 
 editor:
-  edit_title: "Edit %{file}"
   utf8_text_file: UTF-8 text file
+  untitled: Untitled
+  status: "UTF-8 text file | Ln %{line}, Col %{col}"
   binary_file_not_editable: The selected file appears to be binary and cannot be edited as text.
   invalid_utf8_for_edit: "The selected file is not valid UTF-8 and cannot be edited in the text editor: %{path}"
   discard_changes_title: Discard changes?
   discard_changes_detail: There are unsaved changes in the editor.
   keep_editing: Keep editing
   discard: Discard
+  menu_file: File
+  menu_edit: Edit
+  new: New
+  open: Open…
+  save: Save
+  save_as: Save As…
+  exit: Exit
+  undo: Undo
+  redo: Redo
+  cut: Cut
+  copy: Copy
+  paste: Paste
+  delete: Delete
+  select_all: Select All
+  duplicate_line: Duplicate Line
+  find: Find…
+  find_next: Find Next
+  find_previous: Find Previous
+  replace: Replace…
+  go_to_line: Go to Line…
+  find_placeholder: Find
+  replace_placeholder: Replace
+  go_to_line_title: Go to Line
+  go_to_line_prompt: "Line number:"
+  open_title: Open File
+  save_title: Save File
+  could_not_open_file: Could not open file
+  could_not_save_file: Could not save file
+  could_not_upload_remote: Could not upload remote file
 
 viewer:
   window_title: Viewer
@@ -123,7 +295,21 @@ viewer:
   title: "View %{file}"
   mode_text: Text
   mode_hex: Hex
+  mode_markdown: Markdown
+  mode_html: HTML
+  mode_image: Image
+  mode_json: JSON
+  mode_yaml: YAML
+  mode_toml: TOML
+  mode_xml: XML
+  mode_csv: CSV
+  mode_code: Code
+  mode_archive: "Archive (%{count})"
   status: "%{mode} | %{size} | line %{line} | col %{col} | F2 toggle mode | Esc close"
+  status_markdown: "%{mode} | %{size} | Esc close"
+  status_image: "%{mode} | %{index}/%{total} | %{size} | ← → navigate | Esc close"
+  status_image_loading: "%{mode} | %{index}/%{total} | loading…"
+  image_loading: Loading…
   read_only_text_truncated: "Read-only text view. Showing the first %{shown} of %{total}."
   read_only_text_total: "Read-only text view. %{total} total."
   read_only_hex_truncated: "Read-only hex view for binary content. Showing the first %{shown} of %{total}."
@@ -134,10 +320,27 @@ viewer:
   error_with_detail: "Viewer error: %{error}"
   scroll_update_error: "Viewer error: Could not update scroll position"
   render_error_body: "Could not render file view.\n\n%{error}"
+  file_too_large: "File is too large to preview (%{size}; limit %{limit})."
+  image_decode_error: Could not decode the image.
+  image_dimensions: "%{width} × %{height} px"
+  structured_parse_error: Could not parse the structured file.
+  csv_parse_error: Could not parse the CSV/TSV file.
+  csv_truncated: "showing first %{rows} rows"
+  archive_empty: Archive is empty.
+  archive_col_name: Name
+  archive_col_size: Size
+  archive_col_type: Type
+  archive_type_dir: DIR
+  archive_type_file: FILE
+  archive_type_link: LINK
+  archive_type_unknown: "?"
+
 
 progress:
   operation_title: "%{kind} operation"
   preparing_file_operation: Preparing file operation...
+  remote_edit_download: Downloading for edit...
+  remote_edit_upload: Uploading saved file...
   eta_unknown: "ETA --:--"
   cancel_operation: Cancel operation
   in_progress: "%{kind} in progress"
@@ -145,10 +348,6 @@ progress:
   archive_copy: Archive copy
   archive_copy_in_progress: Archive copy in progress
   selected_archive_items: "%{count} selected archive items"
-  extracting_complete_archive: Extracting complete archive
-  opening_archive: Opening archive
-  listing_archive: Listing archive
-  testing_archive: Testing archive
   preparing_archive_operation: Preparing archive operation...
   working: Working...
   items_count: "Items %{processed}/%{total}"
@@ -165,29 +364,41 @@ terminal:
   windows_placeholder_body: "Requested working directory: %{path}\n\nWhy this is still a placeholder on Windows:\nConPTY supplies a pseudoconsole stream, but the host application must render terminal output and collect terminal input itself. GTK4 does not provide a native Windows terminal widget comparable to VTE, and this project intentionally avoids building its own emulator.\n\nThe dock architecture is already separated so a future Windows-native terminal control can be added without changing the surrounding commander UI."
 
 archive:
-  test_completed: "Archive test completed: %{path}"
   extracted_items: "Extracted %{count} item(s) to %{target}"
-  extracted_archive: "Extracted archive to %{target} (%{size})"
 
 status:
   ready: Ready. F3 views, F4 edits, Enter opens, Tab switches panels, F5 copies.
+  quick_search: "Search: %{query}"
   selected_active: "%{status} | %{count} selected in the active panel"
   selected_inactive: "%{status} | %{count} selected in the inactive panel"
   selected_both: "%{status} | %{active} selected active | %{inactive} selected inactive"
   archive_settings_updated: Archive settings updated. Internal/native archive backends are active.
   view_refreshed: File changes detected. View refreshed.
+  directory_refreshed: Directory refreshed.
+  hidden_files_shown: Hidden files are shown.
+  hidden_files_hidden: Hidden files are hidden.
   refresh_failed: "%{panel} refresh failed: %{error}"
   sorted_panel: "Sorted %{panel} panel by %{column}."
+  folder_sort_remembered: "Remembered sort for %{path}."
+  folder_sort_forgotten: "Forgot saved sort for %{path}."
+  folder_sort_not_set: "No saved sort for %{path}."
   rename_skipped: Rename skipped. Name is unchanged.
   renamed: "Renamed: %{path}"
   created_directory: "Created directory: %{path}"
+  created_file: "Created file: %{path}"
+  copied_as: "Copied %{source} as %{target}"
   console_opened_at: "Console opened at %{path}"
   language_changed: "Language changed to %{language}."
   saved: "Saved: %{path}"
+  remote_saved: "Saved and uploaded: %{path}"
+  remote_edit_transfer_cancelled: Remote edit transfer was cancelled.
   up_one_level: "Up one level: %{path}"
   loading_parent_directory: Loading parent directory...
   opened: "Opened: %{path}"
+  opened_favorite: "Favorite: %{path}"
+  opened_location_root: "Root: %{path}"
   opened_with_default_app: "Opened with default app: %{path}"
+  archive_unsupported: "Archive not supported: %{path} (%{reason})"
   loading_directory: Loading directory...
   opened_archive: "Opened archive: %{path}"
   opening_archive: Opening archive...
@@ -195,20 +406,27 @@ status:
   loading_drive: Loading drive...
   navigation_failed: "Navigation failed: %{error}"
   navigation_loader_disconnected: "Navigation failed: background loader disconnected."
+  host_key_trusted: "Trusted SSH host key for %{host}:%{port}."
   operation_current_item: "%{kind}: %{item}"
   operation_completed: "%{kind} completed: %{count} items, %{size} in %{seconds}s"
   operation_cancelled: "%{kind} cancelled after %{count} items and %{size}."
   file_operation_failed: "File operation failed: %{error}"
   copy_current_path: "Copy: %{path}"
+  clipboard_copied: "Copied %{count} item(s) to the clipboard"
+  clipboard_cut: "Cut %{count} item(s) to the clipboard"
   archive_extraction_in_progress: Archive extraction in progress
   archive_copy_cancelled: Archive copy cancelled.
   archive_copy_failed: "Archive copy failed: %{error}"
   command_failed: "Command failed: %{error}"
   permissions_updated: "Updated mode to %{mode} for %{count} item(s)."
+  remote_permissions_updated: "Updated permissions of %{path} to %{mode}."
   owner_updated: "Updated owner to %{owner} for %{count} item(s)."
 
 error:
   no_entry_selected: No entry is selected.
+  properties_unavailable: Properties unavailable
+  parent_has_no_properties: The parent directory entry has no properties.
+  invalid_unix_mode: Enter a valid octal mode (for example 755 or 644).
   view_unavailable: View is not available
   parent_cannot_be_viewed: The parent directory entry cannot be viewed.
   directory_cannot_be_viewed: Directories cannot be viewed in the file viewer.
@@ -219,16 +437,39 @@ error:
   could_not_open_console: Could not open console
   could_not_save_settings: Could not save settings
   edit_unavailable: Edit is not available
+  copy_unavailable: Copy is not available
   parent_cannot_be_edited: The parent directory entry cannot be edited.
+  parent_cannot_be_copied: The parent directory entry cannot be copied.
+  copy_rename_filesystem_only: Copy with rename is only available in the local filesystem.
   directory_cannot_be_edited: Directories cannot be opened in the text editor.
   archive_edit_not_supported: Editing files directly inside archives is not supported in this stage.
+  archive_rename_not_supported: Renaming files directly inside archives is not supported.
+  edit_file_too_large: "File is too large to edit (%{size}). Limit is %{limit}."
+  edit_filesystem_or_remote_only: Editing is only available for local or SFTP files.
+  remote_session_missing: Remote session is no longer available.
+  remote_edit_download_missing: Downloaded file was not found in the temporary folder.
   could_not_open_editor: Could not open editor
   could_not_open_directory: Could not open directory
+  folder_sort_unavailable: Folder sort unavailable
+  folder_sort_filesystem_only: Remembering sort is only available for local filesystem folders.
+  could_not_trust_host_key: Could not trust SSH host key
   file_operation_running: File operation already running
   cancel_or_finish_current_operation: Cancel or finish the current operation first.
   operation_unavailable: Operation is not available
+  clipboard_unavailable: Clipboard unavailable
+  clipboard_empty: The clipboard has no files to paste.
+  clipboard_sources_missing: Clipboard files are no longer available.
+  clipboard_set_failed: Could not place files on the system clipboard.
+  clipboard_filesystem_only: Cut and copy to clipboard are only available in the local filesystem.
+  clipboard_cut_remote_unsupported: Cut into a remote folder is not supported. Use Copy instead.
+  clipboard_paste_archive_unsupported: Paste into an archive is not supported.
+  favorites_unavailable: Favorites unavailable
+  no_favorite_selected: No favorite is selected.
+  favorite_fields_required: Name and path are required.
+  favorite_path_missing: "Favorite path does not exist or is not a directory: %{path}"
+  empty_destination: Destination path cannot be empty.
+  invalid_destination: Destination path is invalid.
   file_operation_failed: File operation failed
-  archive_copy_unavailable: Archive copy is not available
   no_filesystem_target_directory: No filesystem target directory is available.
   archive_copy_failed: Archive copy failed
   command_failed: Command failed

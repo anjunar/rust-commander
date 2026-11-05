@@ -125,6 +125,28 @@ impl Ctx<gtk::ApplicationWindow> {
         let name = name.to_owned();
         self.add_disposable(Disposable::new(move || window.remove_action(&name)));
     }
+
+    /// Like [`action`](Self::action), with a boolean state a menu item shows
+    /// as a check mark. `run` decides the state; it is not flipped for it.
+    pub fn toggle_action(
+        &self,
+        name: &str,
+        accels: &[&str],
+        initial: bool,
+        run: impl Fn() + 'static,
+    ) {
+        let window = self.widget().clone();
+        let action = gio::SimpleAction::new_stateful(name, None, &initial.to_variant());
+        action.connect_activate(move |_, _| run());
+        window.add_action(&action);
+        if !accels.is_empty() {
+            if let Some(application) = window.application() {
+                application.set_accels_for_action(&format!("win.{name}"), accels);
+            }
+        }
+        let name = name.to_owned();
+        self.add_disposable(Disposable::new(move || window.remove_action(&name)));
+    }
 }
 
 /// A GObject property as an observable value, read through `read`.

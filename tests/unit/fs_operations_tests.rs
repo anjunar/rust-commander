@@ -14,10 +14,10 @@ fn cancelled_directory_copy_cleans_partially_created_target() {
     let nested = source_root.join("nested");
     let target_root = test_root.join("target").join("source");
     fs::create_dir_all(&nested).unwrap();
-    fs::write(nested.join("large.bin"), vec![7_u8; 64 * 1024 * 1024]).unwrap();
+    fs::write(nested.join("large.bin"), vec![7_u8; 256 * 1024 * 1024]).unwrap();
 
     let plan = OperationPlan {
-        total_bytes: 64 * 1024 * 1024,
+        total_bytes: 256 * 1024 * 1024,
         total_entries: 3,
     };
     let mut progress = CopyProgress {
@@ -31,16 +31,16 @@ fn cancelled_directory_copy_cleans_partially_created_target() {
     let target_watch = target_root.clone();
 
     let watcher = thread::spawn(move || {
-        let child_file = target_watch.join("nested").join("large.bin");
+        let child_dir = target_watch.join("nested");
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            if child_file.exists() {
+            if child_dir.exists() {
                 cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                 return;
             }
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(1));
         }
-        panic!("Timed out waiting for partial target file creation");
+        panic!("Timed out waiting for partial target directory creation");
     });
 
     copy_path(

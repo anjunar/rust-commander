@@ -9,6 +9,10 @@ use crate::{
 };
 
 impl MainWindow {
+    pub fn handle_about(self: &Rc<Self>) {
+        dialogs::show_about(&self.window);
+    }
+
     pub fn handle_help(self: &Rc<Self>) {
         let current_config = self.config_store.snapshot();
         let this = Rc::clone(self);
@@ -53,6 +57,17 @@ impl MainWindow {
                 update
             };
             this.apply_update(update);
+            this.set_toggle_hidden_files_state(next_config.panels.show_hidden_files);
+            crate::platform::set_icon_style(next_config.general.icon_style);
+            this.view.left.reload_icons();
+            this.view.right.reload_icons();
+            this.navigation_controller().refresh_panels(
+                &[
+                    crate::application::ActivePanel::Left,
+                    crate::application::ActivePanel::Right,
+                ],
+                t!("status.view_refreshed").into_owned(),
+            );
             // Palette and every localized label follow on their own.
             this.shell.theme.set(next_config.general.theme);
             crate::ui::dsl::relocalize();

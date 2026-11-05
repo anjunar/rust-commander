@@ -28,6 +28,10 @@ fn detects_common_extensions_for_nonexistent_paths() {
         ArchiveFormatDetector::detect(std::path::Path::new("music.lzh")),
         Some(ArchiveFormat::Lha)
     );
+    assert_eq!(
+        ArchiveFormatDetector::detect(std::path::Path::new("backup.7z")),
+        Some(ArchiveFormat::SevenZip)
+    );
     assert!(ArchiveFormatDetector::detect(std::path::Path::new("notes.txt")).is_none());
 }
 
@@ -36,17 +40,25 @@ fn detects_zip_by_signature_without_extension() {
     let path = temp_test_file("archive_signature", "");
     fs::write(&path, b"PK\x03\x04test-payload").unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Zip));
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Zip)
+    );
 
     fs::remove_file(path).unwrap();
 }
 
 #[test]
-fn rejects_fake_zip_with_matching_extension() {
+fn extension_wins_over_mismatched_contents_for_known_suffixes() {
+    // Opening some formats in-process (notably `.7z` on Windows) is unsafe due to
+    // shell handlers, so a known archive extension is trusted without sniffing.
     let path = temp_test_file("fake_archive", ".zip");
     fs::write(&path, b"this is definitely not a zip archive").unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), None);
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Zip)
+    );
 
     fs::remove_file(path).unwrap();
 }
@@ -58,7 +70,10 @@ fn detects_tar_by_ustar_signature() {
     content[257..262].copy_from_slice(b"ustar");
     fs::write(&path, content).unwrap();
 
-    assert_eq!(ArchiveFormatDetector::detect(&path), Some(ArchiveFormat::Tar));
+    assert_eq!(
+        ArchiveFormatDetector::detect(&path),
+        Some(ArchiveFormat::Tar)
+    );
 
     fs::remove_file(path).unwrap();
 }

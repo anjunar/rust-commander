@@ -60,23 +60,31 @@ pub enum StartedOperation {
     },
 }
 
-pub fn prepare_operation(
+pub fn prepare_operation_with_options(
     commander: &Commander,
     session_store: Rc<RefCell<SessionStore>>,
     file_operations: &FileOperationsConfig,
     kind: FileOperationKind,
+    delete_mode: DeleteMode,
 ) -> Result<PreparedOperation, OperationError> {
     let is_delete = matches!(kind, FileOperationKind::Delete);
+    let permanent_delete = is_delete && matches!(delete_mode, DeleteMode::Permanent);
     let request = commander
         .operation_request(kind, &session_store.borrow())
         .map_err(|error| OperationError::planning(error.to_string()))?
-        .with_use_recycle_bin(is_delete && file_operations.use_recycle_bin);
+        .with_use_recycle_bin(is_delete && file_operations.use_recycle_bin && !permanent_delete);
 
-    if is_delete && !file_operations.confirm_delete {
+    if is_delete && !file_operations.confirm_delete && !permanent_delete {
         Ok(PreparedOperation::Start(request))
     } else {
         Ok(PreparedOperation::Confirm(request))
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeleteMode {
+    Default,
+    Permanent,
 }
 
 pub fn start_operation_task(
@@ -104,11 +112,13 @@ pub fn start_operation_task(
             session,
             entry_paths,
             target_directory,
+            force_overwrite,
         }) => {
             let (handle, receiver) = remote_service.start_download(RemoteDownloadRequest {
                 session,
                 entry_paths,
                 target_directory,
+                force_overwrite,
             });
             Ok(StartedOperation::Remote {
                 handle,
@@ -120,11 +130,13 @@ pub fn start_operation_task(
             sources,
             session,
             target_directory,
+            force_overwrite,
         }) => {
             let (handle, receiver) = remote_service.start_upload(RemoteUploadRequest {
                 sources: sources.clone(),
                 session,
                 target_directory,
+                force_overwrite,
             });
             Ok(StartedOperation::Remote {
                 handle,

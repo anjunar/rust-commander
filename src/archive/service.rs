@@ -73,8 +73,22 @@ impl ArchiveService {
         self.registry.is_archive_path(path)
     }
 
+    pub fn probe_path(&self, path: &Path) -> Option<crate::archive::ArchiveProbe> {
+        self.registry.probe_path(path)
+    }
+
+    pub fn can_open_path(&self, path: &Path) -> bool {
+        self.registry.backend_that_can_open(path).is_some()
+    }
+
     pub fn open_archive(&self, path: &Path) -> Result<ArchiveSession, ArchiveError> {
-        self.registry.resolve_for_path(path)?.open(path)
+        // Open via can_open only — probe is for unsupported UX, not I/O.
+        self.registry
+            .backend_that_can_open(path)
+            .ok_or_else(|| ArchiveError::UnsupportedFormat {
+                path: path.to_path_buf(),
+            })?
+            .open(path)
     }
 
     pub fn entries_for_archive_view(
@@ -204,7 +218,7 @@ impl ArchiveService {
 
         let mut entries = entries_by_name.into_values().collect::<Vec<_>>();
         entries.sort_by_key(|a| a.name.to_lowercase());
-        if session.cached_entries().iter().any(|_| true) {
+        if !session.cached_entries().is_empty() {
             entries.insert(0, Entry::parent_link());
         }
         entries

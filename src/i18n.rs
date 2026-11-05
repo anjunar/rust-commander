@@ -1,4 +1,4 @@
-pub const SUPPORTED_LOCALES: [&str; 3] = ["de", "en", "fr"];
+pub const SUPPORTED_LOCALES: [&str; 4] = ["de", "en", "fr", "ru"];
 
 pub fn apply_locale(preferred: Option<&str>) -> &'static str {
     let locale = preferred
@@ -27,6 +27,7 @@ pub fn locale_display_name(locale: &str) -> &'static str {
         "de" => "Deutsch",
         "en" => "English",
         "fr" => "Francais",
+        "ru" => "Русский",
         _ => "English",
     }
 }

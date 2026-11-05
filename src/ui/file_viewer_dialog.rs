@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     time::Duration,
 };
@@ -10,121 +10,248 @@ use gtk::{gdk, prelude::*};
 use rust_i18n::t;
 
 use crate::{
-    config::ViewerConfig,
+    archive::ArchiveService,
+    config::{ThemePreference, ViewerConfig},
     ui::{
-        dialogs::{modal, present_and_focus},
-        dsl::{frame, hbox, scrollbar, text, text_view, tr, Property},
+        dialogs::{independent_window, present_and_focus},
+        dsl::{frame, hbox, scrollbar, text, text_view, Property},
+        file_viewer_archive, file_viewer_code,
+        file_viewer_common::{
+            append_status, build_viewer_chrome, file_size, install_escape_close,
+            read_text_file_limited,
+        },
+        file_viewer_csv,
+        file_viewer_html::{html_to_preview_markdown, is_html_path},
+        file_viewer_image,
+        file_viewer_markdown::{is_markdown_path, render_markdown_into_buffer},
+        file_viewer_structured::{self, StructuredKind},
     },
     viewer::ViewerState,
 };
 
-/// Opens `path` in the streaming viewer.
-///
-/// The viewer renders a window of lines itself instead of loading the file
-/// into the text view, so the scrollbars drive [`ViewerState`] and the text
-/// view only shows what it rendered.
-pub fn open(parent: &gtk::ApplicationWindow, path: PathBuf, config: ViewerConfig) -> Result<()> {
+enum FormattedKind {
+    Markdown,
+    Html,
+}
+
+/// Opens `path` in the viewer that fits its format; whatever has no special
+/// viewer goes to the streaming one.
+pub fn open(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    config: ViewerConfig,
+    theme: ThemePreference,
+    archive_service: &ArchiveService,
+    sibling_images: Vec<PathBuf>,
+) -> Result<()> {
+    let max_bytes = config.streaming_threshold_bytes();
+
+    if file_viewer_image::is_image_path(&path) {
+        return file_viewer_image::open(parent, &path, sibling_images);
+    }
+    if archive_service.can_open_path(&path) {
+        return file_viewer_archive::open(parent, &path, archive_service);
+    }
+    if is_markdown_path(&path) {
+        return open_formatted(parent, path, FormattedKind::Markdown, max_bytes);
+    }
+    if is_html_path(&path) {
+        return open_formatted(parent, path, FormattedKind::Html, max_bytes);
+    }
+    if file_viewer_csv::is_csv_path(&path) {
+        return file_viewer_csv::open(parent, &path, max_bytes, theme);
+    }
+    if let Some(kind) = file_viewer_structured::detect_structured_kind(&path) {
+        return open_structured(parent, &path, kind, max_bytes, theme);
+    }
+    if file_viewer_code::can_open_as_code(&path, file_size(&path), max_bytes) {
+        return file_viewer_code::open(
+            parent,
+            &path,
+            max_bytes,
+            theme,
+            &t!("viewer.mode_code").into_owned(),
+        );
+    }
+
+    open_streaming(parent, path, config)
+}
+
+fn open_structured(
+    parent: &gtk::ApplicationWindow,
+    path: &Path,
+    kind: StructuredKind,
+    max_bytes: u64,
+    theme: ThemePreference,
+) -> Result<()> {
+    match file_viewer_structured::open(parent, path, kind, max_bytes, theme) {
+        Ok(()) => Ok(()),
+        // Raw highlighted text is still useful when pretty-printing fails.
+        Err(_) if file_size(path) <= max_bytes => file_viewer_code::open(
+            parent,
+            path,
+            max_bytes,
+            theme,
+            &t!("viewer.mode_code").into_owned(),
+        ),
+        Err(error) => Err(error),
+    }
+}
+
+fn open_formatted(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    kind: FormattedKind,
+    max_bytes: u64,
+) -> Result<()> {
+    let source = read_text_file_limited(&path, max_bytes)?;
+    let (preview_markdown, mode) = match kind {
+        FormattedKind::Markdown => (source, t!("viewer.mode_markdown").into_owned()),
+        FormattedKind::Html => (
+            html_to_preview_markdown(&source)?,
+            t!("viewer.mode_html").into_owned(),
+        ),
+    };
+
+    let chrome = build_viewer_chrome(parent, &path);
+    let buffer = gtk::TextBuffer::new(None);
+    render_markdown_into_buffer(&buffer, &preview_markdown);
+
+    let view = gtk::TextView::with_buffer(&buffer);
+    view.set_editable(false);
+    view.set_cursor_visible(false);
+    view.set_wrap_mode(gtk::WrapMode::WordChar);
+    view.set_hexpand(true);
+    view.set_vexpand(true);
+    view.add_css_class("editor-view");
+    view.set_left_margin(12);
+    view.set_right_margin(12);
+    view.set_top_margin(10);
+    view.set_bottom_margin(10);
+
+    let scrolled = gtk::ScrolledWindow::builder()
+        .child(&view)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    scrolled.add_css_class("panel-scroller");
+    chrome.content.append(&scrolled);
+
+    append_status(&chrome.content, &mode, file_size(&path));
+    install_escape_close(&chrome.window);
+    present_and_focus(chrome.window.upcast_ref(), &view);
+    Ok(())
+}
+
+/// The streaming viewer renders a window of lines itself instead of loading
+/// the file into the text view, so the scrollbars drive [`ViewerState`] and
+/// the text view only shows what it rendered.
+fn open_streaming(
+    parent: &gtk::ApplicationWindow,
+    path: PathBuf,
+    config: ViewerConfig,
+) -> Result<()> {
     let viewer = Rc::new(Viewer::open(&path, &config)?);
 
-    let (window, view) = modal(parent, &t!("viewer.window_title"), (980, 720), |dialog| {
-        let window = dialog.window();
-        window.bind(&viewer.title, |window, title| {
-            if !title.is_empty() {
-                window.set_title(Some(title.as_str()));
-            }
-        });
-        {
-            let viewer = Rc::clone(&viewer);
-            let close = window.widget().clone();
-            window.on_key_pressed(move |key, _| viewer.handle_key(key, &close));
-        }
-        {
-            let follower = Rc::clone(&viewer);
-            let handler = viewer
-                .vertical
-                .connect_value_changed(move |_| follower.follow_vertical_scrollbar());
-            window.own_object_signal(&viewer.vertical, handler);
-        }
-        {
-            let follower = Rc::clone(&viewer);
-            let handler = viewer
-                .horizontal
-                .connect_value_changed(move |_| follower.follow_horizontal_scrollbar());
-            window.own_object_signal(&viewer.horizontal, handler);
-        }
-
-        let view = dialog.content(|| {
-            text(path.display().to_string(), |label| label.css("path-label"));
-
-            let mut view = None;
-            hbox(0, |area| {
-                area.set_hexpand(true);
-                area.set_vexpand(true);
-                frame(None, |frame| {
-                    frame.set_hexpand(true);
-                    frame.set_vexpand(true);
-                    frame.css("panel-scroller");
-                    view = Some(text_view(&gtk::TextBuffer::new(None), |view| {
-                        view.set_editable(false);
-                        view.set_cursor_visible(false);
-                        view.set_monospace(true);
-                        view.set_wrap_mode(if config.line_wrap {
-                            gtk::WrapMode::WordChar
-                        } else {
-                            gtk::WrapMode::None
-                        });
-                        view.set_hexpand(true);
-                        view.set_vexpand(true);
-                        view.css("editor-view");
-                        view.set_left_margin(8);
-                        view.set_top_margin(8);
-                        view.set_bottom_margin(8);
-                        view.bind(&viewer.body, |view, body| view.buffer().set_text(body));
-
-                        let scroller = Rc::clone(&viewer);
-                        view.on_scroll(
-                            gtk::EventControllerScrollFlags::HORIZONTAL
-                                | gtk::EventControllerScrollFlags::DISCRETE,
-                            move |dx, _| scroller.scroll_horizontally(dx),
-                        );
-                        let scroller = Rc::clone(&viewer);
-                        view.on_scroll(gtk::EventControllerScrollFlags::VERTICAL, move |_, dy| {
-                            scroller.scroll_vertically(dy)
-                        });
-                    }));
+    let (window, view) =
+        independent_window(parent, &t!("viewer.window_title"), (980, 720), |dialog| {
+            let window = dialog.window();
+            {
+                let title_label = dialog.title_label().clone();
+                window.bind(&viewer.title, move |window, title| {
+                    if !title.is_empty() {
+                        window.set_title(Some(title.as_str()));
+                        title_label.set_label(title);
+                        title_label.set_tooltip_text(Some(title));
+                    }
                 });
-                scrollbar(gtk::Orientation::Vertical, &viewer.vertical, |_| {});
-            });
-            scrollbar(gtk::Orientation::Horizontal, &viewer.horizontal, |_| {});
-            text(&viewer.status, |status| {
-                status.set_hexpand(true);
-                status.css("editor-status");
+            }
+            {
+                let viewer = Rc::clone(&viewer);
+                let close: gtk::Window = window.widget().clone().upcast();
+                window.on_key_pressed(move |key, _| viewer.handle_key(key, &close));
+            }
+            {
+                let follower = Rc::clone(&viewer);
+                let handler = viewer
+                    .vertical
+                    .connect_value_changed(move |_| follower.follow_vertical_scrollbar());
+                window.own_object_signal(&viewer.vertical, handler);
+            }
+            {
+                let follower = Rc::clone(&viewer);
+                let handler = viewer
+                    .horizontal
+                    .connect_value_changed(move |_| follower.follow_horizontal_scrollbar());
+                window.own_object_signal(&viewer.horizontal, handler);
+            }
+
+            let view = dialog.content(|| {
+                text(path.display().to_string(), |label| label.css("path-label"));
+
+                let mut view = None;
+                hbox(0, |area| {
+                    area.set_hexpand(true);
+                    area.set_vexpand(true);
+                    frame(None, |frame| {
+                        frame.set_hexpand(true);
+                        frame.set_vexpand(true);
+                        frame.css("panel-scroller");
+                        view = Some(text_view(&gtk::TextBuffer::new(None), |view| {
+                            view.set_editable(false);
+                            view.set_cursor_visible(false);
+                            view.set_monospace(true);
+                            view.set_wrap_mode(if config.line_wrap {
+                                gtk::WrapMode::WordChar
+                            } else {
+                                gtk::WrapMode::None
+                            });
+                            view.set_hexpand(true);
+                            view.set_vexpand(true);
+                            view.css("editor-view");
+                            view.set_left_margin(8);
+                            view.set_top_margin(8);
+                            view.set_bottom_margin(8);
+                            view.bind(&viewer.body, |view, body| view.buffer().set_text(body));
+
+                            let scroller = Rc::clone(&viewer);
+                            view.on_scroll(
+                                gtk::EventControllerScrollFlags::HORIZONTAL
+                                    | gtk::EventControllerScrollFlags::DISCRETE,
+                                move |dx, _| scroller.scroll_horizontally(dx),
+                            );
+                            let scroller = Rc::clone(&viewer);
+                            view.on_scroll(
+                                gtk::EventControllerScrollFlags::VERTICAL,
+                                move |_, dy| scroller.scroll_vertically(dy),
+                            );
+                        }));
+                    });
+                    scrollbar(gtk::Orientation::Vertical, &viewer.vertical, |_| {});
+                });
+                scrollbar(gtk::Orientation::Horizontal, &viewer.horizontal, |_| {});
+                text(&viewer.status, |status| {
+                    status.set_hexpand(true);
+                    status.css("editor-status");
+                });
+
+                view.expect("viewer text composed")
             });
 
-            view.expect("viewer text composed")
+            // Once laid out, the view knows how many lines fit.
+            {
+                let viewer = Rc::clone(&viewer);
+                let view = view.widget().clone();
+                window.after(Duration::from_millis(60), move || {
+                    viewer.set_visible_lines(estimate_visible_lines(&view));
+                });
+            }
+
+            view
         });
-
-        let close = dialog.actions(|| {
-            let close = dialog.close_button(tr!("common.close"));
-            close.css("command-button");
-            close
-        });
-        window.set_default_widget(Some(close.widget()));
-
-        // Once laid out, the view knows how many lines fit.
-        {
-            let viewer = Rc::clone(&viewer);
-            let view = view.widget().clone();
-            window.after(Duration::from_millis(60), move || {
-                viewer.set_visible_lines(estimate_visible_lines(&view));
-            });
-        }
-
-        view
-    });
 
     viewer.refresh();
-    present_and_focus(&window, view.widget());
+    present_and_focus(window.upcast_ref(), view.widget());
     Ok(())
 }
 
@@ -142,7 +269,7 @@ struct Viewer {
 }
 
 impl Viewer {
-    fn open(path: &std::path::Path, config: &ViewerConfig) -> Result<Self> {
+    fn open(path: &Path, config: &ViewerConfig) -> Result<Self> {
         Ok(Self {
             state: RefCell::new(ViewerState::open(path, config)?),
             title: Property::new(String::new()),

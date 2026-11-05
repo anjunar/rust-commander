@@ -23,8 +23,35 @@ impl ThemeController {
     }
 
     pub fn apply(&self, preference: ThemePreference) {
+        if let Some(settings) = gtk::Settings::default() {
+            let prefer_dark = match preference {
+                ThemePreference::Dark => Some(true),
+                ThemePreference::Light => Some(false),
+                ThemePreference::System => None,
+            };
+            // The shell re-applies the theme when this setting changes, and
+            // GTK notifies on every write, changed or not.
+            if prefer_dark
+                .is_some_and(|dark| dark != settings.is_gtk_application_prefer_dark_theme())
+            {
+                settings.set_gtk_application_prefer_dark_theme(prefer_dark == Some(true));
+            }
+        }
+
         self.provider
             .load_from_string(&format!("{BASE_CSS}\n{}", palette_css(preference)));
+    }
+}
+
+pub fn is_dark(preference: ThemePreference) -> bool {
+    matches!(resolved_variant(preference), ThemeVariant::Dark)
+}
+
+pub fn sourceview_style_scheme_ids(preference: ThemePreference) -> &'static [&'static str] {
+    if is_dark(preference) {
+        &["Adwaita-dark", "classic-dark", "cobalt", "oblivion"]
+    } else {
+        &["Adwaita", "classic", "kate", "solarized-light"]
     }
 }
 

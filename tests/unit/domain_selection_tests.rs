@@ -21,7 +21,7 @@ fn preserve_intent_restores_selection_when_entries_reordered() {
 }
 
 #[test]
-fn delete_intent_clamps_to_neighbor() {
+fn delete_intent_clamps_cursor_without_auto_marking() {
     let selection = SelectionModel::single(Some(2));
     let snapshot = snapshot_selection(&selection, &[entry("alpha"), entry("beta"), entry("gamma")]);
 
@@ -30,7 +30,7 @@ fn delete_intent_clamps_to_neighbor() {
         &SelectionIntent::after_delete(snapshot),
     );
 
-    assert_eq!(restored.selected_indices().collect::<Vec<_>>(), vec![1]);
+    assert!(restored.selected_indices().collect::<Vec<_>>().is_empty());
     assert_eq!(restored.focus_index(), Some(1));
 }
 
@@ -42,6 +42,7 @@ fn navigation_prefers_parent_link() {
     );
 
     assert_eq!(restored.focus_index(), Some(0));
+    assert!(restored.selected_indices().collect::<Vec<_>>().is_empty());
 }
 
 #[test]
@@ -56,10 +57,11 @@ fn reveal_prefers_named_entry() {
     );
 
     assert_eq!(restored.focus_index(), Some(1));
+    assert!(restored.selected_indices().collect::<Vec<_>>().is_empty());
 }
 
 #[test]
-fn preserve_intent_restores_archive_entries_by_archive_path() {
+fn preserve_intent_restores_archive_cursor_by_archive_path() {
     let selection = SelectionModel::single(Some(1));
     let snapshot = snapshot_selection(
         &selection,
@@ -67,12 +69,42 @@ fn preserve_intent_restores_archive_entries_by_archive_path() {
     );
 
     let restored = apply_selection(
-        &[archive_entry("folder/file.txt"), archive_entry("folder/other.txt")],
+        &[
+            archive_entry("folder/file.txt"),
+            archive_entry("folder/other.txt"),
+        ],
         &SelectionIntent::preserve(snapshot),
     );
 
     assert_eq!(restored.focus_index(), Some(0));
-    assert_eq!(restored.selected_indices().collect::<Vec<_>>(), vec![0]);
+    assert!(restored.selected_indices().collect::<Vec<_>>().is_empty());
+}
+
+#[test]
+fn set_focus_preserves_marks() {
+    let mut selection = SelectionModel::new(BTreeSet::from([0, 2]), Some(0), Some(0));
+    selection.set_focus(1, 3);
+    assert_eq!(selection.focus_index(), Some(1));
+    assert_eq!(selection.selected_indices().collect::<Vec<_>>(), vec![0, 2]);
+}
+
+#[test]
+fn toggle_mark_and_advance_skips_when_not_markable() {
+    let mut selection = SelectionModel::single(Some(0));
+    selection.toggle_mark_and_advance(false, 3);
+    assert!(selection.selected_indices().collect::<Vec<_>>().is_empty());
+    assert_eq!(selection.focus_index(), Some(1));
+}
+
+#[test]
+fn toggle_mark_and_advance_marks_and_moves_down() {
+    let mut selection = SelectionModel::single(Some(1));
+    selection.toggle_mark_and_advance(true, 3);
+    assert_eq!(selection.selected_indices().collect::<Vec<_>>(), vec![1]);
+    assert_eq!(selection.focus_index(), Some(2));
+    selection.toggle_mark_and_advance(true, 3);
+    assert_eq!(selection.selected_indices().collect::<Vec<_>>(), vec![1, 2]);
+    assert_eq!(selection.focus_index(), Some(2));
 }
 
 fn entry(name: &str) -> Entry {
@@ -90,7 +122,11 @@ fn entry(name: &str) -> Entry {
 }
 
 fn archive_entry(path: &str) -> Entry {
-    let name = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+    let name = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path);
     Entry {
         name: name.into(),
         archive_path: Some(path.into()),

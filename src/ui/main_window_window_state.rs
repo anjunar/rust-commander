@@ -1,4 +1,8 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -7,7 +11,7 @@ use crate::platform::restore_window_placement;
 
 use crate::{
     application::{ActivePanel, Commander, ConfigStore},
-    config::{WindowConfig, WindowPosition},
+    config::{AppConfig, WindowConfig, WindowPosition},
     platform::current_window_placement,
     ui::dsl::Ctx,
 };
@@ -56,13 +60,21 @@ impl WindowStateController {
                     app_config.window.width = window.width().max(1);
                     app_config.window.height = window.height().max(1);
                 }
-                app_config.panes.left_directory = commander.panel_directory(ActivePanel::Left);
-                app_config.panes.right_directory = commander.panel_directory(ActivePanel::Right);
+                write_pane_session(app_config, &commander);
             }) {
                 eprintln!("Could not save config: {error}");
             }
-            false
+
+            // Editor windows keep the GTK application alive; close them with the commander.
+            close_auxiliary_windows(&window)
         });
+    }
+
+    /// Persist panel tabs (paths, cursors, sort) immediately — e.g. after sort changes.
+    pub fn persist_pane_session(&self) {
+        if let Err(error) = persist_pane_session(&self.commander.borrow(), &self.config_store) {
+            eprintln!("Could not save pane session: {error}");
+        }
     }
 
     pub fn install_window_geometry_tracking(&self) {
@@ -144,7 +156,7 @@ impl WindowStateController {
         }
     }
 
-    pub fn initialize_split_positions(&self) {
+    pub fn initialize_split_positions(&self, on_settled: impl Fn() + 'static) {
         let horizontal = self.horizontal_paned.clone();
         let vertical = self.vertical_paned.clone();
         self.root.after(Duration::from_millis(30), move || {
@@ -155,8 +167,111 @@ impl WindowStateController {
 
             let vertical_height = vertical.height();
             if vertical_height > 0 {
-                vertical.set_position(vertical_height / 2);
+                vertical.set_position((vertical_height * 4) / 5);
             }
+
+            glib::timeout_add_local_once(Duration::from_millis(16), move || {
+                on_settled();
+            });
         });
     }
+}
+
+pub(crate) fn persist_pane_session(
+    commander: &Commander,
+    config_store: &ConfigStore,
+) -> anyhow::Result<()> {
+    config_store.update(|app_config| {
+        write_pane_session(app_config, commander);
+    })?;
+    Ok(())
+}
+
+fn write_pane_session(app_config: &mut AppConfig, commander: &Commander) {
+    app_config.panes.left_directory = commander.panel_directory(ActivePanel::Left);
+    app_config.panes.right_directory = commander.panel_directory(ActivePanel::Right);
+    app_config.panes.left_cursor = commander.cursor_name(ActivePanel::Left);
+    app_config.panes.right_cursor = commander.cursor_name(ActivePanel::Right);
+    app_config.panes.left_tabs = pane_tabs_config(commander, ActivePanel::Left);
+    app_config.panes.right_tabs = pane_tabs_config(commander, ActivePanel::Right);
+    app_config.panes.left_active_tab = commander.state().tabs(ActivePanel::Left).active_index();
+    app_config.panes.right_active_tab = commander.state().tabs(ActivePanel::Right).active_index();
+}
+
+fn pane_tabs_config(
+    commander: &crate::application::Commander,
+    panel: ActivePanel,
+) -> Vec<crate::config::PaneTabConfig> {
+    commander
+        .state()
+        .tabs(panel)
+        .tabs()
+        .iter()
+        .map(|tab| crate::config::PaneTabConfig {
+            directory: tab.panel.location.host_directory(),
+            cursor: tab.panel.cursor_name(),
+            sort_column: tab.panel.sort_state.column,
+            sort_direction: tab.panel.sort_state.direction,
+        })
+        .collect()
+}
+
+/// Close every application window except the main commander window.
+///
+/// Returns `true` when the main window should wait (auxiliary windows are still
+/// open, e.g. an editor discard confirmation).
+fn close_auxiliary_windows(main: &gtk::ApplicationWindow) -> bool {
+    let Some(app) = main.application() else {
+        return false;
+    };
+
+    let main_window = main.clone().upcast::<gtk::Window>();
+    let others: Vec<gtk::Window> = app
+        .windows()
+        .into_iter()
+        .filter(|window| window != &main_window)
+        .collect();
+
+    if others.is_empty() {
+        return false;
+    }
+
+    let pending = Rc::new(Cell::new(others.len()));
+    let waiting = Rc::new(Cell::new(false));
+    for other in others {
+        let pending = Rc::clone(&pending);
+        let waiting = Rc::clone(&waiting);
+        let main = main.clone();
+        other.connect_destroy(move |_| {
+            let left = pending.get().saturating_sub(1);
+            pending.set(left);
+            if left == 0 && waiting.get() {
+                let main = main.clone();
+                glib::idle_add_local_once(move || {
+                    if auxiliary_windows_open(&main) {
+                        return;
+                    }
+                    main.close();
+                });
+            }
+        });
+        other.close();
+    }
+
+    if pending.get() == 0 {
+        return false;
+    }
+
+    waiting.set(true);
+    true
+}
+
+fn auxiliary_windows_open(main: &gtk::ApplicationWindow) -> bool {
+    let Some(app) = main.application() else {
+        return false;
+    };
+    let main_window = main.clone().upcast::<gtk::Window>();
+    app.windows()
+        .into_iter()
+        .any(|window| window != main_window)
 }

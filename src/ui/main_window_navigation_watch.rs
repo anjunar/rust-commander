@@ -41,10 +41,17 @@ impl NavigationController {
     }
 
     pub fn queue_initial_panel_loads(&self) {
-        self.runtime.load_scheduler.borrow_mut().queue_refresh(
+        self.refresh_panels(
             &[ActivePanel::Left, ActivePanel::Right],
             t!("status.view_refreshed").into_owned(),
         );
+    }
+
+    pub fn refresh_panels(&self, panels: &[ActivePanel], status: String) {
+        self.runtime
+            .load_scheduler
+            .borrow_mut()
+            .queue_refresh(panels, status);
         self.refresh_dirty_panels_if_idle();
     }
 
@@ -145,7 +152,7 @@ impl NavigationController {
         }
     }
 
-    pub(super) fn trigger_manual_refresh_cooldown(&self) {
+    pub(crate) fn trigger_manual_refresh_cooldown(&self) {
         self.runtime
             .watcher_refresh_cooldown_until
             .set(Some(Instant::now() + Duration::from_millis(900)));

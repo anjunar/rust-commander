@@ -8,6 +8,7 @@ pub enum ArchiveFamily {
     Rar,
     Iso,
     TarLike,
+    SevenZip,
     Other,
 }
 
@@ -72,6 +73,7 @@ pub fn archive_family_for_format(format: ArchiveFormat) -> ArchiveFamily {
         | ArchiveFormat::Cab
         | ArchiveFormat::Wim
         | ArchiveFormat::Cpio => ArchiveFamily::TarLike,
+        ArchiveFormat::SevenZip => ArchiveFamily::SevenZip,
         ArchiveFormat::Arj
         | ArchiveFormat::Lha
         | ArchiveFormat::Dmg
@@ -99,9 +101,15 @@ pub fn probe_multipart_zip(path: &Path) -> Option<ArchiveProbe> {
         ));
     }
 
-    if file_name.len() >= 4 {
-        let suffix = &file_name[file_name.len() - 4..];
-        if suffix.starts_with(".z") && suffix[2..].chars().all(|c| c.is_ascii_digit()) {
+    // Byte suffix: string indexing would panic on non-ASCII names ending in `.7z`.
+    let bytes = file_name.as_bytes();
+    if bytes.len() >= 4 {
+        let suffix = &bytes[bytes.len() - 4..];
+        if suffix[0] == b'.'
+            && suffix[1] == b'z'
+            && suffix[2].is_ascii_digit()
+            && suffix[3].is_ascii_digit()
+        {
             return Some(ArchiveProbe::multipart_unsupported(
                 ArchiveFamily::Zip,
                 path.to_path_buf(),
@@ -114,4 +122,30 @@ pub fn probe_multipart_zip(path: &Path) -> Option<ArchiveProbe> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn cyrillic_sevenzip_name_is_not_multipart_zip() {
+        let path = Path::new(r"C:\111\логическая цепочка.7z");
+        assert!(probe_multipart_zip(path).is_none());
+        // Must not panic (old code sliced mid-UTF-8 on this name).
+        let registry = crate::archive::ArchiveBackendRegistry::with_default_backends();
+        let _ = registry.probe_path(path);
+        assert!(registry.backend_that_can_open(path).is_some());
+    }
+
+    #[test]
+    fn ascii_split_zip_part_is_detected() {
+        let path = Path::new(r"C:\data\archive.z01");
+        let probe = probe_multipart_zip(path).expect("multipart zip");
+        assert!(matches!(
+            probe.support,
+            ArchiveSupport::NotSupportedYet { .. }
+        ));
+    }
 }

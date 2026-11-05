@@ -1,4 +1,3 @@
-
 mod detector;
 mod error;
 mod iso_backend;
@@ -8,8 +7,12 @@ mod plugin;
 mod probe;
 mod registry;
 mod service;
+mod sevenz_backend;
+#[cfg(target_os = "windows")]
+mod sevenz_worker;
 mod unrar;
 mod zip_backend;
+mod zip_name;
 
 use std::{
     fmt,
@@ -23,12 +26,29 @@ pub use error::ArchiveError;
 pub use iso_backend::IsoBackend;
 pub use libarchive::LibArchiveBackend;
 pub use path::safe_join_extract_path;
+pub(crate) use path::{
+    archive_entry_display_name, archive_entry_matches_selection, normalize_archive_entry_path,
+};
 pub use plugin::PluginArchiveBackend;
 pub use probe::{ArchiveProbe, ArchiveSupport};
 pub use registry::ArchiveBackendRegistry;
 pub use service::{ArchiveService, ArchiveTaskEvent, ArchiveTaskHandle, ArchiveTaskRequest};
+pub use sevenz_backend::SevenZipBackend;
 pub use unrar::UnrarBackend;
 pub use zip_backend::ZipBackend;
+
+/// Runs the Windows out-of-process 7z helper when argv starts with `--archive-worker`.
+/// Returns `Some(exit_code)` so the binary can exit without starting GTK.
+pub fn archive_worker_main() -> Option<i32> {
+    #[cfg(target_os = "windows")]
+    {
+        sevenz_worker::maybe_run_from_args(std::env::args_os())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArchiveEntry {
@@ -52,9 +72,7 @@ pub enum ArchiveEntryKind {
 
 #[derive(Clone, Debug)]
 pub enum ArchiveOperation {
-    ExtractEntries {
-        entry_paths: Vec<String>,
-    },
+    ExtractEntries { entry_paths: Vec<String> },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -65,7 +83,6 @@ pub struct ArchiveProgress {
     pub total_entries: Option<u64>,
     pub percent: Option<f64>,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct ArchiveSession {
