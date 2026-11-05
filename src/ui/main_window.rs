@@ -369,14 +369,29 @@ impl MainWindow {
         self.shell.status.set(presentation::status_line(state));
     }
 
-    /// Lists the directory of the panel's active tab.
-    pub(crate) fn load_panel(self: &Rc<Self>, panel: ActivePanel) {
-        let request = crate::application::refresh_request(
-            &self.commander.borrow(),
-            panel,
-            t!("status.loading_directory").into_owned(),
-        );
-        self.navigation_controller().start_directory_load(request);
+    /// Brings the view in line after the panel's tabs changed.
+    ///
+    /// Only the active tabs are listed at startup, and a new tab starts
+    /// empty, so the tab that comes to the front may have no entries yet.
+    pub(crate) fn show_active_tab(self: &Rc<Self>, panel: ActivePanel, mut update: ViewUpdate) {
+        update.active_panel = true;
+        let needs_load = self
+            .commander
+            .borrow()
+            .state()
+            .panel(panel)
+            .entries
+            .is_empty();
+        self.apply_update(update);
+        self.navigation_controller().sync_watched_paths();
+        if needs_load {
+            let request = crate::application::refresh_request(
+                &self.commander.borrow(),
+                panel,
+                t!("status.ready").into_owned(),
+            );
+            self.navigation_controller().start_directory_load(request);
+        }
     }
 
     fn apply_root(&self, state: &AppState, panel: ActivePanel) {

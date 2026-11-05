@@ -144,7 +144,7 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             theme: ThemePreference::System,
-            icon_style: IconStyle::Symbolic,
+            icon_style: IconStyle::default(),
             restore_last_session: true,
         }
     }
@@ -253,14 +253,25 @@ pub enum ThemePreference {
 }
 
 /// How file-list icons are rendered.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IconStyle {
-    /// Monochrome GTK symbolic icons (safe; no shell association lookups).
-    #[default]
+    /// Monochrome GTK symbolic icons, with no shell lookups at all.
     Symbolic,
     /// Platform/shell icons when available (colorful on Windows).
     System,
+}
+
+impl Default for IconStyle {
+    /// The icons people know from their desktop where there are any. The
+    /// lookup goes by file extension only, so no shell handler sees the file.
+    fn default() -> Self {
+        if cfg!(target_os = "windows") {
+            Self::System
+        } else {
+            Self::Symbolic
+        }
+    }
 }
 
 pub fn load_or_default() -> AppConfig {

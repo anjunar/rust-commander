@@ -179,3 +179,22 @@ fn invalid_config_returns_defaults_in_load_or_default() {
     assert_eq!(loaded.window.width, WindowConfig::default().width);
     assert_eq!(loaded.general.theme, ThemePreference::System);
 }
+
+#[test]
+fn configs_without_an_icon_style_get_the_icons_of_the_platform() {
+    let temp_path = std::env::temp_dir().join(format!(
+        "rust_commander_icon_style_config_test_{}.toml",
+        std::process::id()
+    ));
+    std::fs::write(&temp_path, "[general]\ntheme = \"dark\"\n").unwrap();
+
+    let loaded = load_or_default_from_path(&temp_path);
+    let _ = std::fs::remove_file(&temp_path);
+
+    let expected = if cfg!(target_os = "windows") {
+        IconStyle::System
+    } else {
+        IconStyle::Symbolic
+    };
+    assert_eq!(loaded.general.icon_style, expected);
+}

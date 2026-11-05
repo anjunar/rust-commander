@@ -145,27 +145,25 @@ impl ShellEvents for WindowEvents {
         matched
     }
 
-    // Both rebuild the tab strip, which holds the button being clicked.
+    // These rebuild the tab strip, which holds the button being clicked.
     fn tab_activated(&self, panel: ActivePanel, index: usize) {
         self.later(move |window| {
-            let (update, needs_load) = {
-                let mut commander = window.commander.borrow_mut();
-                let update = commander.activate_tab(panel, index);
-                let needs_load = commander.state().panel(panel).entries.is_empty();
-                (update, needs_load)
-            };
-            window.apply_update(update);
-            if needs_load {
-                window.load_panel(panel);
-            }
+            let update = window.commander.borrow_mut().activate_tab(panel, index);
+            window.show_active_tab(panel, update);
         });
     }
 
     fn tab_new(&self, panel: ActivePanel) {
         self.later(move |window| {
             let update = window.commander.borrow_mut().open_tab(panel);
-            window.apply_update(update);
-            window.load_panel(panel);
+            window.show_active_tab(panel, update);
+        });
+    }
+
+    fn tab_close(&self, panel: ActivePanel, index: usize) {
+        self.later(move |window| {
+            let update = window.commander.borrow_mut().close_tab_at(panel, index);
+            window.show_active_tab(panel, update);
         });
     }
 

@@ -45,6 +45,7 @@ pub(crate) trait ShellEvents {
     fn quick_search(&self, panel: ActivePanel, query: &str) -> bool;
     fn tab_activated(&self, panel: ActivePanel, index: usize);
     fn tab_new(&self, panel: ActivePanel);
+    fn tab_close(&self, panel: ActivePanel, index: usize);
     fn root_selected(&self, panel: ActivePanel, index: usize);
     fn connect_remote(&self, panel: ActivePanel);
     fn context_menu(

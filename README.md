@@ -100,7 +100,7 @@ Folder-specific sort remember/forget is available from the View menu.
 | Key | Action |
 | --- | --- |
 | `Ctrl+T` | New tab |
-| `Ctrl+W` | Close tab |
+| `Ctrl+W` | Close tab (also the ✕ on a tab, or a middle click on it) |
 | `Ctrl+Tab` / `Ctrl+PageDown` | Next tab |
 | `Ctrl+Shift+Tab` / `Ctrl+PageUp` | Previous tab |
 | `Ctrl+D` | Favorites |

@@ -179,8 +179,13 @@ impl Commander {
     }
 
     pub fn close_tab(&mut self, panel: ActivePanel) -> ViewUpdate {
+        let index = self.state.tabs(panel).active_index();
+        self.close_tab_at(panel, index)
+    }
+
+    pub fn close_tab_at(&mut self, panel: ActivePanel, index: usize) -> ViewUpdate {
         self.state.active_panel = panel;
-        if !self.state.tabs_mut(panel).close_active() {
+        if !self.state.tabs_mut(panel).close(index) {
             return ViewUpdate::default();
         }
         ViewUpdate::panel_entries(panel)

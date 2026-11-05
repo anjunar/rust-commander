@@ -82,13 +82,16 @@ impl PanelTabs {
         id
     }
 
-    /// Close the active tab. Keeps at least one tab. Returns whether a tab was closed.
-    pub fn close_active(&mut self) -> bool {
-        if self.tabs.len() <= 1 {
+    /// Close the tab at `index`. Keeps at least one tab, and the active tab
+    /// stays active unless it is the one closed. Returns whether a tab was closed.
+    pub fn close(&mut self, index: usize) -> bool {
+        if self.tabs.len() <= 1 || index >= self.tabs.len() {
             return false;
         }
-        self.tabs.remove(self.active);
-        if self.active >= self.tabs.len() {
+        self.tabs.remove(index);
+        if index < self.active {
+            self.active -= 1;
+        } else if self.active >= self.tabs.len() {
             self.active = self.tabs.len() - 1;
         }
         true

@@ -4,8 +4,8 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     application::{
-        filesystem_navigation_request, location_root_navigation_request, ActivePanel,
-        FileOperationKind,
+        filesystem_navigation_request, location_root_navigation_request, ActivePanel, Commander,
+        FileOperationKind, ViewUpdate,
     },
     domain::sorting::{SortColumn, SortDirection},
     presentation,
@@ -290,84 +290,28 @@ impl MainWindow {
     }
 
     pub fn handle_new_tab(self: &Rc<Self>) {
-        if self.view.terminal.has_focus() {
-            return;
-        }
-        let panel = self.commander.borrow().state().active_panel;
-        let (update, request) = {
-            let mut commander = self.commander.borrow_mut();
-            let update = commander.open_tab(panel);
-            let request = crate::application::refresh_request(
-                &commander,
-                panel,
-                rust_i18n::t!("status.loading_directory").into_owned(),
-            );
-            (update, request)
-        };
-        self.apply_update(update);
-        self.navigation_controller().start_directory_load(request);
+        self.change_tab(Commander::open_tab);
     }
 
     pub fn handle_close_tab(self: &Rc<Self>) {
-        if self.view.terminal.has_focus() {
-            return;
-        }
-        let panel = self.commander.borrow().state().active_panel;
-        let update = {
-            let mut commander = self.commander.borrow_mut();
-            commander.close_tab(panel)
-        };
-        self.apply_update(update);
+        self.change_tab(Commander::close_tab);
     }
 
     pub fn handle_next_tab(self: &Rc<Self>) {
-        if self.view.terminal.has_focus() {
-            return;
-        }
-        let panel = self.commander.borrow().state().active_panel;
-        let (update, needs_load) = {
-            let mut commander = self.commander.borrow_mut();
-            let update = commander.next_tab(panel);
-            let needs_load = commander.state().panel(panel).entries.is_empty();
-            (update, needs_load)
-        };
-        self.apply_update(update);
-        if needs_load {
-            let request = {
-                let commander = self.commander.borrow();
-                crate::application::refresh_request(
-                    &commander,
-                    panel,
-                    rust_i18n::t!("status.loading_directory").into_owned(),
-                )
-            };
-            self.navigation_controller().start_directory_load(request);
-        }
+        self.change_tab(Commander::next_tab);
     }
 
     pub fn handle_prev_tab(self: &Rc<Self>) {
+        self.change_tab(Commander::prev_tab);
+    }
+
+    fn change_tab(self: &Rc<Self>, change: fn(&mut Commander, ActivePanel) -> ViewUpdate) {
         if self.view.terminal.has_focus() {
             return;
         }
         let panel = self.commander.borrow().state().active_panel;
-        let (update, needs_load) = {
-            let mut commander = self.commander.borrow_mut();
-            let update = commander.prev_tab(panel);
-            let needs_load = commander.state().panel(panel).entries.is_empty();
-            (update, needs_load)
-        };
-        self.apply_update(update);
-        if needs_load {
-            let request = {
-                let commander = self.commander.borrow();
-                crate::application::refresh_request(
-                    &commander,
-                    panel,
-                    rust_i18n::t!("status.loading_directory").into_owned(),
-                )
-            };
-            self.navigation_controller().start_directory_load(request);
-        }
+        let update = change(&mut self.commander.borrow_mut(), panel);
+        self.show_active_tab(panel, update);
     }
 
     pub fn handle_mark_all(self: &Rc<Self>) {

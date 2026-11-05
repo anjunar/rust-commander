@@ -10,10 +10,12 @@ use crate::ui::dsl::{
 
 /// One test for everything that touches GTK: widgets belong to the thread
 /// that initialised GTK, and the test harness gives every test its own thread.
-/// Without a display (headless CI) the test skips instead of failing.
+/// Without a display (headless CI) the test skips instead of failing. So it
+/// does on macOS, where GTK only starts on the main thread, which the test
+/// harness never runs a test on: `gtk::init` panics there instead of failing.
 #[test]
 fn dsl_drives_gtk_widgets_and_releases_its_scope() {
-    if gtk::init().is_err() {
+    if cfg!(target_os = "macos") || gtk::init().is_err() {
         eprintln!("skipping GTK DSL test: no display available");
         return;
     }
@@ -80,6 +82,9 @@ impl crate::ui::shell::ShellEvents for RecordingEvents {
     }
     fn tab_new(&self, panel: crate::application::ActivePanel) {
         self.record(format!("new tab {panel:?}"));
+    }
+    fn tab_close(&self, panel: crate::application::ActivePanel, index: usize) {
+        self.record(format!("close tab {panel:?} {index}"));
     }
     fn root_selected(&self, panel: crate::application::ActivePanel, index: usize) {
         self.record(format!("root {panel:?} {index}"));
@@ -269,16 +274,26 @@ fn shell_composes_the_main_window() {
     assert!(tables[0].is_sensitive());
 
     // The tab strip shows the tabs and reports clicks.
-    let tabs = with_class::<gtk::Button>(&left_panel[0], "panel-tab");
+    let tabs = with_class::<gtk::Box>(&left_panel[0], "panel-tab");
     assert_eq!(tabs.len(), 2);
     assert!(!tabs[0].has_css_class("active"));
     assert!(tabs[1].has_css_class("active"));
-    tabs[0].emit_clicked();
+    with_class::<gtk::Button>(&left_panel[0], "panel-tab-title")[0].emit_clicked();
+    with_class::<gtk::Button>(&left_panel[0], "panel-tab-close")[1].emit_clicked();
     with_class::<gtk::Button>(&left_panel[0], "panel-tab-add")[0].emit_clicked();
     assert_eq!(
         events.take(),
-        vec!["tab Left 0".to_string(), "new tab Left".to_string()]
+        vec![
+            "tab Left 0".to_string(),
+            "close tab Left 1".to_string(),
+            "new tab Left".to_string()
+        ]
     );
+
+    // A panel keeps its last tab, so a single tab offers no way to close it.
+    view.left.set_tabs(vec!["only".to_string()], 0);
+    assert_eq!(with_class::<gtk::Box>(&left_panel[0], "panel-tab").len(), 1);
+    assert!(with_class::<gtk::Button>(&left_panel[0], "panel-tab-close").is_empty());
 
     // A user choice is reported: the cursor, a root, and the SFTP entry.
     selection.set_selected(1);

@@ -17,8 +17,8 @@ use crate::{
     ui::{
         columns::{begin_inline_rename, file_columns},
         dsl::{
-            button, column_view, dropdown_list, foreach_in, hbox, scrolled, text, tr, vbox,
-            ListProperty, Property, Table,
+            button, column_view, dropdown_list, foreach_in, hbox, icon_button, scrolled, text, tr,
+            vbox, ListProperty, Property, Table,
         },
         file_row_object::FileRowObject,
         shell::ShellEvents,
@@ -50,6 +50,8 @@ pub enum PanelKeyNavigation {
 pub(crate) struct PanelTab {
     pub title: String,
     pub active: bool,
+    /// A panel always keeps one tab, so a single tab offers no way to close it.
+    pub closable: bool,
 }
 
 type SortColumns = Rc<Vec<(gtk::ColumnViewColumn, SortColumn)>>;
@@ -268,24 +270,7 @@ fn tab_strip(panel: ActivePanel, tabs: &ListProperty<PanelTab>, events: &Rc<dyn 
                 gtk::Orientation::Horizontal,
                 0,
                 tabs,
-                move |tab: &PanelTab, index| {
-                    let events = Rc::clone(&events);
-                    button(tab.title.as_str(), |button| {
-                        button.css("panel-tab");
-                        if tab.active {
-                            button.css("active");
-                        }
-                        button.set_has_frame(false);
-                        button.set_can_focus(false);
-                        button.set_hexpand(false);
-                        button.set_tooltip_text(Some(&tab.title));
-                        if let Some(label) = button.child().and_downcast::<gtk::Label>() {
-                            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                            label.set_max_width_chars(24);
-                        }
-                        button.on_click(move || events.tab_activated(panel, index));
-                    });
-                },
+                move |tab: &PanelTab, index| panel_tab(panel, tab, index, &events),
             );
         }
 
@@ -297,6 +282,48 @@ fn tab_strip(panel: ActivePanel, tabs: &ListProperty<PanelTab>, events: &Rc<dyn 
             let events = Rc::clone(events);
             add.on_click(move || events.tab_new(panel));
         });
+    });
+}
+
+/// One tab: the title that activates it and, when it may go, the way to close
+/// it. A middle click on the tab closes it too.
+fn panel_tab(panel: ActivePanel, tab: &PanelTab, index: usize, events: &Rc<dyn ShellEvents>) {
+    hbox(0, |item| {
+        item.css("panel-tab");
+        if tab.active {
+            item.css("active");
+        }
+        item.set_hexpand(false);
+
+        button(tab.title.as_str(), |title| {
+            title.css("panel-tab-title");
+            title.set_has_frame(false);
+            title.set_can_focus(false);
+            title.set_tooltip_text(Some(&tab.title));
+            if let Some(label) = title.child().and_downcast::<gtk::Label>() {
+                label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                label.set_max_width_chars(24);
+            }
+            let events = Rc::clone(events);
+            title.on_click(move || events.tab_activated(panel, index));
+        });
+
+        if tab.closable {
+            icon_button("window-close-symbolic", |close| {
+                close.css("panel-tab-close");
+                close.set_has_frame(false);
+                close.set_can_focus(false);
+                close.set_valign(gtk::Align::Center);
+                close.bind_tooltip(tr!("menu.close_tab"));
+                let events = Rc::clone(events);
+                close.on_click(move || events.tab_close(panel, index));
+            });
+
+            let events = Rc::clone(events);
+            item.on_pressed(gdk::BUTTON_MIDDLE, move |_, _| {
+                events.tab_close(panel, index);
+            });
+        }
     });
 }
 
@@ -398,12 +425,14 @@ impl FilePanel {
     }
 
     pub fn set_tabs(&self, titles: Vec<String>, active: usize) {
+        let closable = titles.len() > 1;
         let tabs: Vec<PanelTab> = titles
             .into_iter()
             .enumerate()
             .map(|(index, title)| PanelTab {
                 title,
                 active: index == active,
+                closable,
             })
             .collect();
         if self.tabs.get() != tabs {
